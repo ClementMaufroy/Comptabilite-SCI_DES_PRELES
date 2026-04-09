@@ -1,0 +1,1548 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SCI DES PRÊLES — Comptabilité</title>
+<!-- ═══ FIREBASE SDK ═══ -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  // ⚠️  REMPLACER par vos propres clés Firebase (voir guide d'installation)
+  const firebaseConfig = {
+    apiKey:            "VOTRE_API_KEY",
+    authDomain:        "VOTRE_PROJECT.firebaseapp.com",
+    projectId:         "VOTRE_PROJECT_ID",
+    storageBucket:     "VOTRE_PROJECT.appspot.com",
+    messagingSenderId: "VOTRE_SENDER_ID",
+    appId:             "VOTRE_APP_ID"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const REF = doc(db, "sci-preles", "main");
+
+  // Expose to window so the rest of the script can call them
+  window._fbSave = async (data) => {
+    try {
+      await setDoc(REF, { payload: JSON.stringify(data) });
+    } catch(e) { console.error("Firebase save error", e); }
+  };
+
+  window._fbLoad = async () => {
+    try {
+      const snap = await getDoc(REF);
+      return snap.exists() ? JSON.parse(snap.data().payload) : null;
+    } catch(e) { console.error("Firebase load error", e); return null; }
+  };
+
+  window._fbListen = (callback) => {
+    onSnapshot(REF, (snap) => {
+      if(snap.exists()) {
+        try { callback(JSON.parse(snap.data().payload)); } catch(e) {}
+      }
+    });
+  };
+
+  // Signal that Firebase is ready
+  window._fbReady = true;
+  document.dispatchEvent(new Event('firebase-ready'));
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg0: #09090b;
+  --bg1: #111113;
+  --bg2: #18181b;
+  --bg3: #222226;
+  --bg4: #2a2a30;
+  --line: #2e2e35;
+  --line2: #3a3a44;
+  --text0: #e8e8f0;
+  --text1: #a8a8b8;
+  --text2: #6a6a7a;
+  --text3: #3a3a4a;
+  --cyan: #00d4ff;
+  --cyan-dim: rgba(0,212,255,0.12);
+  --cyan-glow: rgba(0,212,255,0.06);
+  --gold: #c8a84b;
+  --gold-dim: rgba(200,168,75,0.12);
+  --green: #22c55e;
+  --green-dim: rgba(34,197,94,0.1);
+  --red: #ef4444;
+  --red-dim: rgba(239,68,68,0.1);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,0.1);
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'DM Sans', sans-serif;
+  --nav-w: 210px;
+  --hdr: 50px;
+  --radius: 4px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: var(--sans); font-size: 13px; background: var(--bg0); color: var(--text0); display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* SCANLINE TEXTURE */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+}
+
+/* ── HEADER ── */
+.hdr {
+  height: var(--hdr);
+  background: var(--bg1);
+  border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; padding: 0 20px; gap: 16px;
+  flex-shrink: 0; position: relative; z-index: 50;
+}
+.hdr::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  opacity: 0.4;
+}
+.logo {
+  font-family: var(--mono);
+  font-size: 15px; font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+.logo span { color: var(--text2); font-weight: 300; }
+.hdr-sep { width: 1px; height: 20px; background: var(--line2); }
+.hdr-tag { font-family: var(--mono); font-size: 10px; color: var(--text2); letter-spacing: 0.08em; }
+.hdr-status { display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; color: var(--text2); }
+.hdr-status .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.hdr-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* ── BUTTONS ── */
+.btn {
+  font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.05em;
+  padding: 6px 14px; border-radius: var(--radius); cursor: pointer;
+  border: 1px solid var(--line2); background: var(--bg3); color: var(--text1);
+  transition: all 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  text-transform: uppercase;
+}
+.btn:hover { border-color: var(--line2); background: var(--bg4); color: var(--text0); }
+.btn-primary { background: var(--cyan-dim); border-color: rgba(0,212,255,0.3); color: var(--cyan); }
+.btn-primary:hover { background: rgba(0,212,255,0.2); border-color: var(--cyan); box-shadow: 0 0 12px var(--cyan-glow); }
+.btn-gold { background: var(--gold-dim); border-color: rgba(200,168,75,0.3); color: var(--gold); }
+.btn-gold:hover { background: rgba(200,168,75,0.2); border-color: var(--gold); }
+.btn-danger { background: var(--red-dim); border-color: rgba(239,68,68,0.25); color: var(--red); }
+.btn-danger:hover { background: rgba(239,68,68,0.2); }
+.btn-success { background: var(--green-dim); border-color: rgba(34,197,94,0.25); color: var(--green); }
+.btn-sm { padding: 4px 10px; font-size: 10px; }
+.btn-icon { padding: 4px 7px; font-size: 11px; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* ── LAYOUT ── */
+.app { display: flex; flex: 1; overflow: hidden; }
+
+/* ── NAV ── */
+.nav {
+  width: var(--nav-w); background: var(--bg1); border-right: 1px solid var(--line);
+  padding: 16px 0; flex-shrink: 0; overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.nav-section { padding: 12px 16px 4px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.15em; color: var(--text3); text-transform: uppercase; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--text2);
+  transition: all 0.12s; border-left: 2px solid transparent;
+  font-family: var(--sans); letter-spacing: 0.01em;
+  position: relative;
+}
+.nav-item:hover { color: var(--text0); background: var(--bg2); }
+.nav-item.active { color: var(--cyan); border-left-color: var(--cyan); background: var(--cyan-glow); }
+.nav-item .ni-icon { font-size: 13px; width: 16px; text-align: center; opacity: 0.7; }
+.nav-item.active .ni-icon { opacity: 1; }
+.nav-item .ni-count { margin-left: auto; font-family: var(--mono); font-size: 9px; color: var(--text3); background: var(--bg3); padding: 1px 5px; border-radius: 2px; }
+.nav-item.active .ni-count { color: var(--cyan); background: var(--cyan-dim); }
+.nav-sep { height: 1px; background: var(--line); margin: 8px 16px; }
+.nav-version { margin-top: auto; padding: 12px 16px; font-family: var(--mono); font-size: 9px; color: var(--text3); letter-spacing: 0.06em; }
+
+/* ── MAIN ── */
+.main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.tab-content { display: none; flex: 1; overflow: auto; padding: 20px 24px; flex-direction: column; gap: 16px; }
+.tab-content.active { display: flex; }
+
+/* ── PAGE HEADER ── */
+.page-hdr { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 4px; }
+.page-title { font-family: var(--mono); font-size: 18px; font-weight: 600; color: var(--text0); letter-spacing: 0.02em; }
+.page-sub { font-size: 12px; color: var(--text2); margin-top: 2px; font-family: var(--sans); }
+.page-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 20px;
+}
+.card-title {
+  font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+  color: var(--text2); text-transform: uppercase; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
+}
+.card-title::before { content: '//'; color: var(--cyan); opacity: 0.6; font-weight: 300; }
+
+/* ── FORMS ── */
+label { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: 0.08em; color: var(--text2); display: block; margin-bottom: 5px; text-transform: uppercase; }
+input, select, textarea {
+  width: 100%; padding: 0 10px;
+  height: 34px;
+  border: 1px solid var(--line2); border-radius: var(--radius);
+  font-size: 13px; color: var(--text0); background: var(--bg2); font-family: var(--sans);
+  outline: none; transition: all 0.12s;
+}
+textarea { height: auto; padding: 8px 10px; }
+input:focus, select:focus, textarea:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px var(--cyan-glow); background: var(--bg3); }
+select option { background: var(--bg2); }
+.form-row { display: grid; gap: 12px; align-items: end; }
+.form-row.c2 { grid-template-columns: 1fr 1fr; }
+.form-row.c3 { grid-template-columns: 1fr 1fr 1fr; }
+.form-row.c4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.form-field { display: flex; flex-direction: column; }
+
+/* ── TABLES ── */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th {
+  background: var(--bg2); padding: 8px 12px; text-align: left;
+  font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
+  color: var(--text2); text-transform: uppercase; border-bottom: 1px solid var(--line);
+  white-space: nowrap; user-select: none;
+}
+th.sortable { cursor: pointer; }
+th.sortable:hover { color: var(--cyan); }
+td { padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--text0); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: var(--bg2); }
+.td-num { text-align: right; font-family: var(--mono); font-size: 12px; }
+.td-act { text-align: center; white-space: nowrap; }
+.tfoot-row td { background: var(--bg2) !important; border-top: 1px solid var(--line2) !important; font-family: var(--mono); font-weight: 600; font-size: 12px; }
+
+/* ── JOURNAL BADGES ── */
+.jbadge { display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 2px; letter-spacing: 0.06em; }
+.j-VE { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+.j-HA { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+.j-IMMO { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
+.j-OD { background: rgba(245,158,11,0.1); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+.j-TRESO { background: rgba(0,212,255,0.1); color: var(--cyan); border: 1px solid rgba(0,212,255,0.2); }
+
+/* ── CUSTOM COMPTE DROPDOWN ── */
+.ac-wrap { position: relative; }
+.ac-list {
+  display: none; position: fixed; z-index: 9000;
+  background: var(--bg2); border: 1px solid var(--line2);
+  border-radius: var(--radius); overflow-y: auto; max-height: 220px;
+  min-width: 380px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.ac-list.open { display: block; }
+.ac-item {
+  padding: 7px 12px; cursor: pointer; display: flex; align-items: baseline; gap: 10px;
+  border-bottom: 1px solid var(--line); font-size: 12px; transition: background 0.08s;
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.active { background: var(--bg3); }
+.ac-item .ac-num { font-family: var(--mono); color: var(--cyan); font-size: 12px; white-space: nowrap; min-width: 70px; }
+.ac-item .ac-lib { color: var(--text1); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lines-tbl { width: 100%; border-collapse: collapse; }
+.lines-tbl th { background: var(--bg2); padding: 7px 8px; font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em; color: var(--text2); text-transform: uppercase; border: 1px solid var(--line); }
+.lines-tbl td { border: 1px solid var(--line); padding: 2px; }
+.lines-tbl td input, .lines-tbl td select { border: none; border-radius: 0; background: transparent; padding: 5px 8px; font-size: 12px; color: var(--text0); }
+.lines-tbl td input:focus, .lines-tbl td select:focus { background: var(--bg3); box-shadow: inset 0 0 0 1px var(--cyan); border-radius: 2px; }
+.line-del { text-align: center; cursor: pointer; color: var(--text3); font-size: 13px; padding: 0 8px !important; transition: color 0.12s; }
+.line-del:hover { color: var(--red) !important; }
+.lines-foot td { background: var(--bg2); font-family: var(--mono); font-weight: 600; font-size: 12px; padding: 6px 8px; border: 1px solid var(--line); }
+
+/* ── BALANCE INDICATOR ── */
+.bal-ind { font-family: var(--mono); font-size: 11px; padding: 4px 12px; border-radius: var(--radius); font-weight: 500; }
+.bal-ok { color: var(--green); background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); }
+.bal-ko { color: var(--red); background: var(--red-dim); border: 1px solid rgba(239,68,68,0.2); }
+
+/* ── STAT CHIPS ── */
+.chip { font-family: var(--mono); font-size: 10px; color: var(--text2); background: var(--bg3); border: 1px solid var(--line); padding: 2px 8px; border-radius: 2px; }
+.chip-cyan { color: var(--cyan); background: var(--cyan-dim); border-color: rgba(0,212,255,0.2); }
+
+/* ── COLORS ── */
+.c-debit { color: var(--cyan); }
+.c-credit { color: #f87171; }
+.c-pos { color: var(--green); }
+.c-neg { color: var(--red); }
+.c-gold { color: var(--gold); }
+.c-muted { color: var(--text2); }
+
+/* ── JOURNAL CARDS ── */
+.jcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.jcard {
+  background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 14px 16px; cursor: pointer; transition: all 0.15s; position: relative; overflow: hidden;
+}
+.jcard::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--line2); transition: background 0.15s; }
+.jcard:hover::before { background: var(--cyan); }
+.jcard:hover { border-color: var(--line2); background: var(--bg2); }
+.jcard.active { border-color: rgba(0,212,255,0.3); background: var(--cyan-glow); }
+.jcard.active::before { background: var(--cyan); }
+.jcard-code { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--text2); margin-bottom: 6px; }
+.jcard-name { font-size: 13px; font-weight: 500; color: var(--text0); margin-bottom: 8px; }
+.jcard-meta { font-family: var(--mono); font-size: 10px; color: var(--text2); }
+.jcard-meta span { color: var(--text0); }
+
+/* ── BALANCE FILTERS ── */
+.bg-filters { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.bg-filters label { display: flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 10px; color: var(--text1); cursor: pointer; margin: 0; text-transform: none; letter-spacing: 0.02em; }
+.bg-filters input[type=checkbox] { width: 14px; height: 14px; accent-color: var(--cyan); }
+
+/* ── GL FILTERS ── */
+.gl-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.gl-filters .ff { display: flex; flex-direction: column; min-width: 110px; }
+.gl-filters .ff input, .gl-filters .ff select { height: 30px; padding: 3px 8px; font-size: 11px; }
+.gl-filters .ff label { font-size: 9px; margin-bottom: 3px; }
+
+/* ── TB DATA ── */
+.tb-inp { border: none; background: transparent; padding: 4px 6px; width: 100%; font-size: 12px; color: var(--text0); font-family: var(--sans); outline: none; }
+.tb-inp:focus { background: var(--bg3); outline: 1px solid var(--cyan); border-radius: 2px; }
+
+/* ── RAPPELS ── */
+.rappel-group { background: var(--bg1); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+.rappel-group-hdr { padding: 10px 16px; background: var(--bg2); border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text1); letter-spacing: 0.06em; display: flex; align-items: center; gap: 10px; }
+.rappel-row { display: grid; grid-template-columns: 1fr 140px 100px; align-items: center; gap: 12px; padding: 7px 16px; border-bottom: 1px solid var(--line); transition: background 0.1s; }
+.rappel-row:last-child { border-bottom: none; }
+.rappel-row:hover { background: var(--bg2); }
+.rappel-row.is-done { opacity: 0.45; }
+.rappel-label { font-size: 12px; color: var(--text0); }
+.rappel-mois { font-family: var(--mono); font-size: 11px; color: var(--text2); }
+.rappel-ck { display: flex; align-items: center; gap: 8px; cursor: pointer; font-family: var(--mono); font-size: 10px; }
+.rappel-ck input[type=checkbox] { width: 13px; height: 13px; accent-color: var(--cyan); }
+.done-tag { font-family: var(--mono); font-size: 10px; font-weight: 600; color: var(--green); background: var(--green-dim); border: 1px solid rgba(34,197,94,0.2); padding: 2px 8px; border-radius: 2px; letter-spacing: 0.06em; }
+
+/* ── IMPORT MODAL ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+.modal { background: var(--bg1); border: 1px solid var(--line2); border-radius: var(--radius); padding: 24px; width: 640px; max-width: 95vw; max-height: 90vh; overflow: auto; position: relative; }
+.modal::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--cyan), transparent); opacity: 0.6; }
+.modal-title { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--text0); letter-spacing: 0.06em; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.modal-title span { color: var(--cyan); }
+
+/* ── ALERTS ── */
+.alert { padding: 9px 14px; border-radius: var(--radius); font-size: 12px; display: flex; align-items: center; gap: 8px; font-family: var(--sans); border-left: 2px solid; }
+.alert-info { background: var(--cyan-dim); color: var(--cyan); border-color: var(--cyan); }
+.alert-success { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+.alert-warn { background: var(--amber-dim); color: var(--amber); border-color: var(--amber); }
+.alert-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+
+/* ── TOAST ── */
+#toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.t-msg { font-family: var(--mono); font-size: 11px; padding: 9px 14px; border-radius: var(--radius); border: 1px solid; pointer-events: all; animation: tfade 0.2s ease; max-width: 300px; letter-spacing: 0.03em; }
+.t-default { background: var(--bg3); color: var(--text0); border-color: var(--line2); }
+.t-success { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.3); }
+.t-error { background: rgba(239,68,68,0.12); color: var(--red); border-color: rgba(239,68,68,0.3); }
+.t-warn { background: rgba(245,158,11,0.1); color: var(--amber); border-color: rgba(245,158,11,0.25); }
+@keyframes tfade { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ── NUM PILL ── */
+.npill { font-family: var(--mono); font-size: 10px; background: var(--bg3); border: 1px solid var(--line); color: var(--text2); padding: 1px 6px; border-radius: 2px; }
+
+/* ── MISC ── */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+.mt8 { margin-top: 8px; }
+.mt12 { margin-top: 12px; }
+.mb8 { margin-bottom: 8px; }
+.ml-auto { margin-left: auto; }
+.flex { display: flex; }
+.gap8 { gap: 8px; }
+.gap12 { gap: 12px; }
+.items-c { align-items: center; }
+.w100 { width: 100%; }
+.text-right { text-align: right; }
+textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="logo">SCI DES PRÊLES</div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-tag" id="hdr-year-tag">EXERCICE —</div>
+  <div class="hdr-sep"></div>
+  <div class="hdr-status"><div class="dot"></div> AUTO-SAVE</div>
+  <div class="hdr-actions">
+    <button class="btn btn-sm" onclick="showImportModal()">IMPORT GL</button>
+    <button class="btn btn-sm btn-gold" onclick="exportData()">EXPORT</button>
+    <button class="btn btn-sm btn-danger" onclick="undoLast()" id="btn-undo" disabled>↩ ANNULER</button>
+    <button class="btn btn-sm" onclick="redoNext()" id="btn-redo" disabled>↪ RÉTABLIR</button>
+  </div>
+</header>
+
+<div class="app">
+  <nav class="nav">
+    <div class="nav-section">Saisie</div>
+    <div class="nav-item active" onclick="showTab('saisie')" id="nav-saisie">
+      <span class="ni-icon">⌨</span> Saisie comptable
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">Livres</div>
+    <div class="nav-item" onclick="showTab('journaux')" id="nav-journaux">
+      <span class="ni-icon">≡</span> Journaux
+      <span class="ni-count" id="nc-journaux">0</span>
+    </div>
+    <div class="nav-item" onclick="showTab('grandlivre')" id="nav-grandlivre">
+      <span class="ni-icon">◫</span> Grand Livre
+      <span class="ni-count" id="nc-gl">0</span>
+    </div>
+    <div class="nav-item" onclick="showTab('balance')" id="nav-balance">
+      <span class="ni-icon">⊟</span> Balance Générale
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">Référentiel</div>
+    <div class="nav-item" onclick="showTab('tbdata')" id="nav-tbdata">
+      <span class="ni-icon">⊞</span> TB Data
+      <span class="ni-count" id="nc-tb">0</span>
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">Rappels</div>
+    <div class="nav-item" onclick="showTab('mensuel')" id="nav-mensuel">
+      <span class="ni-icon">↻</span> Mensuel
+    </div>
+    <div class="nav-item" onclick="showTab('annuel')" id="nav-annuel">
+      <span class="ni-icon">◷</span> Annuel
+    </div>
+    <div class="nav-version">v2.0 · SCI DES PRÊLES</div>
+  </nav>
+
+  <main class="main">
+
+    <!-- ══════════════ SAISIE ══════════════ -->
+    <div class="tab-content active" id="tab-saisie">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">SAISIE COMPTABLE</div>
+          <div class="page-sub">Enregistrement d'une nouvelle écriture</div>
+        </div>
+        <div class="page-actions">
+          <span id="bal-indicator"></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">En-tête de l'écriture</div>
+        <div class="form-row c4">
+          <div class="form-field">
+            <label>Journal *</label>
+            <input type="text" id="s-journal" oninput="updateNextNum(); simpleAc('s-journal', JOURNALS_LIST)" onfocus="simpleAc('s-journal', JOURNALS_LIST)" onkeydown="simpleAcKey(event,'s-journal',JOURNALS_LIST)" onblur="simpleAcClose('s-journal')" autocomplete="off">
+          </div>
+          <div class="form-field">
+            <label>Date *</label>
+            <input type="date" id="s-date">
+          </div>
+          <div class="form-field">
+            <label>Type document</label>
+            <input type="text" id="s-typedoc" oninput="simpleAc('s-typedoc', TYPEDOC_LIST)" onfocus="simpleAc('s-typedoc', TYPEDOC_LIST)" onkeydown="simpleAcKey(event,'s-typedoc',TYPEDOC_LIST)" onblur="simpleAcClose('s-typedoc')" autocomplete="off">
+          </div>
+          <div class="form-field">
+            <label>Réf. document</label>
+            <input type="text" id="s-refdoc">
+          </div>
+        </div>
+        <div class="form-row c3 mt8">
+          <div class="form-field" style="grid-column:span 1">
+            <label>Libellé écriture *</label>
+            <input type="text" id="s-libelle">
+          </div>
+          <div class="form-field">
+            <label>N° Global (auto)</label>
+            <input type="text" id="s-num" readonly style="background:var(--bg3);color:var(--cyan);font-family:var(--mono);font-weight:600;">
+          </div>
+          <div class="form-field">
+            <label>N° Journal (auto)</label>
+            <input type="text" id="s-num-journal" readonly style="background:var(--bg3);color:var(--text2);font-family:var(--mono);">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Lignes d'imputation</div>
+        <div class="tbl-wrap">
+          <table class="lines-tbl" id="lines-table">
+            <thead>
+              <tr>
+                <th style="width:130px">N° COMPTE</th>
+                <th style="min-width:180px">LIBELLÉ COMPTE</th>
+                <th style="width:130px">DÉBIT (€)</th>
+                <th style="width:130px">CRÉDIT (€)</th>
+                <th style="min-width:200px">LIBELLÉ ÉCRITURE</th>
+                <th style="width:28px"></th>
+              </tr>
+            </thead>
+            <tbody id="lines-body"></tbody>
+            <tfoot>
+              <tr class="lines-foot">
+                <td colspan="2" style="text-align:right;color:var(--text2);font-size:10px;letter-spacing:0.06em;">TOTAUX</td>
+                <td class="td-num c-debit" id="total-debit"></td>
+                <td class="td-num c-credit" id="total-credit"></td>
+                <td></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;">
+        <span id="bal-indicator-2"></span>
+        <button class="btn btn-primary" onclick="saveEcriture()" style="padding:9px 24px;font-size:12px;letter-spacing:0.08em;">▶ ENREGISTRER L'ÉCRITURE</button>
+      </div>
+    </div>
+    <div class="tab-content" id="tab-journaux">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">JOURNAUX COMPTABLES</div>
+          <div class="page-sub">Sélectionnez un journal pour afficher le détail</div>
+        </div>
+        <div class="page-actions">
+          <input type="number" id="j-year" placeholder="Année" style="width:80px;height:30px;padding:3px 8px;font-size:11px;">
+          <button class="btn btn-sm" onclick="renderJournaux()">FILTRER</button>
+        </div>
+      </div>
+      <div class="jcards" id="journal-cards"></div>
+      <div id="journal-detail"></div>
+    </div>
+
+    <!-- ══════════════ GRAND LIVRE ══════════════ -->
+    <div class="tab-content" id="tab-grandlivre">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">GRAND LIVRE</div>
+          <div class="page-sub">Toutes les écritures comptables</div>
+        </div>
+        <div class="page-actions"><span id="gl-count-chip" class="chip"></span></div>
+      </div>
+      <div class="card">
+        <div class="gl-filters">
+          <div class="ff"><label>N° Compte</label><input type="text" id="gl-f-compte" placeholder="512..." oninput="renderGL()"></div>
+          <div class="ff"><label>Journal</label>
+            <select id="gl-f-journal" onchange="renderGL()" style="height:30px;padding:3px 8px;font-size:11px;">
+              <option value="">Tous</option>
+              <option value="VE">VE</option><option value="HA">HA</option>
+              <option value="IMMO">IMMO</option><option value="OD">OD</option><option value="TRESO">TRESO</option>
+            </select>
+          </div>
+          <div class="ff"><label>Libellé</label><input type="text" id="gl-f-libelle" placeholder="Rechercher..." oninput="renderGL()"></div>
+          <div class="ff"><label>Date début</label><input type="date" id="gl-f-date1" onchange="renderGL()"></div>
+          <div class="ff"><label>Date fin</label><input type="date" id="gl-f-date2" onchange="renderGL()"></div>
+          <div class="ff"><label>N° Écriture</label><input type="text" id="gl-f-num" placeholder="Ex: 42" oninput="renderGL()"></div>
+          <button class="btn btn-sm" onclick="resetGLFilters()" style="align-self:flex-end;">RESET</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table id="gl-table">
+          <thead>
+            <tr>
+              <th class="sortable" onclick="glSort('num')" style="width:55px">N° ↕</th>
+              <th class="sortable" onclick="glSort('date')" style="width:90px">DATE ↕</th>
+              <th style="width:60px">JNL</th>
+              <th class="sortable" onclick="glSort('compte')" style="width:80px">COMPTE ↕</th>
+              <th style="min-width:160px">LIBELLÉ COMPTE</th>
+              <th style="min-width:180px">LIBELLÉ ÉCRITURE</th>
+              <th style="width:100px">N° DOC</th>
+              <th class="td-num" style="width:110px">DÉBIT</th>
+              <th class="td-num" style="width:110px">CRÉDIT</th>
+              <th class="td-num" style="width:110px">SOLDE</th>
+              <th style="width:40px"></th>
+            </tr>
+          </thead>
+          <tbody id="gl-body"></tbody>
+          <tfoot>
+            <tr class="tfoot-row">
+              <td colspan="7" style="text-align:right;padding:7px 12px;font-size:9px;letter-spacing:0.1em;color:var(--text2);">TOTAUX</td>
+              <td class="td-num c-debit" id="gl-total-d">0,00</td>
+              <td class="td-num c-credit" id="gl-total-c">0,00</td>
+              <td class="td-num" id="gl-total-s">0,00</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ BALANCE ══════════════ -->
+    <div class="tab-content" id="tab-balance">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">BALANCE GÉNÉRALE</div>
+          <div class="page-sub">Soldes par compte — positif = débiteur · négatif = créditeur</div>
+        </div>
+        <div class="page-actions"><span id="bg-count-chip" class="chip"></span></div>
+      </div>
+      <div class="card">
+        <div class="bg-filters">
+          <label><input type="checkbox" id="bg-bilan" onchange="renderBalance()"> Comptes de bilan (1→5)</label>
+          <label><input type="checkbox" id="bg-resultat" onchange="renderBalance()"> Comptes de résultat (6→7)</label>
+          <label><input type="checkbox" id="bg-nonzero" onchange="renderBalance()"> Masquer soldes nuls</label>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table id="bg-table">
+          <thead>
+            <tr>
+              <th style="width:100px">N° COMPTE</th>
+              <th style="min-width:280px">LIBELLÉ</th>
+              <th class="td-num" style="width:140px">TOTAL DÉBIT</th>
+              <th class="td-num" style="width:140px">TOTAL CRÉDIT</th>
+              <th class="td-num" style="width:140px">SOLDE</th>
+            </tr>
+          </thead>
+          <tbody id="bg-body"></tbody>
+          <tfoot>
+            <tr class="tfoot-row">
+              <td colspan="2" style="text-align:right;padding:7px 12px;font-size:9px;letter-spacing:0.1em;color:var(--text2);">TOTAUX</td>
+              <td class="td-num c-debit" id="bg-total-d">0,00</td>
+              <td class="td-num c-credit" id="bg-total-c">0,00</td>
+              <td class="td-num" id="bg-total-s">0,00</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ TB DATA ══════════════ -->
+    <div class="tab-content" id="tab-tbdata">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">TB DATA</div>
+          <div class="page-sub">Plan comptable — comptes disponibles à la saisie</div>
+        </div>
+        <div class="page-actions">
+          <input type="text" id="tb-search" placeholder="Rechercher..." style="width:180px;height:30px;font-size:11px;" oninput="renderTBData()">
+          <button class="btn btn-sm btn-primary" onclick="addTBRow()">+ COMPTE</button>
+          <button class="btn btn-sm" onclick="showTBImport()">IMPORT CSV</button>
+        </div>
+      </div>
+      <div class="tbl-wrap">
+        <table id="tb-table">
+          <thead>
+            <tr>
+              <th style="width:100px">N° COMPTE</th>
+              <th style="min-width:280px">LIBELLÉ</th>
+              <th style="width:36px">R1</th>
+              <th style="min-width:150px">LIBELLÉ R1</th>
+              <th style="width:36px">R2</th>
+              <th style="min-width:150px">LIBELLÉ R2</th>
+              <th style="width:36px">R3</th>
+              <th style="min-width:150px">LIBELLÉ R3</th>
+              <th style="width:44px" class="td-act">DEL</th>
+            </tr>
+          </thead>
+          <tbody id="tb-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ MENSUEL ══════════════ -->
+    <div class="tab-content" id="tab-mensuel">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">ÉCRITURES MENSUELLES</div>
+          <div class="page-sub">Suivi des opérations récurrentes par mois</div>
+        </div>
+        <div class="page-actions">
+          <select id="rappel-year" style="width:80px;height:30px;font-size:11px;font-family:var(--mono);" onchange="renderMensuel()"></select>
+          <button class="btn btn-sm btn-danger" onclick="resetMensuel()">RESET</button>
+        </div>
+      </div>
+      <div id="mensuel-content"></div>
+    </div>
+
+    <!-- ══════════════ ANNUEL ══════════════ -->
+    <div class="tab-content" id="tab-annuel">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">ÉCRITURES ANNUELLES</div>
+          <div class="page-sub">Suivi des opérations de clôture d'exercice</div>
+        </div>
+        <div class="page-actions">
+          <select id="rappel-year-ann" style="width:80px;height:30px;font-size:11px;font-family:var(--mono);" onchange="renderAnnuel()"></select>
+          <button class="btn btn-sm btn-danger" onclick="resetAnnuel()">RESET</button>
+        </div>
+      </div>
+      <div id="annuel-content"></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- IMPORT MODAL -->
+<div id="import-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-title"><span>▶</span> IMPORT GRAND LIVRE</div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6;">Collez vos données tabulées depuis Excel — colonnes attendues : <code style="color:var(--cyan);font-size:11px;">N°  DATE  N°COMPTE  LIBELLÉ COMPTE  LIBELLÉ ÉCRITURE  N°DOC  DÉBIT  CRÉDIT  JOURNAL</code></p>
+    <div class="alert alert-warn mb8">Les numéros d'écriture seront réattribués automatiquement après l'import.</div>
+    <textarea id="import-text" style="width:100%;height:180px;margin-bottom:8px;" placeholder="Collez vos données ici (séparées par tabulations)..."></textarea>
+    <div style="margin-bottom:12px;">
+      <label>Ou charger un fichier CSV / TSV</label>
+      <input type="file" id="import-file" accept=".csv,.tsv,.txt" onchange="loadImportFile(this)" style="margin-top:4px;">
+    </div>
+    <div id="import-preview" class="mb8"></div>
+    <div class="flex gap8">
+      <button class="btn btn-sm" onclick="previewImport()">▶ PRÉVISUALISER</button>
+      <button class="btn btn-sm btn-success" onclick="confirmImport()" id="btn-confirm-import" disabled>✓ CONFIRMER IMPORT</button>
+      <button class="btn btn-sm ml-auto" onclick="closeImportModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE MODAL -->
+<div id="delete-modal" class="modal-overlay">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UNE ÉCRITURE</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;line-height:1.6;" id="delete-msg"></p>
+    <div class="alert alert-danger mb8">Suppression irréversible. Les numéros suivants seront renumérotés.</div>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDelete()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closeDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let DB = {
+  ecritures: [],
+  tbData: [],
+  rappelsMensuel: {},
+  rappelsMensuelList: [],
+  rappelsAnnuel: {},
+  rappelsAnnuelList: [],
+  nextGlobalNum: 1,
+  journalNums: {VE:1,HA:1,IMMO:1,OD:1,TRESO:1},
+};
+let undoStack = [];
+let glSortCol = 'num', glSortAsc = true;
+let deleteTargetId = null;
+let importParsed = [];
+let lineIdCounter = 0;
+
+// ══════════════════════════════════════════════
+// PERSISTENCE — Firebase (+ localStorage fallback)
+// ══════════════════════════════════════════════
+let _saveTimeout = null;
+function saveDB() {
+  // Always save to localStorage as immediate backup
+  try { localStorage.setItem('ledger_v2', JSON.stringify(DB)); } catch(e) {}
+  // Debounce Firebase save by 800ms to avoid hammering on rapid changes
+  clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(async () => {
+    if(window._fbReady && window._fbSave) {
+      await window._fbSave(DB);
+      const dot = document.querySelector('.dot');
+      if(dot) { dot.style.background='#00d4ff'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
+    }
+  }, 800);
+}
+async function loadDB() {
+  // Try Firebase first
+  if(window._fbReady && window._fbLoad) {
+    const remote = await window._fbLoad();
+    if(remote) { Object.assign(DB, remote); return; }
+  }
+  // Fallback to localStorage
+  try { const r = localStorage.getItem('ledger_v2'); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
+}
+function startLiveSync() {
+  if(!window._fbReady || !window._fbListen) return;
+  window._fbListen((remote) => {
+    // Only update if the remote data is newer (more ecritures or different)
+    if(remote && JSON.stringify(remote.ecritures) !== JSON.stringify(DB.ecritures)) {
+      Object.assign(DB, remote);
+      renum(); updateNavCounts();
+      // Refresh whichever tab is currently visible
+      const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel};
+      if(active && renders[active]) renders[active]();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════
+// TOAST
+// ══════════════════════════════════════════════
+function toast(msg, type='', dur=3000) {
+  const el = document.createElement('div');
+  const cls = {success:'t-success',error:'t-error',warn:'t-warn'}[type]||'t-default';
+  el.className = 't-msg '+cls; el.textContent = msg;
+  document.getElementById('toast').appendChild(el);
+  setTimeout(()=>el.remove(), dur);
+}
+
+// ══════════════════════════════════════════════
+// NAV
+// ══════════════════════════════════════════════
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel};
+  if (renders[name]) renders[name]();
+  updateNavCounts();
+}
+function updateNavCounts() {
+  document.getElementById('nc-journaux').textContent = DB.ecritures.length;
+  document.getElementById('nc-gl').textContent = DB.ecritures.length;
+  document.getElementById('nc-tb').textContent = DB.tbData.length;
+}
+
+// ══════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════
+function fmt(n) { if(n===null||n===undefined||isNaN(n)) return ''; return parseFloat(n).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtN(n) { return n===0?'':fmt(n); }
+function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(',','.').replace(/\s/g,''))||0; }
+function today() { return new Date().toISOString().slice(0,10); }
+function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
+function renum() {
+  const sorted=[...DB.ecritures].sort((a,b)=>{ if(a.date<b.date)return -1; if(a.date>b.date)return 1; return a._io-b._io; });
+  const jN={VE:0,HA:0,IMMO:0,OD:0,TRESO:0};
+  sorted.forEach((e,i)=>{ e.num=i+1; jN[e.journal]=(jN[e.journal]||0)+1; e.numJ=jN[e.journal]; });
+  DB.nextGlobalNum=sorted.length+1;
+  DB.journalNums={};
+  Object.keys(jN).forEach(j=>DB.journalNums[j]=(jN[j]||0)+1);
+}
+
+// ══════════════════════════════════════════════
+// SAISIE
+// ══════════════════════════════════════════════
+function initSaisie() {
+  document.getElementById('s-date').value = today();
+  addLine();
+  updateNextNum();
+}
+function updateNextNum() {
+  const j = document.getElementById('s-journal').value.trim().toUpperCase();
+  document.getElementById('s-num').value = '#'+DB.nextGlobalNum;
+  document.getElementById('s-num-journal').value = (j && DB.journalNums[j]) ? j+'-'+DB.journalNums[j] : '';
+}
+function addLine(focusId) {
+  const id = ++lineIdCounter;
+  const tr = document.createElement('tr');
+  tr.id = 'ln-'+id;
+  tr.innerHTML = `
+    <td class="ac-wrap"><input type="text" class="lc" id="lc${id}" oninput="acSearch(${id})" onkeydown="acKey(event,${id})" onblur="acBlur(${id})" autocomplete="off" style="font-family:var(--mono);font-size:12px;"></td>
+    <td><input type="text" class="ll" id="ll${id}" readonly tabindex="-1" style="background:transparent;color:var(--text0);cursor:default;font-size:12px;border-color:var(--line);"></td>
+    <td><input type="number" class="ld" id="ld${id}" step="0.01" min="0" oninput="upTotals()" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="number" class="lcr" id="lcr${id}" step="0.01" min="0" oninput="upTotals()" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="text" class="le" id="le${id}" style="font-size:12px;" onkeydown="onLibTab(event,${id})" oninput="propagateLibelle(${id})"></td>
+    <td class="line-del" onclick="delLine(${id})">✕</td>`;
+  document.getElementById('lines-body').appendChild(tr);
+  upDl(); upTotals();
+  // pre-fill libellé from first line
+  const firstLib = getFirstLibelle();
+  if(firstLib) { const le = document.getElementById('le'+id); if(le) le.value = firstLib; }
+  if (focusId === undefined) {
+    // focus the compte field of the new line
+    setTimeout(() => document.getElementById('lc'+id)?.focus(), 30);
+  }
+  return id;
+}
+function onLibTab(e, id) {
+  if (e.key === 'Tab' && !e.shiftKey) {
+    const rows = document.querySelectorAll('#lines-body tr');
+    const lastId = rows[rows.length-1]?.id?.replace('ln-','');
+    if (String(lastId) === String(id)) {
+      e.preventDefault();
+      addLine();
+    }
+  }
+}
+// Propagate libellé from line 1 to all other lines that are still empty
+function propagateLibelle(id) {
+  const src = document.getElementById('le'+id);
+  if(!src) return;
+  const val = src.value;
+  document.querySelectorAll('#lines-body tr').forEach(tr => {
+    const lid = tr.id.replace('ln-','');
+    if(String(lid) === String(id)) return; // skip source
+    const el = document.getElementById('le'+lid);
+    if(el && !el.value) el.value = val;
+  });
+}
+// Get the libellé of the first line (to pre-fill new lines)
+function getFirstLibelle() {
+  const first = document.querySelector('#lines-body tr');
+  if(!first) return '';
+  const id = first.id.replace('ln-','');
+  return document.getElementById('le'+id)?.value || '';
+}
+function delLine(id) { const e=document.getElementById('ln-'+id); if(e)e.remove(); upTotals(); }
+function onCI(id) { fillLib(id); }
+function fillLib(id) {
+  const ci=document.getElementById('lc'+id), li=document.getElementById('ll'+id);
+  if(!ci||!li) return;
+  li.value = getLib(ci.value.trim()) || '';
+}
+// ── CUSTOM AUTOCOMPLETE ──
+let acActiveId = null, acIdx = -1;
+function getAcList(id) { return document.getElementById('acl-'+id); }
+function acSearch(id) {
+  fillLib(id);
+  const q = (document.getElementById('lc'+id)?.value||'').toLowerCase().trim();
+  let list = getAcList(id);
+  if(!list) { list=document.createElement('div'); list.id='acl-'+id; list.className='ac-list'; document.body.appendChild(list); }
+  if(!q) { list.classList.remove('open'); return; }
+  const matches = DB.tbData.filter(r=>String(r.compte).startsWith(q)||r.libelle.toLowerCase().includes(q)).slice(0,30);
+  if(!matches.length) { list.classList.remove('open'); return; }
+  list.innerHTML = matches.map((r,i)=>`<div class="ac-item" data-compte="${r.compte}" data-lib="${r.libelle}" onmousedown="acPick(${id},'${r.compte}','${r.libelle.replace(/'/g,"\\'")}')"><span class="ac-num">${r.compte}</span><span class="ac-lib">${r.libelle}</span></div>`).join('');
+  // Position below the input
+  const inp = document.getElementById('lc'+id);
+  const rect = inp.getBoundingClientRect();
+  list.style.top = (rect.bottom + 2) + 'px';
+  list.style.left = rect.left + 'px';
+  list.style.width = Math.max(380, rect.width) + 'px';
+  list.classList.add('open');
+  acActiveId = id; acIdx = -1;
+}
+function acPick(id, compte, libelle) {
+  const ci = document.getElementById('lc'+id), li = document.getElementById('ll'+id);
+  if(ci) ci.value = compte;
+  if(li) li.value = libelle;
+  acClose(id);
+  // move focus to débit
+  setTimeout(()=>document.getElementById('ld'+id)?.focus(), 20);
+}
+function acKey(e, id) {
+  const list = getAcList(id);
+  const items = list?.querySelectorAll('.ac-item') || [];
+  if(e.key==='ArrowDown'){ e.preventDefault(); acIdx=Math.min(acIdx+1,items.length-1); acHL(items); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); acIdx=Math.max(acIdx-1,0); acHL(items); }
+  else if(e.key==='Enter'&&acIdx>=0){ e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); }
+  else if(e.key==='Escape'){ acClose(id); }
+  else if(e.key==='Tab'){ if(list?.classList.contains('open')&&acIdx>=0){ e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); } else acClose(id); }
+}
+function acHL(items) { items.forEach((el,i)=>el.classList.toggle('active',i===acIdx)); items[acIdx]?.scrollIntoView({block:'nearest'}); }
+function acBlur(id) { setTimeout(()=>acClose(id), 150); }
+function acClose(id) { const l=getAcList(id); if(l) l.classList.remove('open'); acActiveId=null; acIdx=-1; }
+function upDl() {} // kept for compatibility, no longer used
+function upTotals() {
+  let d=0,c=0;
+  document.querySelectorAll('.ld').forEach(i=>d+=pn(i.value));
+  document.querySelectorAll('.lcr').forEach(i=>c+=pn(i.value));
+  document.getElementById('total-debit').textContent = d > 0 ? fmt(d) : '';
+  document.getElementById('total-credit').textContent = c > 0 ? fmt(c) : '';
+  const diff=Math.abs(d-c), ind=document.getElementById('bal-indicator'), ind2=document.getElementById('bal-indicator-2');
+  const setInd = (el) => {
+    if(!el) return;
+    if(d===0&&c===0){el.className='';el.textContent='';}
+    else if(diff<0.005){el.className='bal-ind bal-ok';el.textContent='✓ ÉQUILIBRÉ';}
+    else{el.className='bal-ind bal-ko';el.textContent='ÉCART: '+fmt(diff)+' €';}
+  };
+  setInd(ind); setInd(ind2);
+}
+function getLines() {
+  const lines=[];
+  document.querySelectorAll('#lines-body tr').forEach(tr=>{
+    const id=tr.id.replace('ln-','');
+    let c=document.getElementById('lc'+id)?.value.trim()||'';
+    const l=document.getElementById('ll'+id)?.value.trim();
+    const le=document.getElementById('le'+id)?.value.trim();
+    const d=pn(document.getElementById('ld'+id)?.value);
+    const cr=pn(document.getElementById('lcr'+id)?.value);
+    if(c||d||cr) lines.push({compte:c,libelle:l,libelleEcriture:le,debit:d,credit:cr});
+  });
+  return lines;
+}
+function saveEcriture() {
+  const journal=document.getElementById('s-journal').value.trim().toUpperCase();
+  const date=document.getElementById('s-date').value;
+  const libelle=document.getElementById('s-libelle').value.trim();
+  const typedoc=document.getElementById('s-typedoc').value.trim();
+  const refdoc=document.getElementById('s-refdoc').value.trim();
+  if(!journal){toast('Saisissez un journal','error');return;}
+  if(!['VE','HA','IMMO','OD','TRESO'].includes(journal)){toast('Journal invalide (VE, HA, IMMO, OD, TRESO)','error');return;}
+  if(!date){toast('Saisissez une date','error');return;}
+  if(!libelle){toast('Saisissez un libellé d\'écriture (en-tête)','error');return;}
+  const lines=getLines();
+  if(lines.length<2){toast('Au moins 2 lignes requises','error');return;}
+  if(lines.some(l=>!l.libelleEcriture)){toast('Chaque ligne doit avoir un libellé écriture','error');return;}
+  const totD=lines.reduce((s,l)=>s+l.debit,0);
+  const totC=lines.reduce((s,l)=>s+l.credit,0);
+  if(Math.abs(totD-totC)>0.005){toast('Écriture non équilibrée','error');return;}
+  const snap=JSON.parse(JSON.stringify(DB.ecritures));
+  undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
+  redoStack = []; updUndoRedo();
+  const io=Date.now();
+  lines.forEach(l=>{
+    DB.ecritures.push({id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture||libelle,numDoc:typedoc+(refdoc?'/'+refdoc:''),debit:l.debit,credit:l.credit});
+  });
+  renum(); saveDB(); updateNavCounts();
+  toast('Écriture #'+(DB.nextGlobalNum-1)+' enregistrée','success');
+  document.getElementById('s-libelle').value='';
+  document.getElementById('s-refdoc').value='';
+  document.getElementById('lines-body').innerHTML='';
+  addLine(); updateNextNum(); upTotals();
+}
+
+// ══════════════════════════════════════════════
+// UNDO / REDO
+// ══════════════════════════════════════════════
+let redoStack = [];
+function updUndoRedo() {
+  document.getElementById('btn-undo').disabled = undoStack.length === 0;
+  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+}
+function undoLast() {
+  if(!undoStack.length) return;
+  redoStack.push({snap: JSON.parse(JSON.stringify(DB.ecritures))});
+  if(redoStack.length > 50) redoStack.shift();
+  DB.ecritures = undoStack.pop().snap;
+  renum(); saveDB(); updateNavCounts(); updUndoRedo();
+  toast('Annulation effectuée','warn'); updateNextNum();
+}
+function redoNext() {
+  if(!redoStack.length) return;
+  undoStack.push({snap: JSON.parse(JSON.stringify(DB.ecritures))});
+  if(undoStack.length > 50) undoStack.shift();
+  DB.ecritures = redoStack.pop().snap;
+  renum(); saveDB(); updateNavCounts(); updUndoRedo();
+  toast('Rétablissement effectué','success'); updateNextNum();
+}
+
+// ══════════════════════════════════════════════
+// DELETE
+// ══════════════════════════════════════════════
+function askDelete(id) {
+  const e=DB.ecritures.find(x=>x.id===id); if(!e) return;
+  deleteTargetId=id;
+  document.getElementById('delete-msg').innerHTML=`Écriture <strong style="color:var(--cyan)">#${e.num}</strong> · ${e.date} · <em>${e.libelleEcriture}</em><br>Compte ${e.compte} · D: ${fmt(e.debit)} € / C: ${fmt(e.credit)} €`;
+  document.getElementById('delete-modal').style.display='flex';
+}
+function closeDeleteModal() { document.getElementById('delete-modal').style.display='none'; deleteTargetId=null; }
+function confirmDelete() {
+  if(!deleteTargetId) return;
+  undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
+  redoStack = []; updUndoRedo();
+  DB.ecritures=DB.ecritures.filter(e=>e.id!==deleteTargetId);
+  renum(); saveDB(); closeDeleteModal(); updateNavCounts();
+  toast('Écriture supprimée — renumérotation effectuée','warn');
+  renderGL(); renderBalance();
+}
+
+// ══════════════════════════════════════════════
+// JOURNAUX
+// ══════════════════════════════════════════════
+const JNL_LABELS={VE:'Ventes',HA:'Achats',IMMO:'Immobilisations',OD:'Opérations Diverses',TRESO:'Trésorerie'};
+const JNLS=['VE','HA','IMMO','OD','TRESO'];
+function renderJournaux() {
+  const year=document.getElementById('j-year').value;
+  document.getElementById('journal-cards').innerHTML=JNLS.map(j=>{
+    const lines=DB.ecritures.filter(e=>e.journal===j&&(!year||e.date.startsWith(year)));
+    const totD=lines.reduce((s,e)=>s+e.debit,0);
+    const totC=lines.reduce((s,e)=>s+e.credit,0);
+    return `<div class="jcard" onclick="showJnlDetail('${j}','${year}')" id="jcard-${j}">
+      <div class="jcard-code"><span class="jbadge j-${j}">${j}</span></div>
+      <div class="jcard-name">${JNL_LABELS[j]}</div>
+      <div class="jcard-meta">${lines.length} ligne(s)</div>
+      <div class="jcard-meta" style="margin-top:4px;">D <span>${fmt(totD)}</span> · C <span>${fmt(totC)}</span></div>
+    </div>`;
+  }).join('');
+}
+function showJnlDetail(j,year) {
+  document.querySelectorAll('.jcard').forEach(c=>c.classList.remove('active'));
+  document.getElementById('jcard-'+j)?.classList.add('active');
+  const lines=DB.ecritures.filter(e=>e.journal===j&&(!year||e.date.startsWith(year))).sort((a,b)=>a.num-b.num);
+  const totD=lines.reduce((s,e)=>s+e.debit,0);
+  const totC=lines.reduce((s,e)=>s+e.credit,0);
+  document.getElementById('journal-detail').innerHTML=`
+    <div class="card mt12">
+      <div class="card-title">Journal ${JNL_LABELS[j]} <span class="jbadge j-${j}" style="font-size:9px;">${j}</span> <span class="chip chip-cyan ml-auto">${lines.length} lignes</span></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:55px">N° GL</th><th style="width:80px">N° JNL</th><th style="width:90px">DATE</th>
+            <th style="width:80px">COMPTE</th><th style="min-width:160px">LIBELLÉ COMPTE</th>
+            <th style="min-width:180px">LIBELLÉ ÉCRITURE</th><th style="width:100px">N° DOC</th>
+            <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th>
+          </tr></thead>
+          <tbody>${lines.map(e=>`<tr>
+            <td><span class="npill">${e.num}</span></td>
+            <td><span class="npill">${j}-${e.numJ}</span></td>
+            <td style="font-family:var(--mono);font-size:11px;">${e.date}</td>
+            <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
+            <td>${e.libelleCompte||''}</td><td>${e.libelleEcriture||''}</td>
+            <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${e.numDoc||''}</td>
+            <td class="td-num c-debit">${fmtN(e.debit)}</td>
+            <td class="td-num c-credit">${fmtN(e.credit)}</td>
+          </tr>`).join('')}</tbody>
+          <tfoot><tr class="tfoot-row">
+            <td colspan="7" style="text-align:right;padding:7px 12px;font-size:9px;letter-spacing:0.1em;color:var(--text2);">TOTAUX</td>
+            <td class="td-num c-debit">${fmt(totD)}</td><td class="td-num c-credit">${fmt(totC)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ══════════════════════════════════════════════
+// GRAND LIVRE
+// ══════════════════════════════════════════════
+function getGLF() {
+  const fC=(document.getElementById('gl-f-compte')?.value||'').toLowerCase();
+  const fJ=document.getElementById('gl-f-journal')?.value||'';
+  const fL=(document.getElementById('gl-f-libelle')?.value||'').toLowerCase();
+  const fD1=document.getElementById('gl-f-date1')?.value||'';
+  const fD2=document.getElementById('gl-f-date2')?.value||'';
+  const fN=document.getElementById('gl-f-num')?.value||'';
+  return DB.ecritures.filter(e=>{
+    if(fC&&!String(e.compte).toLowerCase().startsWith(fC)) return false;
+    if(fJ&&e.journal!==fJ) return false;
+    if(fL&&!(e.libelleEcriture||'').toLowerCase().includes(fL)&&!(e.libelleCompte||'').toLowerCase().includes(fL)) return false;
+    if(fD1&&e.date<fD1) return false;
+    if(fD2&&e.date>fD2) return false;
+    if(fN&&String(e.num)!==fN) return false;
+    return true;
+  });
+}
+function glSort(col) { if(glSortCol===col) glSortAsc=!glSortAsc; else{glSortCol=col;glSortAsc=true;} renderGL(); }
+function renderGL() {
+  let rows=getGLF();
+  rows.sort((a,b)=>{
+    let va=a[glSortCol],vb=b[glSortCol];
+    if(glSortCol==='num'){va=+va;vb=+vb;}
+    if(glSortCol==='compte'){va=String(va);vb=String(vb);}
+    return glSortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
+  });
+  let totD=0,totC=0;
+  document.getElementById('gl-body').innerHTML=rows.map(e=>{
+    totD+=e.debit; totC+=e.credit;
+    const s=e.debit-e.credit;
+    return `<tr>
+      <td><span class="npill">${e.num}</span></td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2);">${e.date}</td>
+      <td><span class="jbadge j-${e.journal}">${e.journal}</span></td>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleCompte||''}</td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleEcriture||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${e.numDoc||''}</td>
+      <td class="td-num c-debit">${fmtN(e.debit)}</td>
+      <td class="td-num c-credit">${fmtN(e.credit)}</td>
+      <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
+      <td class="td-act"><button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('gl-total-d').textContent=fmt(totD);
+  document.getElementById('gl-total-c').textContent=fmt(totC);
+  const ts=totD-totC;
+  document.getElementById('gl-total-s').innerHTML=`<span class="${ts>0?'c-pos':ts<0?'c-neg':''}">${fmt(ts)}</span>`;
+  document.getElementById('gl-count-chip').textContent=rows.length+' ligne(s)';
+}
+function resetGLFilters() {
+  ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  renderGL();
+}
+
+// ══════════════════════════════════════════════
+// BALANCE
+// ══════════════════════════════════════════════
+function renderBalance() {
+  const showB=document.getElementById('bg-bilan')?.checked;
+  const showR=document.getElementById('bg-resultat')?.checked;
+  const hideZ=document.getElementById('bg-nonzero')?.checked;
+  const showAll=!showB&&!showR;
+  const map={};
+  DB.ecritures.forEach(e=>{
+    if(!map[e.compte]) map[e.compte]={compte:e.compte,libelle:e.libelleCompte||getLib(e.compte)||'',debit:0,credit:0};
+    map[e.compte].debit+=e.debit; map[e.compte].credit+=e.credit;
+  });
+  let rows=Object.values(map).sort((a,b)=>String(a.compte).localeCompare(String(b.compte)));
+  rows=rows.filter(r=>{
+    const f=String(r.compte)[0];
+    if(showAll) return true;
+    if(showB&&['1','2','3','4','5'].includes(f)) return true;
+    if(showR&&['6','7'].includes(f)) return true;
+    return false;
+  });
+  if(hideZ) rows=rows.filter(r=>Math.abs(r.debit-r.credit)>0.005);
+  let totD=0,totC=0,totS=0;
+  document.getElementById('bg-body').innerHTML=rows.map(r=>{
+    const s=r.debit-r.credit; totD+=r.debit; totC+=r.credit; totS+=s;
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${r.compte}</td>
+      <td>${r.libelle}</td>
+      <td class="td-num c-debit">${fmt(r.debit)}</td>
+      <td class="td-num c-credit">${fmt(r.credit)}</td>
+      <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}" style="font-family:var(--mono);font-weight:600;">${fmt(s)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('bg-total-d').textContent=fmt(totD);
+  document.getElementById('bg-total-c').textContent=fmt(totC);
+  const ts=totD-totC;
+  document.getElementById('bg-total-s').innerHTML=`<span class="${ts>0?'c-pos':ts<0?'c-neg':''}">${fmt(ts)}</span>`;
+  document.getElementById('bg-count-chip').textContent=rows.length+' compte(s)';
+}
+
+// ══════════════════════════════════════════════
+// TB DATA
+// ══════════════════════════════════════════════
+function renderTBData() {
+  const q=(document.getElementById('tb-search')?.value||'').toLowerCase();
+  const rows=DB.tbData.filter(r=>!q||String(r.compte).includes(q)||(r.libelle||'').toLowerCase().includes(q));
+  document.getElementById('tb-body').innerHTML=rows.map(r=>{
+    const i=DB.tbData.indexOf(r);
+    return `<tr>
+      <td><input class="tb-inp" value="${r.compte||''}" onblur="tbu(${i},'compte',this.value)" style="font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${r.libelle||''}" onblur="tbu(${i},'libelle',this.value)"></td>
+      <td><input class="tb-inp" value="${r.r1||''}" onblur="tbu(${i},'r1',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${r.libR1||''}" onblur="tbu(${i},'libR1',this.value)"></td>
+      <td><input class="tb-inp" value="${r.r2||''}" onblur="tbu(${i},'r2',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${r.libR2||''}" onblur="tbu(${i},'libR2',this.value)"></td>
+      <td><input class="tb-inp" value="${r.r3||''}" onblur="tbu(${i},'r3',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${r.libR3||''}" onblur="tbu(${i},'libR3',this.value)"></td>
+      <td class="td-act"><button class="btn btn-sm btn-danger btn-icon" onclick="delTB(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('nc-tb').textContent=DB.tbData.length;
+}
+function tbu(i,f,v){if(DB.tbData[i]){DB.tbData[i][f]=v;saveDB();upDl();}}
+function addTBRow(){DB.tbData.push({compte:'',libelle:'',r1:'',libR1:'',r2:'',libR2:'',r3:'',libR3:''});saveDB();renderTBData();}
+function delTB(i){DB.tbData.splice(i,1);saveDB();renderTBData();upDl();}
+function showTBImport() {
+  const csv=prompt('Collez un CSV (compte;libelle) ou TSV :'); if(!csv) return;
+  let added=0;
+  csv.split('\n').filter(l=>l.trim()).forEach(l=>{
+    const p=l.split(/[;\t]/);
+    if(p.length>=2){
+      const c=p[0].trim(),lib=p[1].trim();
+      if(c&&!DB.tbData.find(r=>String(r.compte)===c)){DB.tbData.push({compte:c,libelle:lib,r1:'',libR1:'',r2:'',libR2:'',r3:'',libR3:''});added++;}
+    }
+  });
+  DB.tbData.sort((a,b)=>String(a.compte).localeCompare(String(b.compte)));
+  saveDB();renderTBData();upDl();toast(added+' compte(s) ajouté(s)','success');
+}
+
+// ══════════════════════════════════════════════
+// RAPPELS
+// ══════════════════════════════════════════════
+const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+function renderMensuel() {
+  const year=document.getElementById('rappel-year')?.value||new Date().getFullYear();
+  const items=DB.rappelsMensuelList; const state=DB.rappelsMensuel[year]||{};
+  if(!items.length){document.getElementById('mensuel-content').innerHTML='<div class="alert alert-info">Aucune écriture mensuelle configurée.</div>';return;}
+  document.getElementById('mensuel-content').innerHTML=items.map(item=>{
+    return `<div class="rappel-group">
+      <div class="rappel-group-hdr">${item}</div>
+      ${MOIS.map((m,mi)=>{
+        const key=item+'_'+mi; const done=!!state[key];
+        return `<div class="rappel-row ${done?'is-done':''}">
+          <span class="rappel-label"></span>
+          <span class="rappel-mois">${m} ${year}</span>
+          <label class="rappel-ck">
+            <input type="checkbox" ${done?'checked':''} onchange="togM('${year}','${key.replace(/'/g,"\\'")}',this.checked)">
+            ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text3);">—</span>'}
+          </label>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+function togM(y,k,v){if(!DB.rappelsMensuel[y])DB.rappelsMensuel[y]={};DB.rappelsMensuel[y][k]=v;saveDB();renderMensuel();}
+function resetMensuel(){const y=document.getElementById('rappel-year')?.value;if(y&&confirm('Réinitialiser '+y+' ?')){DB.rappelsMensuel[y]={};saveDB();renderMensuel();}}
+function renderAnnuel() {
+  const year=document.getElementById('rappel-year-ann')?.value||new Date().getFullYear();
+  const items=DB.rappelsAnnuelList; const state=DB.rappelsAnnuel[year]||{};
+  if(!items.length){document.getElementById('annuel-content').innerHTML='<div class="alert alert-info">Aucune écriture annuelle configurée.</div>';return;}
+  document.getElementById('annuel-content').innerHTML=`<div class="rappel-group">
+    <div class="rappel-group-hdr">Exercice ${year}</div>
+    ${items.map(item=>{
+      const done=!!state[item];
+      return `<div class="rappel-row ${done?'is-done':''}">
+        <span class="rappel-label">${item}</span><span></span>
+        <label class="rappel-ck">
+          <input type="checkbox" ${done?'checked':''} onchange="togA('${year}','${item.replace(/'/g,"\\'")}',this.checked)">
+          ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text3);">—</span>'}
+        </label>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+function togA(y,k,v){if(!DB.rappelsAnnuel[y])DB.rappelsAnnuel[y]={};DB.rappelsAnnuel[y][k]=v;saveDB();renderAnnuel();}
+function resetAnnuel(){const y=document.getElementById('rappel-year-ann')?.value;if(y&&confirm('Réinitialiser '+y+' ?')){DB.rappelsAnnuel[y]={};saveDB();renderAnnuel();}}
+
+// ══════════════════════════════════════════════
+// IMPORT
+// ══════════════════════════════════════════════
+function showImportModal(){document.getElementById('import-modal').style.display='flex';}
+function closeImportModal(){
+  document.getElementById('import-modal').style.display='none';
+  document.getElementById('import-text').value='';
+  document.getElementById('import-preview').innerHTML='';
+  document.getElementById('btn-confirm-import').disabled=true;
+  importParsed=[];
+}
+function loadImportFile(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('import-text').value=e.target.result;};r.readAsText(f,'UTF-8');}
+function previewImport(){
+  const text=document.getElementById('import-text').value.trim();
+  if(!text){toast('Aucune donnée','error');return;}
+  const lines=text.split('\n').filter(l=>l.trim());
+  importParsed=[];
+  lines.forEach((line,li)=>{
+    const parts=line.split('\t');
+    if(parts.length<2) return;
+    if(li===0&&isNaN(parseFloat(parts[1]))&&parts[2]&&isNaN(parseFloat(parts[2]))) return;
+    const date=parts[1]?.trim()||'';
+    const compte=parts[2]?.trim()||'';
+    const libC=parts[3]?.trim()||'';
+    const libE=parts[4]?.trim()||'';
+    const numDoc=parts[5]?.trim()||'';
+    const debit=pn(parts[6]);
+    const credit=pn(parts[7]);
+    const journal=(parts[8]?.trim()||'OD').toUpperCase();
+    if(!compte&&!debit&&!credit) return;
+    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD'});
+  });
+  if(!importParsed.length){toast('Aucune ligne valide','error');return;}
+  const totD=importParsed.reduce((s,r)=>s+r.debit,0);
+  const totC=importParsed.reduce((s,r)=>s+r.credit,0);
+  document.getElementById('import-preview').innerHTML=`
+    <div class="alert alert-success" style="margin-bottom:8px;">${importParsed.length} ligne(s) détectée(s) — D: ${fmt(totD)} € / C: ${fmt(totC)} €</div>
+    <div class="tbl-wrap" style="max-height:160px;overflow:auto;font-size:11px;">
+      <table><thead><tr><th>DATE</th><th>COMPTE</th><th>LIBELLÉ COMPTE</th><th>LIBELLÉ ÉCRITURE</th><th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th>JNL</th></tr></thead>
+      <tbody>${importParsed.slice(0,20).map(r=>`<tr><td style="font-family:var(--mono)">${r.date}</td><td style="font-family:var(--mono);color:var(--cyan)">${r.compte}</td><td>${r.libelleCompte}</td><td>${r.libelleEcriture}</td><td class="td-num c-debit">${fmtN(r.debit)}</td><td class="td-num c-credit">${fmtN(r.credit)}</td><td><span class="jbadge j-${r.journal}">${r.journal}</span></td></tr>`).join('')}
+      ${importParsed.length>20?`<tr><td colspan="7" style="text-align:center;color:var(--text2);font-family:var(--mono);font-size:10px;">… +${importParsed.length-20} ligne(s)</td></tr>`:''}
+      </tbody></table>
+    </div>`;
+  document.getElementById('btn-confirm-import').disabled=false;
+}
+function confirmImport(){
+  if(!importParsed.length) return;
+  undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
+  redoStack = []; updUndoRedo();
+  const t=Date.now();
+  importParsed.forEach((r,i)=>{
+    DB.ecritures.push({id:crypto.randomUUID(),_io:t+i,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
+  });
+  renum(); saveDB(); closeImportModal(); updateNavCounts();
+  toast(importParsed.length+' ligne(s) importée(s)','success');
+  importParsed=[];
+}
+
+// ══════════════════════════════════════════════
+// EXPORT
+// ══════════════════════════════════════════════
+function exportData(){
+  const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='ledger_backup_'+today()+'.json'; a.click();
+  toast('Backup exporté','success');
+}
+
+// ══════════════════════════════════════════════
+// YEAR SELECTS
+// ══════════════════════════════════════════════
+function fillYears(){
+  const cur=new Date().getFullYear();
+  const years=[cur-1,cur,cur+1];
+  document.getElementById('hdr-year-tag').textContent='EXERCICE '+cur;
+  ['rappel-year','rappel-year-ann'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    el.innerHTML=years.map(y=>`<option value="${y}" ${y===cur?'selected':''}>${y}</option>`).join('');
+  });
+}
+
+// ══════════════════════════════════════════════
+// DEFAULT DATA
+// ══════════════════════════════════════════════
+function initDefaults() {
+  if(!DB.tbData.length) DB.tbData=[
+    {compte:'101100',libelle:'Capital souscrit - non appelé',r1:'1',libR1:'1 - Comptes de capitaux',r2:'10',libR2:'Capital et réserves',r3:'101',libR3:'Capital'},
+    {compte:'101200',libelle:'Capital souscrit - appelé, non versé',r1:'1',libR1:'1 - Comptes de capitaux',r2:'10',libR2:'Capital et réserves',r3:'101',libR3:'Capital'},
+    {compte:'101300',libelle:'Capital souscrit - appelé, versé',r1:'1',libR1:'1 - Comptes de capitaux',r2:'10',libR2:'Capital et réserves',r3:'101',libR3:'Capital'},
+    {compte:'106110',libelle:'Réserve légale',r1:'1',libR1:'1 - Comptes de capitaux',r2:'10',libR2:'Capital et réserves',r3:'106',libR3:'Réserve légale'},
+    {compte:'110000',libelle:'Report à nouveau (solde créditeur)',r1:'1',libR1:'1 - Comptes de capitaux',r2:'11',libR2:'Report à nouveau',r3:'110',libR3:'Report à nouveau'},
+    {compte:'119000',libelle:'Report à nouveau (solde débiteur)',r1:'1',libR1:'1 - Comptes de capitaux',r2:'11',libR2:'Report à nouveau',r3:'119',libR3:'Report à nouveau'},
+    {compte:'120000',libelle:"Résultat de l'exercice (bénéfice)",r1:'1',libR1:'1 - Comptes de capitaux',r2:'12',libR2:"Résultat de l'exercice",r3:'120',libR3:"Résultat de l'exercice"},
+    {compte:'129000',libelle:"Résultat de l'exercice (perte)",r1:'1',libR1:'1 - Comptes de capitaux',r2:'12',libR2:"Résultat de l'exercice",r3:'129',libR3:"Résultat de l'exercice"},
+    {compte:'158000',libelle:"Autres provisions pour charges d'exploitation",r1:'1',libR1:'1 - Comptes de capitaux',r2:'15',libR2:'Provisions pour risques et charges',r3:'158',libR3:'Autres provisions pour charges'},
+    {compte:'164000',libelle:'Emprunt CE - Hénin Beaumont',r1:'1',libR1:'1 - Comptes de capitaux',r2:'16',libR2:'Emprunts et dettes assimilées',r3:'164',libR3:'Emprunt auprès des établissements de crédit'},
+    {compte:'164100',libelle:'Emprunt CE - Divion',r1:'1',libR1:'1 - Comptes de capitaux',r2:'16',libR2:'Emprunts et dettes assimilées',r3:'164',libR3:'Emprunt auprès des établissements de crédit'},
+    {compte:'165001',libelle:'Dépôts et cautionnements reçus - 16 Concorde Hénin-Beaumont',r1:'1',libR1:'1 - Comptes de capitaux',r2:'16',libR2:'Emprunts et dettes assimilées',r3:'165',libR3:'Cautionnements reçus'},
+    {compte:'165002',libelle:'Dépôts et cautionnements reçus - 78 Arthur Lamendin Divion',r1:'1',libR1:'1 - Comptes de capitaux',r2:'16',libR2:'Emprunts et dettes assimilées',r3:'165',libR3:'Cautionnements reçus'},
+    {compte:'165003',libelle:'Dépôts et cautionnements reçus - 80 Arthur Lamendin Divion',r1:'1',libR1:'1 - Comptes de capitaux',r2:'16',libR2:'Emprunts et dettes assimilées',r3:'165',libR3:'Cautionnements reçus'},
+    {compte:'211000',libelle:'Terrains bâtis',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'211',libR3:'Terrains'},
+    {compte:'213100',libelle:'Bâtiments - 16 Concorde Hénin-Beaumont',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'213',libR3:'Constructions'},
+    {compte:'213200',libelle:'Bâtiments - 78 Arthur Lamendin Divion',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'213',libR3:'Constructions'},
+    {compte:'213300',libelle:'Bâtiments - 80 Arthur Lamendin Divion',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'213',libR3:'Constructions'},
+    {compte:'213500',libelle:'Installations générales, agencements, aménagements des constructions',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'213',libR3:'Constructions'},
+    {compte:'218300',libelle:'Matériel de bureau et matériel informatique',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'218',libR3:'Autres immobilisations corporelles'},
+    {compte:'218400',libelle:'Mobilier',r1:'2',libR1:'2 - Actif immobilisé',r2:'21',libR2:'Immobilisations corporelles',r3:'218',libR3:'Autres immobilisations corporelles'},
+    {compte:'274000',libelle:'Prêt accordés - Lendosphère',r1:'2',libR1:'2 - Actif immobilisé',r2:'27',libR2:'Autres immobilisations financières',r3:'274',libR3:'Prêts accordés > 1 an'},
+    {compte:'281300',libelle:'Amortissement des constructions - Hénin',r1:'2',libR1:'2 - Actif immobilisé',r2:'28',libR2:'Amortissement des immobilisations',r3:'281',libR3:'Amortissement des immobilisations corporelles'},
+    {compte:'281310',libelle:'Amortissement des constructions - Divion 78',r1:'2',libR1:'2 - Actif immobilisé',r2:'28',libR2:'Amortissement des immobilisations',r3:'281',libR3:'Amortissement des immobilisations corporelles'},
+    {compte:'281320',libelle:'Amortissement des constructions - Divion 80',r1:'2',libR1:'2 - Actif immobilisé',r2:'28',libR2:'Amortissement des immobilisations',r3:'281',libR3:'Amortissement des immobilisations corporelles'},
+    {compte:'281350',libelle:'Amortissement des installations générales, agencements',r1:'2',libR1:'2 - Actif immobilisé',r2:'28',libR2:'Amortissement des immobilisations',r3:'281',libR3:'Amortissement des immobilisations corporelles'},
+    {compte:'281830',libelle:'Amortissement des matériels de bureau et matériel informatique',r1:'2',libR1:'2 - Actif immobilisé',r2:'28',libR2:'Amortissement des immobilisations',r3:'281',libR3:'Amortissement des immobilisations corporelles'},
+    {compte:'401000',libelle:'Fournisseurs - Les Briconautes',r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'400',libR3:'Fournisseurs et comptes rattachés'},
+    {compte:'401001',libelle:'Fournisseurs - SPS Couvreur',r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'400',libR3:'Fournisseurs et comptes rattachés'},
+    {compte:'404000',libelle:"Fournisseurs d'immobilisations",r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'400',libR3:'Fournisseurs et comptes rattachés'},
+    {compte:'408100',libelle:'Fournisseurs - factures non parvenues',r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'408',libR3:'Fournisseurs - Factures non parvenues'},
+    {compte:'409100',libelle:'Fournisseurs - avances et acomptes versés sur commandes',r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'409',libR3:'Fournisseurs débiteurs'},
+    {compte:'409400',libelle:"Fournisseurs d'immobilisations - avances et acomptes",r1:'4',libR1:'4 - Comptes de tiers',r2:'40',libR2:'Fournisseurs et comptes rattachés',r3:'409',libR3:'Fournisseurs débiteurs'},
+    {compte:'411100',libelle:'Clients Locataires - 16 Concorde Hénin Beaumont',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'411',libR3:'Clients'},
+    {compte:'411200',libelle:'Clients Locataires - 78 Arthur Lamendin Divion',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'411',libR3:'Clients'},
+    {compte:'411300',libelle:'Clients Locataires - 80 Arthur Lamendin Divion',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'411',libR3:'Clients'},
+    {compte:'416000',libelle:'Clients douteux',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'416',libR3:'Clients douteux ou litigieux'},
+    {compte:'418000',libelle:'Clients - Factures à établir',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'418',libR3:'Clients - produits non encore facturés'},
+    {compte:'419100',libelle:'Clients, avances sur charges - 16 Concorde Hénin Beaumont',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'419',libR3:'Clients créditeurs'},
+    {compte:'419200',libelle:'Clients, avances sur charges - 78 Arthur Lamendin Divion',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'419',libR3:'Clients créditeurs'},
+    {compte:'419300',libelle:'Clients, avances sur charges - 80 Arthur Lamendin Divion',r1:'4',libR1:'4 - Comptes de tiers',r2:'41',libR2:'Clients et comptes rattachés',r3:'419',libR3:'Clients créditeurs'},
+    {compte:'444000',libelle:'Etat, impôts sur les bénéfices',r1:'4',libR1:'4 - Comptes de tiers',r2:'44',libR2:'Etat et autres collectivités publiques',r3:'444',libR3:'Etat, impôts sur les bénéfices'},
+    {compte:'447000',libelle:'Etat, autres impôts - taxes et versements assimilés',r1:'4',libR1:'4 - Comptes de tiers',r2:'44',libR2:'Etat et autres collectivités publiques',r3:'447',libR3:'Etat, autres impôts - taxes et versements assimilés'},
+    {compte:'455110',libelle:"Compte-courant d'associé - Clément Maufroy",r1:'4',libR1:'4 - Comptes de tiers',r2:'45',libR2:'Groupe et Associés',r3:'455',libR3:'Associés - comptes courants'},
+    {compte:'455120',libelle:"Compte-courant d'associé - Alexandre Camus",r1:'4',libR1:'4 - Comptes de tiers',r2:'45',libR2:'Groupe et Associés',r3:'455',libR3:'Associés - comptes courants'},
+    {compte:'471000',libelle:"Compte d'attente",r1:'4',libR1:'4 - Comptes de tiers',r2:'47',libR2:'Comptes transitoires',r3:'471',libR3:"Compte d'attente"},
+    {compte:'486000',libelle:"Charges constatées d'avance",r1:'4',libR1:'4 - Comptes de tiers',r2:'48',libR2:'Comptes de régularisation',r3:'486',libR3:"Charges constatées d'avance"},
+    {compte:'487000',libelle:"Produits constatés d'avance",r1:'4',libR1:'4 - Comptes de tiers',r2:'48',libR2:'Comptes de régularisation',r3:'487',libR3:"Produits constatés d'avance"},
+    {compte:'491000',libelle:'Dépréciation des comptes clients',r1:'4',libR1:'4 - Comptes de tiers',r2:'49',libR2:'Dépréciation des comptes de tiers',r3:'491',libR3:'Dépréciation des comptes clients'},
+    {compte:'512000',libelle:'Banques',r1:'5',libR1:'5 - Comptes de trésorerie',r2:'51',libR2:'Banques, établissements financiers et assimilés',r3:'512',libR3:'Banques'},
+    {compte:'606110',libelle:'Eau',r1:'6',libR1:'6 - Comptes de charges',r2:'60',libR2:'Achats',r3:'606',libR3:'Achats non stockés'},
+    {compte:'606120',libelle:'Electricité',r1:'6',libR1:'6 - Comptes de charges',r2:'60',libR2:'Achats',r3:'606',libR3:'Achats non stockés'},
+    {compte:'606300',libelle:'Fournitures et petit outillage',r1:'6',libR1:'6 - Comptes de charges',r2:'60',libR2:'Achats',r3:'606',libR3:'Achats non stockés'},
+    {compte:'606400',libelle:'Fournitures de bureau',r1:'6',libR1:'6 - Comptes de charges',r2:'60',libR2:'Achats',r3:'606',libR3:'Achats non stockés'},
+    {compte:'613000',libelle:'Location - logiciel',r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'613',libR3:'Locations'},
+    {compte:'613120',libelle:'Locations immobilières',r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'613',libR3:'Locations'},
+    {compte:'615200',libelle:'Entretien et réparations sur biens immobiliers',r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'615',libR3:'Entretien et réparations'},
+    {compte:'615500',libelle:'Entretien et réparations sur biens mobiliers',r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'615',libR3:'Entretien et réparations'},
+    {compte:'616380',libelle:"Primes d'assurance sur autres biens",r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'616',libR3:"Primes d'assurances"},
+    {compte:'616381',libelle:"Primes d'assurance siège social",r1:'6',libR1:'6 - Comptes de charges',r2:'61',libR2:'Services extérieurs',r3:'616',libR3:"Primes d'assurances"},
+    {compte:'622000',libelle:"Rémunération d'intermédiaires et honoraires",r1:'7',libR1:'7 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'622',libR3:'Frais AirBnB'},
+    {compte:'622700',libelle:"Frais d'actes",r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'622',libR3:'Intermédiaires et honoraires'},
+    {compte:'623100',libelle:'Annonces et insertions',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'623',libR3:'Publicité, publications'},
+    {compte:'625100',libelle:'Voyages et déplacements',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'625',libR3:'Déplacements, missions, réceptions'},
+    {compte:'625700',libelle:'Réceptions',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'625',libR3:'Déplacements, missions, réceptions'},
+    {compte:'626100',libelle:'Internet',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'626',libR3:'Frais postaux et de communication'},
+    {compte:'626200',libelle:'Téléphone',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'626',libR3:'Frais postaux et de communication'},
+    {compte:'626300',libelle:'Frais postaux',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'626',libR3:'Frais postaux et de communication'},
+    {compte:'627000',libelle:'Services bancaires et assimilés',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'627',libR3:'Services bancaires et assimilés'},
+    {compte:'627100',libelle:'Assurance de prêt',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'627',libR3:'Services bancaires et assimilés'},
+    {compte:'628100',libelle:'Télésurveillance',r1:'6',libR1:'6 - Comptes de charges',r2:'62',libR2:'Autres services extérieurs',r3:'628',libR3:'Divers'},
+    {compte:'635120',libelle:'Taxes foncières et frais de gestion',r1:'6',libR1:'6 - Comptes de charges',r2:'63',libR2:'Impôts, taxes et versements assimilés',r3:'635',libR3:'Autres impôts locaux'},
+    {compte:'635130',libelle:'Autres impôts locaux (TEOM)',r1:'6',libR1:'6 - Comptes de charges',r2:'63',libR2:'Impôts, taxes et versements assimilés',r3:'635',libR3:'Autres impôts locaux'},
+    {compte:'637000',libelle:'Autres impôts, taxes et versements assimilés',r1:'6',libR1:'6 - Comptes de charges',r2:'63',libR2:'Impôts, taxes et versements assimilés',r3:'637',libR3:'Autres impôts'},
+    {compte:'654000',libelle:'Pertes sur créances irrécouvrables',r1:'6',libR1:'6 - Comptes de charges',r2:'65',libR2:'Autres charges de gestion courante',r3:'654',libR3:'Pertes sur créances irrécouvrables'},
+    {compte:'661100',libelle:'Intérêts des emprunts et des dettes',r1:'6',libR1:'6 - Comptes de charges',r2:'66',libR2:'Charges financières',r3:'661',libR3:"Charges d'intérêts"},
+    {compte:'661500',libelle:'Intérêts des comptes courants et des dépôts créditeurs',r1:'6',libR1:'6 - Comptes de charges',r2:'66',libR2:'Charges financières',r3:'661',libR3:"Charges d'intérêts"},
+    {compte:'681000',libelle:"Dotation aux provisions pour charges d'exploitation",r1:'6',libR1:'6 - Comptes de charges',r2:'68',libR2:"Dotations aux amortissements",r3:'681',libR3:"Dotations d'exploitation"},
+    {compte:'681120',libelle:'Dotation aux amortissements des immobilisations corporelles',r1:'6',libR1:'6 - Comptes de charges',r2:'68',libR2:"Dotations aux amortissements",r3:'681',libR3:"Dotations d'exploitation"},
+    {compte:'681740',libelle:'Dotation pour dépréciation des créances clients',r1:'6',libR1:'6 - Comptes de charges',r2:'68',libR2:"Dotations aux amortissements",r3:'681',libR3:"Dotations d'exploitation"},
+    {compte:'686000',libelle:'Dotation aux provisions pour charges financières',r1:'6',libR1:'6 - Comptes de charges',r2:'68',libR2:"Dotations aux amortissements",r3:'686',libR3:'Dotations financières'},
+    {compte:'695100',libelle:'Impôts sur les sociétés dûs en France',r1:'6',libR1:'6 - Comptes de charges',r2:'69',libR2:'Participation, impôts sur les bénéfices',r3:'695',libR3:'Impôts sur les bénéfices'},
+    {compte:'706001',libelle:'Location non meublée - 16 Concorde Hénin Beaumont',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'706',libR3:'Prestations de services'},
+    {compte:'706002',libelle:'Location non meublée - 78 Arthur Lamendin Divion',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'706',libR3:'Prestations de services'},
+    {compte:'706003',libelle:'Location non meublée - 80 Arthur Lamendin Divion',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'706',libR3:'Prestations de services'},
+    {compte:'706100',libelle:'Prestation de services - location saisonnière',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'706',libR3:'Prestations de services'},
+    {compte:'708100',libelle:'Refacturation charges locatives - 16 Concorde Hénin Beaumont',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'708',libR3:'Produit des activités annexes'},
+    {compte:'708200',libelle:'Refacturation charges locatives - 78 Divion',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'708',libR3:'Produit des activités annexes'},
+    {compte:'708300',libelle:'Refacturation charges locatives - 80 Divion',r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'708',libR3:'Produit des activités annexes'},
+    {compte:'709600',libelle:"Rabais, remises, ristournes sur prestations de services",r1:'7',libR1:'7 - Comptes de produits',r2:'70',libR2:'Vente de prestations de services',r3:'709',libR3:"Rabais, remises accordés"},
+    {compte:'781000',libelle:'Reprises sur amortissements, dépréciations et provisions',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'781',libR3:"Reprises d'exploitation"},
+    {compte:'781740',libelle:'Reprise de provisions pour dépréciation des créances clients',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'781',libR3:"Reprises d'exploitation"},
+    {compte:'786000',libelle:'Reprise de provision pour charges financières',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'786',libR3:'Reprises financières'},
+  ];
+  if(!DB.rappelsMensuelList.length) DB.rappelsMensuelList=[
+    'Kilomètres','Téléphone Clém','Téléphone Alex','Internet','Abonnement microsoft',
+    'Frais bancaires',"Frais d'assurance de prêt (Hénin + Divion)","Remboursement d'emprunt",
+    "Charges d'intérêts","Assurance PNO","Quittancement loyer","Quittancement provision TEOM",
+    'Factures de ventes Airbnb SCI à client final','Contrat de location Clem Alex à SCI',
+    'Factures de frais Airbnb','Prorata télésurveillance'
+  ];
+  if(!DB.rappelsAnnuelList.length) DB.rappelsAnnuelList=[
+    'Amortissement maison','Amortissement cuisine','Amortissement sols','Amortissement bureau',
+    'Extourne prov EDF N-1','Charge définitive EDF N-1','PROV Prorata EDF','Prorata eau',
+    'Prorata taxe foncière','Prorata TEOM','Prorata assurance habitation','Taxe foncière ou provision',
+    'TEOM','Impôt sur les sociétés','Taxe CRL ou provision','Cartes cadeau',
+    "Intérêts compte-courant d'associés",'Cartes cadeau - gérants'
+  ];
+}
+
+// ── SIMPLE FIXED-LIST AUTOCOMPLETE (journal, typedoc) ──
+const JOURNALS_LIST = [
+  {code:'VE', label:'Ventes'},
+  {code:'HA', label:'Achats'},
+  {code:'IMMO', label:'Immobilisations'},
+  {code:'OD', label:'Opérations Diverses'},
+  {code:'TRESO', label:'Trésorerie'},
+];
+const TYPEDOC_LIST = [
+  {code:'FA', label:'Facture'},
+  {code:'OD', label:'Opérations diverses'},
+  {code:'QUIT', label:'Quittance'},
+  {code:'TCAISSE', label:'Ticket de caisse'},
+  {code:'RBANQUE', label:'Relevé bancaire'},
+  {code:'KM', label:'Relevé kilométrique'},
+  {code:'ECH', label:'Échéancier'},
+  {code:'DP', label:'Dossier Permanent'},
+  {code:'CAF', label:'Bordereau CAF'},
+];
+let simpleAcIdxMap = {};
+function simpleAc(fieldId, list) {
+  const inp = document.getElementById(fieldId);
+  const q = (inp?.value||'').toLowerCase().trim();
+  let drop = document.getElementById('sac-'+fieldId);
+  if(!drop) {
+    drop = document.createElement('div');
+    drop.id = 'sac-'+fieldId;
+    drop.className = 'ac-list';
+    document.body.appendChild(drop);
+  }
+  const matches = q ? list.filter(r=>r.code.toLowerCase().startsWith(q)||r.label.toLowerCase().includes(q)) : list;
+  if(!matches.length) { drop.classList.remove('open'); return; }
+  simpleAcIdxMap[fieldId] = -1;
+  drop.innerHTML = matches.map(r=>`<div class="ac-item" onmousedown="simpleAcPick('${fieldId}','${r.code}')"><span class="ac-num">${r.code}</span><span class="ac-lib">${r.label}</span></div>`).join('');
+  const rect = inp.getBoundingClientRect();
+  drop.style.top = (rect.bottom+2)+'px';
+  drop.style.left = rect.left+'px';
+  drop.style.width = Math.max(260, rect.width)+'px';
+  drop.style.minWidth = '260px';
+  drop.classList.add('open');
+}
+function simpleAcPick(fieldId, code) {
+  const inp = document.getElementById(fieldId);
+  if(inp) { inp.value = code; if(fieldId==='s-journal') updateNextNum(); }
+  simpleAcClose(fieldId);
+}
+function simpleAcKey(e, fieldId, list) {
+  const drop = document.getElementById('sac-'+fieldId);
+  const items = drop?.querySelectorAll('.ac-item')||[];
+  let idx = simpleAcIdxMap[fieldId]??-1;
+  if(e.key==='ArrowDown'){ e.preventDefault(); idx=Math.min(idx+1,items.length-1); simpleAcIdxMap[fieldId]=idx; items.forEach((el,i)=>el.classList.toggle('active',i===idx)); items[idx]?.scrollIntoView({block:'nearest'}); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); idx=Math.max(idx-1,0); simpleAcIdxMap[fieldId]=idx; items.forEach((el,i)=>el.classList.toggle('active',i===idx)); items[idx]?.scrollIntoView({block:'nearest'}); }
+  else if(e.key==='Enter'&&idx>=0){ e.preventDefault(); items[idx]?.dispatchEvent(new MouseEvent('mousedown')); }
+  else if(e.key==='Escape'){ simpleAcClose(fieldId); }
+}
+function simpleAcClose(fieldId) { setTimeout(()=>{ const d=document.getElementById('sac-'+fieldId); if(d)d.classList.remove('open'); }, 150); }
+
+// ══════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════
+async function boot() {
+  await loadDB();
+  initDefaults(); saveDB();
+  fillYears(); initSaisie(); upDl(); renum(); updateNavCounts();
+  startLiveSync();
+}
+// Wait for Firebase module to signal ready, or boot after 3s timeout
+let booted = false;
+document.addEventListener('firebase-ready', () => { if(!booted){ booted=true; boot(); } });
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => { if(!booted){ booted=true; boot(); } }, 3000);
+});
+</script>
+</body>
+</html>
