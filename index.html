@@ -71,28 +71,28 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg0: #0e0e11;
-  --bg1: #16161a;
-  --bg2: #1e1e24;
-  --bg3: #28282f;
-  --bg4: #32323b;
-  --line: #3a3a45;
-  --line2: #4e4e5e;
-  --text0: #f0f0f8;
-  --text1: #c8c8d8;
-  --text2: #8e8ea8;
-  --text3: #5a5a72;
-  --cyan: #18e0ff;
-  --cyan-dim: rgba(24,224,255,0.14);
-  --cyan-glow: rgba(24,224,255,0.08);
-  --gold: #e0bb5a;
-  --gold-dim: rgba(224,187,90,0.15);
-  --green: #34d870;
-  --green-dim: rgba(52,216,112,0.12);
-  --red: #ff5555;
-  --red-dim: rgba(255,85,85,0.12);
-  --amber: #ffb020;
-  --amber-dim: rgba(255,176,32,0.12);
+  --bg0: #111115;
+  --bg1: #1a1a20;
+  --bg2: #22222a;
+  --bg3: #2c2c36;
+  --bg4: #363642;
+  --line: #44444f;
+  --line2: #5a5a6a;
+  --text0: #f4f4fc;
+  --text1: #d0d0e0;
+  --text2: #9898b0;
+  --text3: #606075;
+  --cyan: #22e8ff;
+  --cyan-dim: rgba(34,232,255,0.15);
+  --cyan-glow: rgba(34,232,255,0.09);
+  --gold: #f0c84a;
+  --gold-dim: rgba(240,200,74,0.16);
+  --green: #3edf74;
+  --green-dim: rgba(62,223,116,0.13);
+  --red: #ff6060;
+  --red-dim: rgba(255,96,96,0.13);
+  --amber: #ffbe30;
+  --amber-dim: rgba(255,190,48,0.13);
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'DM Sans', sans-serif;
   --nav-w: 210px;
@@ -411,7 +411,7 @@ tbody tr:hover td { background: var(--bg3); }
 }
 /* Disable all interactive elements when closed */
 body.exercise-closed .btn:not(.btn-readonly-ok),
-body.exercise-closed input:not([readonly]):not(#login-pw):not(#tb-search):not([id^="gl-"]):not([id^="bg-"]):not([id="j-year"]):not([id="rappel-year"]):not([id="rappel-year-ann"]),
+body.exercise-closed input:not([readonly]):not(#login-pw):not(#tb-search):not([id^="gl-"]):not([id^="bg-"]):not([id="j-year"]),
 body.exercise-closed select:not([id="ex-year-select"]) {
   pointer-events: none; opacity: 0.35;
 }
@@ -847,7 +847,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="page-sub">Suivi des opérations récurrentes par mois</div>
         </div>
         <div class="page-actions">
-          <select id="rappel-year" style="width:80px;height:30px;font-size:11px;font-family:var(--mono);" onchange="renderMensuel()"></select>
           <button class="btn btn-sm btn-danger" onclick="resetMensuel()">RESET</button>
         </div>
       </div>
@@ -862,7 +861,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="page-sub">Suivi des opérations de clôture d'exercice</div>
         </div>
         <div class="page-actions">
-          <select id="rappel-year-ann" style="width:80px;height:30px;font-size:11px;font-family:var(--mono);" onchange="renderAnnuel()"></select>
           <button class="btn btn-sm btn-danger" onclick="resetAnnuel()">RESET</button>
         </div>
       </div>
@@ -1579,7 +1577,7 @@ function showTBImport() {
 // ══════════════════════════════════════════════
 const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 function renderMensuel() {
-  const year=document.getElementById('rappel-year')?.value||new Date().getFullYear();
+  const year = CURRENT_YEAR;
   const items=DB.rappelsMensuelList; const state=DB.rappelsMensuel[year]||{};
   if(!items.length){document.getElementById('mensuel-content').innerHTML='<div class="alert alert-info">Aucune écriture mensuelle configurée.</div>';return;}
   document.getElementById('mensuel-content').innerHTML=items.map(item=>{
@@ -1592,7 +1590,7 @@ function renderMensuel() {
           <span class="rappel-mois">${m} ${year}</span>
           <label class="rappel-ck">
             <input type="checkbox" ${done?'checked':''} onchange="togM('${year}','${key.replace(/'/g,"\\'")}',this.checked)">
-            ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text3);">—</span>'}
+            ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text2);">—</span>'}
           </label>
         </div>`;
       }).join('')}
@@ -1600,9 +1598,13 @@ function renderMensuel() {
   }).join('');
 }
 function togM(y,k,v){if(!DB.rappelsMensuel[y])DB.rappelsMensuel[y]={};DB.rappelsMensuel[y][k]=v;saveDB();renderMensuel();}
-function resetMensuel(){const y=document.getElementById('rappel-year')?.value;if(y&&confirm('Réinitialiser '+y+' ?')){DB.rappelsMensuel[y]={};saveDB();renderMensuel();}}
+function resetMensuel(){
+  if(EXERCISE_STATUS==='closed'){toast('Exercice clôturé','error');return;}
+  DB.rappelsMensuel[CURRENT_YEAR]={};saveDB();renderMensuel();
+  toast('Rappels mensuels réinitialisés','warn');
+}
 function renderAnnuel() {
-  const year=document.getElementById('rappel-year-ann')?.value||new Date().getFullYear();
+  const year = CURRENT_YEAR;
   const items=DB.rappelsAnnuelList; const state=DB.rappelsAnnuel[year]||{};
   if(!items.length){document.getElementById('annuel-content').innerHTML='<div class="alert alert-info">Aucune écriture annuelle configurée.</div>';return;}
   document.getElementById('annuel-content').innerHTML=`<div class="rappel-group">
@@ -1613,14 +1615,18 @@ function renderAnnuel() {
         <span class="rappel-label">${item}</span><span></span>
         <label class="rappel-ck">
           <input type="checkbox" ${done?'checked':''} onchange="togA('${year}','${item.replace(/'/g,"\\'")}',this.checked)">
-          ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text3);">—</span>'}
+          ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text2);">—</span>'}
         </label>
       </div>`;
     }).join('')}
   </div>`;
 }
 function togA(y,k,v){if(!DB.rappelsAnnuel[y])DB.rappelsAnnuel[y]={};DB.rappelsAnnuel[y][k]=v;saveDB();renderAnnuel();}
-function resetAnnuel(){const y=document.getElementById('rappel-year-ann')?.value;if(y&&confirm('Réinitialiser '+y+' ?')){DB.rappelsAnnuel[y]={};saveDB();renderAnnuel();}}
+function resetAnnuel(){
+  if(EXERCISE_STATUS==='closed'){toast('Exercice clôturé','error');return;}
+  DB.rappelsAnnuel[CURRENT_YEAR]={};saveDB();renderAnnuel();
+  toast('Rappels annuels réinitialisés','warn');
+}
 
 // ══════════════════════════════════════════════
 // IMPORT
@@ -1694,13 +1700,7 @@ function exportData(){
 // YEAR SELECTS
 // ══════════════════════════════════════════════
 function fillYears(){
-  const cur=new Date().getFullYear();
-  const years=[cur-1,cur,cur+1];
-  document.getElementById('hdr-year-tag').textContent='EXERCICE '+cur;
-  ['rappel-year','rappel-year-ann'].forEach(id=>{
-    const el=document.getElementById(id); if(!el) return;
-    el.innerHTML=years.map(y=>`<option value="${y}" ${y===cur?'selected':''}>${y}</option>`).join('');
-  });
+  document.getElementById('hdr-year-tag').textContent='EXERCICE '+CURRENT_YEAR;
 }
 
 // ══════════════════════════════════════════════
@@ -1927,7 +1927,7 @@ async function switchExercise(year) {
   EXERCISE_STATUS = DB._status || 'open';
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const renders = {saisie:()=>{document.getElementById('lines-body').innerHTML='';addLine();updateNextNum();upTotals();}, journaux:renderJournaux, grandlivre:renderGL, balance:renderBalance, tbdata:renderTBData, mensuel:renderMensuel, annuel:renderAnnuel};
+  const renders = {saisie:()=>{document.getElementById('lines-body').innerHTML='';lineIdCounter=0;addLine();updateNextNum();upTotals();}, journaux:renderJournaux, grandlivre:renderGL, balance:renderBalance, tbdata:renderTBData, mensuel:renderMensuel, annuel:renderAnnuel};
   if(active && renders[active]) renders[active]();
   startLiveSync();
   toast('Exercice ' + year + ' chargé', 'success');
@@ -2013,7 +2013,7 @@ function createNewExerciseConfirm() {
   saveDB();
   loadKnownYears();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
-  document.getElementById('lines-body').innerHTML=''; addLine(); updateNextNum(); upTotals();
+  document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
   startLiveSync();
   toast('Exercice "' + label + '" créé', 'success');
 }
