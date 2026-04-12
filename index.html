@@ -71,28 +71,28 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg0: #111115;
-  --bg1: #1a1a20;
-  --bg2: #22222a;
-  --bg3: #2c2c36;
-  --bg4: #363642;
-  --line: #44444f;
-  --line2: #5a5a6a;
-  --text0: #f4f4fc;
-  --text1: #d0d0e0;
-  --text2: #9898b0;
-  --text3: #606075;
-  --cyan: #22e8ff;
-  --cyan-dim: rgba(34,232,255,0.15);
-  --cyan-glow: rgba(34,232,255,0.09);
-  --gold: #f0c84a;
-  --gold-dim: rgba(240,200,74,0.16);
-  --green: #3edf74;
-  --green-dim: rgba(62,223,116,0.13);
-  --red: #ff6060;
-  --red-dim: rgba(255,96,96,0.13);
-  --amber: #ffbe30;
-  --amber-dim: rgba(255,190,48,0.13);
+  --bg0: #14141a;
+  --bg1: #1c1c24;
+  --bg2: #252530;
+  --bg3: #2f2f3c;
+  --bg4: #3a3a48;
+  --line: #48485a;
+  --line2: #606075;
+  --text0: #f6f6ff;
+  --text1: #d8d8ee;
+  --text2: #a0a0be;
+  --text3: #686880;
+  --cyan: #2aebff;
+  --cyan-dim: rgba(42,235,255,0.16);
+  --cyan-glow: rgba(42,235,255,0.10);
+  --gold: #f5d060;
+  --gold-dim: rgba(245,208,96,0.18);
+  --green: #44e87a;
+  --green-dim: rgba(68,232,122,0.14);
+  --red: #ff6868;
+  --red-dim: rgba(255,104,104,0.14);
+  --amber: #ffc840;
+  --amber-dim: rgba(255,200,64,0.14);
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'DM Sans', sans-serif;
   --nav-w: 210px;
@@ -986,6 +986,14 @@ function doLogin() {
     sessionStorage.setItem('sci_auth', '1');
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    // Ensure saisie line is visible after app becomes visible
+    if(!document.querySelector('#lines-body tr')) {
+      document.getElementById('lines-body').innerHTML = '';
+      lineIdCounter = 0;
+      addLine();
+      updateNextNum();
+      upTotals();
+    }
   } else {
     document.getElementById('login-err').textContent = 'Mot de passe incorrect';
     document.getElementById('login-pw').value = '';
@@ -1903,18 +1911,28 @@ function applyExerciseStatus() {
 async function loadKnownYears() {
   let years = [];
   if(window._fbReady && window._fbListYears) years = await window._fbListYears();
-  const cur = new Date().getFullYear();
-  if(!years.includes(cur)) years.push(cur);
-  // Keep as mixed array (numbers + strings like "TEST")
-  years = [...new Set(years)].sort((a,b) => {
+  // Also scan localStorage for any locally saved exercises not yet in Firebase meta
+  for(let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if(key && key.startsWith('ledger_')) {
+      const y = key.replace('ledger_', '');
+      const parsed = isTestExercise(y) ? y : parseInt(y);
+      if(!years.map(String).includes(String(parsed))) years.push(parsed);
+    }
+  }
+  // Always include current exercise
+  if(!years.map(String).includes(String(CURRENT_YEAR))) years.push(CURRENT_YEAR);
+  // Sort: real years newest first, test exercises at bottom
+  years = [...new Set(years.map(String))].map(y => isTestExercise(y) ? y : (isNaN(parseInt(y)) ? y : parseInt(y)));
+  years.sort((a,b) => {
     const aTest = isTestExercise(a), bTest = isTestExercise(b);
-    if(aTest && !bTest) return 1;  // test exercises at bottom
+    if(aTest && !bTest) return 1;
     if(!aTest && bTest) return -1;
     if(aTest && bTest) return String(a).localeCompare(String(b));
-    return b - a; // newest year first
+    return b - a;
   });
   const sel = document.getElementById('ex-year-select');
-  sel.innerHTML = years.map(y => `<option value="${y}" ${y==CURRENT_YEAR?'selected':''}>${isTestExercise(y)?'🧪 '+y:y}</option>`).join('');
+  if(sel) sel.innerHTML = years.map(y => `<option value="${y}" ${String(y)===String(CURRENT_YEAR)?'selected':''}>${isTestExercise(y)?'🧪 '+y:y}</option>`).join('');
   return years;
 }
 
