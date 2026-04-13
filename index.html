@@ -7,7 +7,7 @@
 <!-- ═══ FIREBASE SDK ═══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyDCqFqBT7NXgiV4COiHY_-2YhjJQth8taw",
@@ -64,11 +64,21 @@
     } catch(e) { return []; }
   };
 
+  // Fresh read bypassing Firestore cache — used after delete
+  window._fbListYearsFresh = async () => {
+    try {
+      const metaRef = doc(db, "sci-preles", "_meta");
+      const snap = await getDocFromServer(metaRef);
+      return snap.exists() ? (snap.data().years || []) : [];
+    } catch(e) { return []; }
+  };
+
   window._fbDelete = async (year) => {
     try {
       await deleteDoc(doc(db, 'sci-preles', String(year)));
       const metaRef = doc(db, 'sci-preles', '_meta');
-      const metaSnap = await getDoc(metaRef);
+      // Use getDocFromServer to bypass cache and get the real current list
+      const metaSnap = await getDocFromServer(metaRef);
       if(metaSnap.exists()) {
         const years = (metaSnap.data().years || []).filter(y => String(y) !== String(year));
         await setDoc(metaRef, { years });
@@ -1974,9 +1984,13 @@ function applyExerciseStatus() {
 
 async function loadKnownYears(excludeYear) {
   let years = [];
-  if(window._fbReady && window._fbListYears) {
-    const fbYears = await window._fbListYears();
-    years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
+  if(window._fbReady) {
+    // After a delete, bypass Firestore cache to get fresh data
+    const lister = (excludeYear && window._fbListYearsFresh) ? window._fbListYearsFresh : window._fbListYears;
+    if(lister) {
+      const fbYears = await lister();
+      years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
+    }
   }
   // Scan localStorage
   for(let i = 0; i < localStorage.length; i++) {
@@ -2042,7 +2056,7 @@ function showExerciseModal() {
         ${isCurrent ? `<span style="font-family:var(--mono);font-size:9px;color:var(--text2);">EN COURS</span>` : ''}
         <div style="margin-left:auto;display:flex;gap:6px;">
           ${!isCurrent ? `<button class="btn btn-sm btn-readonly-ok" onclick="closeExerciseModal();switchExercise('${y}')">CHARGER</button>` : ''}
-          ${isTest ? `<button class="btn btn-sm btn-danger btn-readonly-ok" onclick="deleteTestExercise('${y}')">🗑 SUPPRIMER</button>` : ''}
+          ${isTest ? `<button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="deleteTestExercise('${y}')">🗑 SUPPRIMER</button>` : ''}
         </div>
       </div>`;
     }).join('')}`;
