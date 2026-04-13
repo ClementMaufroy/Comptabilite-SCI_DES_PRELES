@@ -1972,27 +1972,29 @@ function applyExerciseStatus() {
   }
 }
 
-async function loadKnownYears() {
+async function loadKnownYears(excludeYear) {
   let years = [];
-  // Load from Firebase meta
   if(window._fbReady && window._fbListYears) {
     const fbYears = await window._fbListYears();
     years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
   }
-  // Scan localStorage for any locally saved exercises
+  // Scan localStorage
   for(let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if(key && key.startsWith('ledger_')) {
       const suffix = key.replace('ledger_', '');
-      // Skip empty suffixes or NaN values
       if(!suffix || suffix.trim() === '' || suffix === 'NaN') continue;
       if(!years.includes(suffix)) years.push(suffix);
     }
   }
-  // Always include current exercise
+  // Always include current exercise (unless it's the one being deleted)
   const curStr = String(CURRENT_YEAR);
-  if(curStr && curStr !== 'NaN' && !years.includes(curStr)) years.push(curStr);
-  // Remove any remaining NaN/empty
+  if(curStr && curStr !== 'NaN' && !years.includes(curStr) && curStr !== String(excludeYear)) {
+    years.push(curStr);
+  }
+  // Exclude deleted year from all sources
+  if(excludeYear) years = years.filter(y => String(y) !== String(excludeYear));
+  // Remove NaN/empty
   years = years.filter(y => y && y !== 'NaN' && y.trim() !== '');
   // Sort: numeric years newest first, TEST* at bottom
   years.sort((a, b) => {
@@ -2002,7 +2004,6 @@ async function loadKnownYears() {
     if(aTest && bTest) return a.localeCompare(b);
     return parseInt(b) - parseInt(a);
   });
-  // Deduplicate
   years = [...new Set(years)];
   const sel = document.getElementById('ex-year-select');
   if(sel) sel.innerHTML = years.map(y =>
@@ -2307,13 +2308,13 @@ async function deleteTestExercise(y) {
 
 async function doDeleteTestExercise(y) {
   if(!isTestExercise(y)) return;
-  // Remove from localStorage
+  // Remove from localStorage first
   try { localStorage.removeItem('ledger_' + y); } catch(e) {}
   // Remove from Firebase
   if(window._fbReady && window._fbDelete) {
     await window._fbDelete(y);
   }
-  // If currently on this exercise, switch to current year
+  // Always switch away from the deleted exercise (even if not currently on it)
   if(String(CURRENT_YEAR) === String(y)) {
     CURRENT_YEAR = new Date().getFullYear();
     DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
@@ -2321,7 +2322,8 @@ async function doDeleteTestExercise(y) {
     renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
     document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   }
-  await loadKnownYears();
+  // Pass the deleted year so loadKnownYears can exclude it
+  await loadKnownYears(y);
   closeExerciseModal();
   toast(`Exercice "${y}" supprimé.`, 'warn');
 }
