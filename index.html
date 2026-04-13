@@ -7,7 +7,7 @@
 <!-- ═══ FIREBASE SDK ═══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyDCqFqBT7NXgiV4COiHY_-2YhjJQth8taw",
@@ -62,6 +62,18 @@
       const snap = await getDoc(metaRef);
       return snap.exists() ? (snap.data().years || []) : [];
     } catch(e) { return []; }
+  };
+
+  window._fbDelete = async (year) => {
+    try {
+      await deleteDoc(doc(db, 'sci-preles', String(year)));
+      const metaRef = doc(db, 'sci-preles', '_meta');
+      const metaSnap = await getDoc(metaRef);
+      if(metaSnap.exists()) {
+        const years = (metaSnap.data().years || []).filter(y => String(y) !== String(year));
+        await setDoc(metaRef, { years });
+      }
+    } catch(e) { console.error('Firebase delete error', e); }
   };
 
   // Signal that Firebase is ready
@@ -410,11 +422,12 @@ tbody tr:hover td { background: var(--bg3); }
   padding: 7px 20px; font-family: var(--mono); font-size: 11px; color: var(--amber);
   letter-spacing: 0.04em; text-align: center;
 }
-/* Disable all interactive elements when closed */
-body.exercise-closed .btn:not(.btn-readonly-ok),
-body.exercise-closed input:not([readonly]):not(#login-pw):not(#tb-search):not([id^="gl-"]):not([id^="bg-"]):not([id="j-year"]),
-body.exercise-closed select:not([id="ex-year-select"]) {
-  pointer-events: none; opacity: 0.35;
+/* Disable interactive elements when exercise is closed */
+body.exercise-closed #tab-saisie input,
+body.exercise-closed #tab-saisie select,
+body.exercise-closed #tab-saisie textarea,
+body.exercise-closed #tab-saisie .btn:not(.btn-readonly-ok) {
+  pointer-events: none; opacity: 0.4;
 }
 body.exercise-closed #tab-saisie .btn-primary { pointer-events: none; opacity: 0.35; }
 
@@ -960,14 +973,33 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="cloture-step1">
         <button class="btn btn-sm btn-danger" onclick="clotureStep1()" id="btn-cloture">🔒 CLÔTURER L'EXERCICE EN COURS</button>
       </div>
-      <!-- Inline cloture confirmation -->
+
+      <!-- Étape 1 : confirmation clôture -->
       <div id="cloture-confirm" style="display:none;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);">
         <div id="cloture-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-sm btn-danger" onclick="clotureConfirm()">🔒 CLÔTURER DÉFINITIVEMENT</button>
+          <button class="btn btn-sm btn-danger" onclick="clotureGoToNext()">🔒 CLÔTURER ET CONTINUER →</button>
           <button class="btn btn-sm" onclick="clotureCancel()">ANNULER</button>
         </div>
       </div>
+
+      <!-- Étape 2 : choisir / créer N+1 -->
+      <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(42,235,255,0.06);border:1px solid rgba(42,235,255,0.2);border-radius:var(--radius);">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">OUVRIR L'EXERCICE SUIVANT</div>
+        <div id="cloture-next-existing" style="margin-bottom:10px;"></div>
+        <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">OU CRÉER UN NOUVEL EXERCICE</div>
+        <div style="display:flex;gap:8px;align-items:flex-end;">
+          <div style="flex:1;">
+            <input type="text" id="cloture-next-name" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')clotureCreateNext()">
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="clotureCreateNext()" style="height:32px;white-space:nowrap;">+ CRÉER ET OUVRIR</button>
+        </div>
+        <div id="cloture-next-err" style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:5px;min-height:14px;"></div>
+        <div style="margin-top:10px;">
+          <button class="btn btn-sm" onclick="clotureSkipNext()">Rester sur <span id="cloture-skip-year"></span> (clôturé)</button>
+        </div>
+      </div>
+
       <div style="margin-top:10px;">
         <button class="btn btn-sm ml-auto" onclick="closeExerciseModal()">FERMER</button>
       </div>
@@ -987,14 +1019,6 @@ function doLogin() {
     sessionStorage.setItem('sci_auth', '1');
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
-    // Ensure saisie line is visible after app becomes visible
-    if(!document.querySelector('#lines-body tr')) {
-      document.getElementById('lines-body').innerHTML = '';
-      lineIdCounter = 0;
-      addLine();
-      updateNextNum();
-      upTotals();
-    }
   } else {
     document.getElementById('login-err').textContent = 'Mot de passe incorrect';
     document.getElementById('login-pw').value = '';
@@ -1180,7 +1204,7 @@ function renum() {
 // ══════════════════════════════════════════════
 function initSaisie() {
   document.getElementById('s-date').value = today();
-  addLine();
+  addLine(undefined, true); // force=true : toujours créer la ligne initiale même si exercice clôturé
   updateNextNum();
 }
 function updateNextNum() {
@@ -1188,7 +1212,8 @@ function updateNextNum() {
   document.getElementById('s-num').value = '#'+DB.nextGlobalNum;
   document.getElementById('s-num-journal').value = (j && DB.journalNums[j]) ? j+'-'+DB.journalNums[j] : '';
 }
-function addLine(focusId) {
+function addLine(focusId, force) {
+  if(EXERCISE_STATUS === 'closed' && !force) return null;
   const id = ++lineIdCounter;
   const tr = document.createElement('tr');
   tr.id = 'ln-'+id;
@@ -1225,11 +1250,16 @@ function propagateLibelle(id) {
   const src = document.getElementById('le'+id);
   if(!src) return;
   const val = src.value;
-  document.querySelectorAll('#lines-body tr').forEach(tr => {
+  // Only propagate if this is the first line
+  const rows = document.querySelectorAll('#lines-body tr');
+  if(!rows.length) return;
+  const firstId = rows[0].id.replace('ln-','');
+  if(String(firstId) !== String(id)) return; // only first line drives others
+  rows.forEach(tr => {
     const lid = tr.id.replace('ln-','');
-    if(String(lid) === String(id)) return; // skip source
+    if(String(lid) === String(id)) return;
     const el = document.getElementById('le'+lid);
-    if(el && !el.value) el.value = val;
+    if(el) el.value = val; // always sync all other lines to first line
   });
 }
 // Get the libellé of the first line (to pre-fill new lines)
@@ -1285,7 +1315,7 @@ function acKey(e, id) {
   else if(e.key==='Tab'){ if(list?.classList.contains('open')&&acIdx>=0){ e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); } else acClose(id); }
 }
 function acHL(items) { items.forEach((el,i)=>el.classList.toggle('active',i===acIdx)); items[acIdx]?.scrollIntoView({block:'nearest'}); }
-function acBlur(id) { setTimeout(()=>acClose(id), 150); }
+function acBlur(id) { setTimeout(()=>{ fillLib(id); acClose(id); }, 150); }
 function acClose(id) { const l=getAcList(id); if(l) l.classList.remove('open'); acActiveId=null; acIdx=-1; }
 function upDl() {} // kept for compatibility, no longer used
 function upTotals() {
@@ -1828,6 +1858,7 @@ function initDefaults() {
     {compte:'781000',libelle:'Reprises sur amortissements, dépréciations et provisions',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'781',libR3:"Reprises d'exploitation"},
     {compte:'781740',libelle:'Reprise de provisions pour dépréciation des créances clients',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'781',libR3:"Reprises d'exploitation"},
     {compte:'786000',libelle:'Reprise de provision pour charges financières',r1:'7',libR1:'7 - Comptes de produits',r2:'78',libR2:"Reprises sur amortissements",r3:'786',libR3:'Reprises financières'},
+    {compte:'890000',libelle:"Bilan d'ouverture",r1:'8',libR1:'8 - Comptes spéciaux',r2:'89',libR2:'Bilan',r3:'890',libR3:"Bilan d'ouverture"},
   ];
   if(!DB.rappelsMensuelList.length) DB.rappelsMensuelList=[
     'Kilomètres','Téléphone Clém','Téléphone Alex','Internet','Abonnement microsoft',
@@ -1914,8 +1945,7 @@ function applyExerciseStatus() {
   const isClosed = (EXERCISE_STATUS === 'closed');
   const isTest = isTestExercise(CURRENT_YEAR);
   document.body.classList.toggle('exercise-closed', isClosed);
-  document.getElementById('closed-banner').style.display = isClosed ? 'block' : 'none';
-  if(isTest) document.getElementById('closed-banner').style.display = 'none'; // test never shows banner even if closed
+  document.getElementById('closed-banner').style.display = (isClosed && !isTest) ? 'block' : 'none';
   const badge = document.getElementById('ex-status-badge');
   if(badge) {
     if(isTest) { badge.textContent = 'TEST'; badge.className = 'ex-badge-closed'; badge.style.color='#a78bfa'; badge.style.background='rgba(139,92,246,0.12)'; badge.style.borderColor='rgba(139,92,246,0.2)'; }
@@ -1925,6 +1955,21 @@ function applyExerciseStatus() {
   if(btnCloture) btnCloture.disabled = isClosed;
   document.getElementById('btn-undo').disabled = isClosed || undoStack.length === 0;
   document.getElementById('btn-redo').disabled = isClosed || redoStack.length === 0;
+  // Show/hide closed overlay on saisie tab
+  let overlay = document.getElementById('saisie-closed-overlay');
+  if(isClosed) {
+    if(!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'saisie-closed-overlay';
+      overlay.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,0.55);z-index:100;display:flex;align-items:center;justify-content:center;border-radius:4px;';
+      overlay.innerHTML = '<div style="font-family:var(--mono);font-size:13px;color:var(--red);background:var(--bg2);border:1px solid var(--red);padding:12px 24px;border-radius:4px;letter-spacing:0.06em;">🔒 EXERCICE CLÔTURÉ — LECTURE SEULE</div>';
+      const saisieCard = document.querySelector('#tab-saisie .card');
+      if(saisieCard) { saisieCard.style.position='relative'; saisieCard.appendChild(overlay); }
+    }
+    overlay.style.display = 'flex';
+  } else {
+    if(overlay) overlay.style.display = 'none';
+  }
 }
 
 async function loadKnownYears() {
@@ -2015,11 +2060,11 @@ function showExerciseModal() {
 }
 function closeExerciseModal() {
   document.getElementById('exercise-modal').style.display = 'none';
-  // Reset all inline steps
   const s1 = document.getElementById('new-ex-step1'); if(s1) s1.style.display = 'flex';
   const nc = document.getElementById('new-ex-confirm'); if(nc) nc.style.display = 'none';
   const cs1 = document.getElementById('cloture-step1'); if(cs1) cs1.style.display = 'block';
   const cc = document.getElementById('cloture-confirm'); if(cc) cc.style.display = 'none';
+  const cn = document.getElementById('cloture-next'); if(cn) cn.style.display = 'none';
 }
 
 function createNewExerciseStep1() {
@@ -2080,46 +2125,201 @@ function clotureStep1() {
   document.getElementById('cloture-step1').style.display = 'none';
   document.getElementById('cloture-confirm-msg').innerHTML =
     `⚠️ Clôturer définitivement l'exercice <strong style="color:var(--red)">${CURRENT_YEAR}</strong> ?<br>
-    <span style="color:var(--text2);font-size:11px;">Cette action est irréversible. L'exercice passera en lecture seule.</span>`;
+    <span style="color:var(--text2);font-size:11px;">Cette action est irréversible. L'exercice passera en lecture seule.<br>Vous pourrez ensuite ouvrir ou créer l'exercice suivant.</span>`;
   document.getElementById('cloture-confirm').style.display = 'block';
 }
 function clotureCancel() {
   document.getElementById('cloture-step1').style.display = 'block';
   document.getElementById('cloture-confirm').style.display = 'none';
+  document.getElementById('cloture-next').style.display = 'none';
 }
-function clotureConfirm() {
+async function clotureGoToNext() {
+  // Capture écritures BEFORE closing (for FNO generation)
+  window._closingEcritures = JSON.parse(JSON.stringify(DB.ecritures));
+  window._closingTbData = JSON.parse(JSON.stringify(DB.tbData));
+  // Close the exercise immediately
   DB._status = 'closed';
   EXERCISE_STATUS = 'closed';
-  saveDB();
   applyExerciseStatus();
-  clotureCancel();
-  closeExerciseModal();
-  toast(`Exercice ${CURRENT_YEAR} clôturé.`, 'warn');
+  await saveDBNow();
+  document.getElementById('cloture-confirm').style.display = 'none';
+  // Build the N+1 panel
+  const nextYear = isTestExercise(CURRENT_YEAR) ? CURRENT_YEAR + '_N1' : (parseInt(CURRENT_YEAR) + 1);
+  const knownYears = Array.from(document.getElementById('ex-year-select').options).map(o => o.value);
+  const nextStr = String(nextYear);
+  document.getElementById('cloture-skip-year').textContent = CURRENT_YEAR;
+  // Show existing matching exercises (N+1 candidates)
+  const candidates = knownYears.filter(y => y !== String(CURRENT_YEAR));
+  const existingDiv = document.getElementById('cloture-next-existing');
+  if(candidates.length) {
+    existingDiv.innerHTML = `<div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">EXERCICE EXISTANT</div>` +
+      candidates.map(y => `<button class="btn btn-sm btn-primary" style="margin-right:6px;margin-bottom:4px;" onclick="clotureOpenExisting('${y}')">
+        ${isTestExercise(y)?'🧪 ':''} Ouvrir ${y}
+      </button>`).join('');
+  } else {
+    existingDiv.innerHTML = '';
+  }
+  // Pre-fill the create field with N+1
+  const nameInput = document.getElementById('cloture-next-name');
+  if(nameInput) nameInput.value = isNaN(parseInt(nextYear)) ? '' : String(nextYear);
+  document.getElementById('cloture-next-err').textContent = '';
+  document.getElementById('cloture-next').style.display = 'block';
 }
+function clotureSkipNext() {
+  closeExerciseModal();
+  toast(`Exercice ${CURRENT_YEAR} clôturé. Vous êtes en lecture seule.`, 'warn');
+}
+async function clotureOpenExisting(year) {
+  closeExerciseModal();
+  await switchExercise(year);
+  // Generate FNO from closing exercise into this one
+  const closingEcritures = window._closingEcritures || [];
+  const closingTbData = window._closingTbData || DB.tbData;
+  if(closingEcritures.length && !DB.ecritures.length) {
+    const fno = buildFNO(closingEcritures, closingTbData);
+    if(fno.length) {
+      DB.ecritures = fno;
+      DB.nextGlobalNum = fno.length + 1;
+      DB.journalNums['OD'] = fno.length + 1;
+      await saveDBNow();
+      renum(); updateNavCounts();
+      toast(`${fno.length} FNO générées dans ${year}.`, 'success');
+    }
+  }
+}
+async function clotureCreateNext() {
+  const input = document.getElementById('cloture-next-name');
+  const errEl = document.getElementById('cloture-next-err');
+  const trimmed = (input?.value||'').trim().toUpperCase();
+  errEl.textContent = '';
+  if(!trimmed) { errEl.textContent = 'Saisissez un nom.'; return; }
+  const isTest = isTestExercise(trimmed);
+  const label = isTest ? trimmed : parseInt(trimmed);
+  if(!isTest && isNaN(label)) { errEl.textContent = 'Nom invalide (ex: 2026, TEST).'; return; }
+  const existing = Array.from(document.getElementById('ex-year-select').options).map(o => o.value);
+  if(existing.includes(String(label))) { errEl.textContent = 'Cet exercice existe déjà — utilisez le bouton "Ouvrir" ci-dessus.'; return; }
+  const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
+  const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
+  const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
+  // Capture bilan soldes from the closing exercise BEFORE switching
+  const closingEcritures = window._closingEcritures || JSON.parse(JSON.stringify(DB.ecritures));
+  const fnoEcritures = buildFNO(closingEcritures, tbDataCopy);
+  input.value = '';
+  closeExerciseModal();
+  CURRENT_YEAR = label;
+  DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
+  EXERCISE_STATUS = 'open';
+  // Inject FNO écritures
+  if(fnoEcritures.length) {
+    DB.ecritures = fnoEcritures;
+    DB.nextGlobalNum = fnoEcritures.length + 1;
+    DB.journalNums['OD'] = fnoEcritures.length + 1;
+  }
+  await saveDBNow();
+  await loadKnownYears();
+  renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
+  document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
+  startLiveSync();
+  const fnoMsg = fnoEcritures.length ? ` — ${fnoEcritures.length} FNO générées` : '';
+  toast(`Exercice "${label}" créé et ouvert${fnoMsg}.`, 'success');
+}
+function clotureConfirm() { clotureGoToNext(); } // alias
 function confirmCloseExercise() { clotureStep1(); } // alias
+
+// ── GÉNÉRATION DES FNO (Fonds / Reports à Nouveau) ──
+// Calcule les soldes de bilan (classes 1-5) depuis DB.ecritures de l'exercice clôturé
+// et génère les écritures d'ouverture pour N+1
+function buildFNO(ecritures, tbData) {
+  if(!ecritures || !ecritures.length) return [];
+  // Aggregate soldes par compte bilan (classes 1-5)
+  const soldes = {};
+  ecritures.forEach(e => {
+    const c = String(e.compte).trim();
+    if(!['1','2','3','4','5'].includes(c[0])) return;
+    if(!soldes[c]) soldes[c] = { compte: c, debit: 0, credit: 0, libelle: e.libelleCompte || '' };
+    soldes[c].debit += (e.debit || 0);
+    soldes[c].credit += (e.credit || 0);
+  });
+  // Separate debitors and creditors, sort each group by compte number
+  const debitors = [], creditors = [];
+  Object.values(soldes).forEach(s => {
+    const net = Math.round((s.debit - s.credit) * 100) / 100;
+    if(Math.abs(net) < 0.01) return;
+    const tb = tbData.find(r => String(r.compte) === s.compte) || {};
+    const entry = {
+      compte: s.compte,
+      libelle: s.libelle || tb.libelle || '',
+      net
+    };
+    if(net > 0) debitors.push(entry);
+    else creditors.push(entry);
+  });
+  debitors.sort((a,b) => a.compte.localeCompare(b.compte));
+  creditors.sort((a,b) => a.compte.localeCompare(b.compte));
+  const today = new Date();
+  // Use Jan 1 of N+1 — but if CURRENT_YEAR is a test string, use current year
+  const nextYear = isNaN(parseInt(CURRENT_YEAR)) ? today.getFullYear() : parseInt(CURRENT_YEAR) + 1;
+  const dateStr = `${nextYear}-01-01`;
+  const result = [];
+  let num = 1;
+  let totalDebit = 0, totalCredit = 0;
+  // Debitors first
+  debitors.forEach(s => {
+    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
+      libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
+      numDoc:'BAO', debit:s.net, credit:0 });
+    totalDebit += s.net;
+    num++;
+  });
+  // Creditors second
+  creditors.forEach(s => {
+    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
+      libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
+      numDoc:'BAO', debit:0, credit:Math.abs(s.net) });
+    totalCredit += Math.abs(s.net);
+    num++;
+  });
+  // Balancing entry on 890000
+  const diff = Math.round((totalDebit - totalCredit) * 100) / 100;
+  if(Math.abs(diff) > 0.01) {
+    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:'890000',
+      libelleCompte:"Bilan d'ouverture", libelleEcriture:"Balance d'ouverture",
+      numDoc:'BAO', debit: diff < 0 ? Math.abs(diff) : 0, credit: diff > 0 ? diff : 0 });
+  }
+  return result;
+}
 
 async function deleteTestExercise(y) {
   if(!isTestExercise(y)) { toast('Seuls les exercices TEST peuvent être supprimés', 'error'); return; }
-  // Show inline confirm in exercise list
-  const btn = document.querySelector(`[onclick="deleteTestExercise('${y}')"]`);
-  if(btn) {
-    btn.textContent = '✓ CONFIRMER SUPPRESSION';
-    btn.onclick = () => doDeleteTestExercise(y);
-    const cancel = document.createElement('button');
-    cancel.className = 'btn btn-sm';
-    cancel.textContent = '✕';
-    cancel.onclick = () => showExerciseModal();
-    btn.parentNode.appendChild(cancel);
-    btn.style.background = 'rgba(255,85,85,0.25)';
-  }
+  // Show confirmation in a dedicated div inside the exercise list
+  const confirmId = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
+  if(document.getElementById(confirmId)) return; // already showing
+  const existing = document.querySelector(`[onclick="deleteTestExercise('${y}')"]`)?.closest('div');
+  if(!existing) return;
+  const conf = document.createElement('div');
+  conf.id = confirmId;
+  conf.style.cssText = 'margin-top:6px;padding:8px 10px;background:rgba(255,96,96,0.1);border:1px solid rgba(255,96,96,0.3);border-radius:4px;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--text1);';
+  conf.innerHTML = `Supprimer définitivement "${y}" ?
+    <button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="doDeleteTestExercise('${y}')">✓ SUPPRIMER</button>
+    <button class="btn btn-sm btn-readonly-ok" style="pointer-events:all!important;" onclick="document.getElementById('${confirmId}').remove()">ANNULER</button>`;
+  existing.parentNode.insertBefore(conf, existing.nextSibling);
 }
+
 async function doDeleteTestExercise(y) {
+  if(!isTestExercise(y)) return;
+  // Remove from localStorage
   try { localStorage.removeItem('ledger_' + y); } catch(e) {}
-  if(CURRENT_YEAR == y) {
+  // Remove from Firebase
+  if(window._fbReady && window._fbDelete) {
+    await window._fbDelete(y);
+  }
+  // If currently on this exercise, switch to current year
+  if(String(CURRENT_YEAR) === String(y)) {
     CURRENT_YEAR = new Date().getFullYear();
     DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
     await loadDB(); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
     renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
+    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   }
   await loadKnownYears();
   closeExerciseModal();
@@ -2451,11 +2651,37 @@ function exportCR(fmt) {
 
 // ── PRINT / DOWNLOAD HELPERS ──
 function printDoc(html, title) {
-  const container = document.getElementById('print-container');
-  container.innerHTML = html;
-  document.title = title;
-  window.print();
-  setTimeout(() => { document.title = 'SCI DES PRÊLES — Comptabilité'; }, 500);
+  // Open in new window for printing - avoids file:// protocol restrictions
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if(!win) { toast('Autorisez les popups pour imprimer', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+      body { font-family: 'DM Sans', Arial, sans-serif; margin: 0; padding: 20px; color: #111; background: #fff; }
+      @page { margin: 15mm 12mm; size: A4; }
+      .rpt { max-width: 780px; margin: 0 auto; }
+      .rpt-header { display:flex; align-items:center; gap:20px; padding-bottom:12px; border-bottom:2px solid #e84b0f; margin-bottom:16px; }
+      .rpt-logo { width:60px; height:60px; object-fit:contain; }
+      .rpt-company { font-size:16px; font-weight:700; color:#e84b0f; }
+      .rpt-doc-title { font-size:13px; font-weight:600; color:#222; margin-top:2px; }
+      .rpt-meta { font-size:10px; color:#666; margin-top:2px; }
+      table { width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:12px; }
+      th { background:#f5f5f5; padding:5px 8px; text-align:left; font-weight:600; font-size:9.5px; letter-spacing:0.04em; text-transform:uppercase; border-bottom:1px solid #ddd; }
+      td { padding:4px 8px; border-bottom:1px solid #eee; }
+      .r-num { text-align:right; font-variant-numeric:tabular-nums; }
+      .r-total { background:#e84b0f; color:#fff; font-weight:700; }
+      .r-subtotal { background:#fde8df; font-weight:600; }
+      .r-subsection { background:#f9f9f9; font-weight:600; font-style:italic; }
+      .r-pos { color:#166534; font-weight:600; }
+      .r-neg { color:#991b1b; font-weight:600; }
+      .rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+      .rpt-col-title { font-size:11px; font-weight:700; color:#e84b0f; border-bottom:2px solid #e84b0f; padding-bottom:4px; margin-bottom:8px; }
+      .rpt-footer { font-size:9px; color:#999; border-top:1px solid #eee; padding-top:6px; margin-top:12px; text-align:center; }
+    </style>
+  </head><body>${html}</body></html>`);
+  win.document.close();
+  setTimeout(() => { win.print(); }, 400);
 }
 
 function dlCSV(csv, filename) {
