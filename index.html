@@ -1080,6 +1080,7 @@ let _unsubscribeListen = null;
 // ══════════════════════════════════════════════
 let _saveTimeout = null;
 function saveDB() {
+  if(EXERCISE_STATUS === 'closed') return;
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
@@ -1091,8 +1092,8 @@ function saveDB() {
     }
   }, 800);
 }
-// Immediate save (no debounce) — used when we need to await Firebase completion
 async function saveDBNow() {
+  if(EXERCISE_STATUS === 'closed') return;
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
@@ -1720,7 +1721,8 @@ function exportData(){
 // YEAR SELECTS
 // ══════════════════════════════════════════════
 function fillYears(){
-  document.getElementById('hdr-year-tag').textContent='EXERCICE '+CURRENT_YEAR;
+  const el = document.getElementById('hdr-year-tag');
+  if(el) el.textContent = 'EXERCICE ' + CURRENT_YEAR;
 }
 
 // ══════════════════════════════════════════════
@@ -2175,12 +2177,7 @@ async function deleteTestExercise(y) {
   toast(`Exercice "${y}" supprimé.`, 'warn');
 }
 
-// Override saveDB to block writes on closed exercises
-const _origSaveDB = saveDB;
-function saveDB() {
-  if(EXERCISE_STATUS === 'closed') return;
-  _origSaveDB();
-}
+// (saveDB override removed — closed-exercise guard is now built into saveDB directly)
 
 // ══════════════════════════════════════════════
 // EDITIONS COMPTABLES
