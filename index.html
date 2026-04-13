@@ -1091,6 +1091,17 @@ function saveDB() {
     }
   }, 800);
 }
+// Immediate save (no debounce) — used when we need to await Firebase completion
+async function saveDBNow() {
+  const lsKey = 'ledger_' + CURRENT_YEAR;
+  try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
+  clearTimeout(_saveTimeout);
+  if(window._fbReady && window._fbSave) {
+    await window._fbSave(DB, CURRENT_YEAR);
+    const dot = document.querySelector('.dot');
+    if(dot) { dot.style.background='#00d4ff'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
+  }
+}
 async function loadDB() {
   if(window._fbReady && window._fbLoad) {
     const remote = await window._fbLoad(CURRENT_YEAR);
@@ -2028,19 +2039,27 @@ function createNewExerciseCancel() {
 }
 async function createNewExerciseConfirm() {
   const input = document.getElementById('new-ex-name');
+  // Read the value BEFORE clearing the field
   const trimmed = (input?.value||'').trim().toUpperCase();
   const isTest = isTestExercise(trimmed);
   const label = isTest ? trimmed : parseInt(trimmed);
+  // Guard: if somehow label is invalid, abort
+  if(!label || (typeof label === 'number' && isNaN(label))) {
+    toast('Erreur : nom d\'exercice invalide', 'error'); return;
+  }
   const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
   const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
   const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
+  // Clear UI and close modal
   input.value = '';
   createNewExerciseCancel();
   closeExerciseModal();
+  // Switch to new exercise
   CURRENT_YEAR = label;
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   EXERCISE_STATUS = 'open';
-  saveDB();
+  // Save first (writes to Firebase meta), then reload the year list
+  await saveDBNow();
   await loadKnownYears();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
@@ -2451,6 +2470,16 @@ function dlCSV(csv, filename) {
 // BOOT
 // ══════════════════════════════════════════════
 async function boot() {
+  // Clean up any corrupted localStorage keys (empty suffix, NaN, non-year non-test values)
+  for(let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i);
+    if(key && key.startsWith('ledger_')) {
+      const suffix = key.replace('ledger_', '');
+      const isValid = suffix && suffix !== 'NaN' && suffix.trim() !== '' &&
+        (isTestExercise(suffix) || (!isNaN(parseInt(suffix)) && parseInt(suffix) > 1900 && parseInt(suffix) < 2100));
+      if(!isValid) { localStorage.removeItem(key); }
+    }
+  }
   CURRENT_YEAR = new Date().getFullYear();
   await loadKnownYears();
   await loadDB();
