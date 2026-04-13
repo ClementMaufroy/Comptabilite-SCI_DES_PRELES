@@ -30,12 +30,13 @@
   window._fbSave = async (data, year) => {
     try {
       await setDoc(getRef(year), { payload: JSON.stringify(data) });
-      // Update the meta document with list of known years
+      // Update the meta document with list of known years (always store as strings)
       const metaRef = doc(db, "sci-preles", "_meta");
       const metaSnap = await getDoc(metaRef);
       const existing = metaSnap.exists() ? (metaSnap.data().years || []) : [];
-      if(!existing.includes(year)) {
-        await setDoc(metaRef, { years: [...existing, year].sort() });
+      const yearStr = String(year);
+      if(!existing.map(String).includes(yearStr)) {
+        await setDoc(metaRef, { years: [...existing.map(String), yearStr].sort() });
       }
     } catch(e) { console.error("Firebase save error", e); }
   };
@@ -1910,34 +1911,45 @@ function applyExerciseStatus() {
 
 async function loadKnownYears() {
   let years = [];
-  if(window._fbReady && window._fbListYears) years = await window._fbListYears();
-  // Also scan localStorage for any locally saved exercises not yet in Firebase meta
+  // Load from Firebase meta
+  if(window._fbReady && window._fbListYears) {
+    const fbYears = await window._fbListYears();
+    years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
+  }
+  // Scan localStorage for any locally saved exercises
   for(let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
     if(key && key.startsWith('ledger_')) {
-      const y = key.replace('ledger_', '');
-      const parsed = isTestExercise(y) ? y : parseInt(y);
-      if(!years.map(String).includes(String(parsed))) years.push(parsed);
+      const suffix = key.replace('ledger_', '');
+      // Skip empty suffixes or NaN values
+      if(!suffix || suffix.trim() === '' || suffix === 'NaN') continue;
+      if(!years.includes(suffix)) years.push(suffix);
     }
   }
   // Always include current exercise
-  if(!years.map(String).includes(String(CURRENT_YEAR))) years.push(CURRENT_YEAR);
-  // Sort: real years newest first, test exercises at bottom
-  years = [...new Set(years.map(String))].map(y => isTestExercise(y) ? y : (isNaN(parseInt(y)) ? y : parseInt(y)));
-  years.sort((a,b) => {
+  const curStr = String(CURRENT_YEAR);
+  if(curStr && curStr !== 'NaN' && !years.includes(curStr)) years.push(curStr);
+  // Remove any remaining NaN/empty
+  years = years.filter(y => y && y !== 'NaN' && y.trim() !== '');
+  // Sort: numeric years newest first, TEST* at bottom
+  years.sort((a, b) => {
     const aTest = isTestExercise(a), bTest = isTestExercise(b);
     if(aTest && !bTest) return 1;
     if(!aTest && bTest) return -1;
-    if(aTest && bTest) return String(a).localeCompare(String(b));
-    return b - a;
+    if(aTest && bTest) return a.localeCompare(b);
+    return parseInt(b) - parseInt(a);
   });
+  // Deduplicate
+  years = [...new Set(years)];
   const sel = document.getElementById('ex-year-select');
-  if(sel) sel.innerHTML = years.map(y => `<option value="${y}" ${String(y)===String(CURRENT_YEAR)?'selected':''}>${isTestExercise(y)?'🧪 '+y:y}</option>`).join('');
+  if(sel) sel.innerHTML = years.map(y =>
+    `<option value="${y}" ${y === curStr ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' + y : y}</option>`
+  ).join('');
   return years;
 }
 
 async function switchExercise(year) {
-  if(year == CURRENT_YEAR) return;
+  if(String(year) === String(CURRENT_YEAR)) return;
   CURRENT_YEAR = isTestExercise(year) ? year : parseInt(year);
   DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
   await loadDB();
@@ -2014,7 +2026,7 @@ function createNewExerciseCancel() {
   document.getElementById('new-ex-step1').style.display = 'flex';
   document.getElementById('new-ex-confirm').style.display = 'none';
 }
-function createNewExerciseConfirm() {
+async function createNewExerciseConfirm() {
   const input = document.getElementById('new-ex-name');
   const trimmed = (input?.value||'').trim().toUpperCase();
   const isTest = isTestExercise(trimmed);
@@ -2029,7 +2041,7 @@ function createNewExerciseConfirm() {
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   EXERCISE_STATUS = 'open';
   saveDB();
-  loadKnownYears();
+  await loadKnownYears();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
   startLiveSync();
