@@ -1665,9 +1665,14 @@ function previewImport(){
   const text=document.getElementById('import-text').value.trim();
   if(!text){toast('Aucune donnée','error');return;}
   const lines=text.split('\n').filter(l=>l.trim());
+  // Auto-detect separator from first line
+  const firstLine=lines[0]||'';
+  const tabCount=(firstLine.match(/\t/g)||[]).length;
+  const semiCount=(firstLine.match(/;/g)||[]).length;
+  const sep = tabCount>=semiCount ? '\t' : ';';
   importParsed=[];
   lines.forEach((line,li)=>{
-    const parts=line.split('\t');
+    const parts=line.split(sep);
     if(parts.length<2) return;
     if(li===0&&isNaN(parseFloat(parts[1]))&&parts[2]&&isNaN(parseFloat(parts[2]))) return;
     const date=parts[1]?.trim()||'';
