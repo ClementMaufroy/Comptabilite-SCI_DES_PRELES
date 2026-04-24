@@ -2308,17 +2308,27 @@ function buildFNO(ecritures, tbData) {
 
 async function deleteTestExercise(y) {
   if(!isTestExercise(y)) { toast('Seuls les exercices TEST peuvent être supprimés', 'error'); return; }
-  // Show confirmation in a dedicated div inside the exercise list
   const confirmId = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
-  if(document.getElementById(confirmId)) return; // already showing
+  if(document.getElementById(confirmId)) return;
   const existing = document.querySelector(`[onclick="deleteTestExercise('${y}')"]`)?.closest('div');
   if(!existing) return;
   const conf = document.createElement('div');
   conf.id = confirmId;
   conf.style.cssText = 'margin-top:6px;padding:8px 10px;background:rgba(255,96,96,0.1);border:1px solid rgba(255,96,96,0.3);border-radius:4px;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--text1);';
-  conf.innerHTML = `Supprimer définitivement "${y}" ?
-    <button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="doDeleteTestExercise('${y}')">✓ SUPPRIMER</button>
-    <button class="btn btn-sm btn-readonly-ok" style="pointer-events:all!important;" onclick="document.getElementById('${confirmId}').remove()">ANNULER</button>`;
+  const txt = document.createTextNode('Supprimer définitivement "' + y + '" ? ');
+  const btnOk = document.createElement('button');
+  btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
+  btnOk.style.cssText = 'pointer-events:all!important;';
+  btnOk.textContent = '✓ SUPPRIMER';
+  btnOk.addEventListener('click', () => doDeleteTestExercise(y));
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'btn btn-sm btn-readonly-ok';
+  btnCancel.style.cssText = 'pointer-events:all!important;';
+  btnCancel.textContent = 'ANNULER';
+  btnCancel.addEventListener('click', () => conf.remove());
+  conf.appendChild(txt);
+  conf.appendChild(btnOk);
+  conf.appendChild(btnCancel);
   existing.parentNode.insertBefore(conf, existing.nextSibling);
 }
 
