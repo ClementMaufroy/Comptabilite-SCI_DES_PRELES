@@ -28,6 +28,8 @@
 
   // List all exercise years from the meta document
   window._fbSave = async (data, year) => {
+    // Don't save if this exercise is being deleted
+    if(window._deletingYear && String(window._deletingYear) === String(year)) return;
     try {
       await setDoc(getRef(year), { payload: JSON.stringify(data) });
       // Update the meta document with list of known years (always store as strings)
@@ -2322,12 +2324,16 @@ async function deleteTestExercise(y) {
 
 async function doDeleteTestExercise(y) {
   if(!isTestExercise(y)) return;
+  // Stop any pending auto-save that could rewrite _meta after deletion
+  clearTimeout(_saveTimeout);
+  window._deletingYear = y; // prevent _fbSave from re-adding to _meta
   // Remove from localStorage first
   try { localStorage.removeItem('ledger_' + y); } catch(e) {}
   // Remove from Firebase
   if(window._fbReady && window._fbDelete) {
     await window._fbDelete(y);
   }
+  window._deletingYear = null; // clear flag
   // Always switch away from the deleted exercise (even if not currently on it)
   if(String(CURRENT_YEAR) === String(y)) {
     CURRENT_YEAR = new Date().getFullYear();
