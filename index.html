@@ -2314,7 +2314,7 @@ async function deleteTestExercise(y) {
   if(!existing) return;
   const conf = document.createElement('div');
   conf.id = confirmId;
-  conf.style.cssText = 'margin-top:6px;padding:8px 10px;background:rgba(255,96,96,0.1);border:1px solid rgba(255,96,96,0.3);border-radius:4px;display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--text1);';
+  conf.style.cssText = 'margin-top:8px;padding:10px 14px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--text0);';
   const txt = document.createTextNode('Supprimer définitivement "' + y + '" ? ');
   const btnOk = document.createElement('button');
   btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
