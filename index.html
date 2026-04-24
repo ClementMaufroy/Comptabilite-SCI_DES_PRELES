@@ -2389,30 +2389,7 @@ async function unlockExercise() {
   toast(`Exercice "${targetYear}" déverrouillé.`, 'warn');
 }
 
-async function deleteTestExercise(y) {
-  if(!isTestExercise(y)) { toast('Seuls les exercices TEST peuvent être supprimés', 'error'); return; }
-  if(!confirm(`Supprimer définitivement l'exercice "${y}" et toutes ses données ?`)) return;
-  // Remove from Firebase meta
-  if(window._fbReady && window._fbSave) {
-    // Overwrite with empty marker
-    try {
-      const { getFirestore, doc, deleteDoc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    } catch(e) {}
-  }
-  // Remove from localStorage
-  try { localStorage.removeItem('ledger_' + y); } catch(e) {}
-  // If currently on this exercise, switch to current year
-  if(CURRENT_YEAR == y) {
-    CURRENT_YEAR = new Date().getFullYear();
-    DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
-    await loadDB(); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
-    renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
-  }
-  // Reload years list (will naturally drop the deleted one from Firebase meta next save)
-  await loadKnownYears();
-  closeExerciseModal();
-  toast(`Exercice "${y}" supprimé.`, 'warn');
-}
+// (old deleteTestExercise removed — replaced by the version above with addEventListener)
 
 // (saveDB override removed — closed-exercise guard is now built into saveDB directly)
 
