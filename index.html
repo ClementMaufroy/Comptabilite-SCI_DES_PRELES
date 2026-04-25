@@ -442,6 +442,10 @@ body.exercise-closed #tab-saisie .btn:not(.btn-readonly-ok) {
   pointer-events: none; opacity: 0.4;
 }
 body.exercise-closed #tab-saisie .btn-primary { pointer-events: none; opacity: 0.35; }
+/* Import modal must always be usable regardless of exercise status */
+#import-modal input, #import-modal textarea, #import-modal select, #import-modal button {
+  pointer-events: all !important; opacity: 1 !important;
+}
 
 #login-screen {
   position: fixed; inset: 0; background: var(--bg0); z-index: 99999;
@@ -2085,7 +2089,7 @@ function showExerciseModal() {
     const y = o.value;
     const isCurrent = String(y) === String(CURRENT_YEAR);
     const isTest = isTestExercise(y);
-    const isClosed = window._exerciseStatuses?.[y] === 'closed';
+    const isClosed = String(y) === String(CURRENT_YEAR) ? (EXERCISE_STATUS === 'closed') : (getExerciseStatus(y) === 'closed');
     const statusColor = isCurrent ? (EXERCISE_STATUS==='closed'?'var(--amber)':'var(--cyan)') : 'var(--text1)';
     const borderColor = isCurrent ? 'rgba(42,235,255,0.25)' : 'var(--line)';
 
@@ -2140,13 +2144,25 @@ function showExerciseModal() {
   document.getElementById('unlock-err').textContent = '';
 
   // Populate unlock and consult selectors with CLOSED exercises only
-  const closedOptions = options.filter(o => window._exerciseStatuses?.[o.value] === 'closed');
+  const closedOptions = options.filter(o => {
+    const s = String(o.value) === String(CURRENT_YEAR) ? EXERCISE_STATUS : getExerciseStatus(o.value);
+    return s === 'closed';
+  });
   const closedHtml = closedOptions.length
     ? closedOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join('')
     : '<option value="">Aucun exercice clôturé</option>';
   document.getElementById('unlock-ex-select').innerHTML = closedHtml;
   document.getElementById('consult-ex-select').innerHTML = closedHtml;
   document.getElementById('exercise-modal').style.display = 'flex';
+}
+
+function getExerciseStatus(y) {
+  if(window._exerciseStatuses?.[String(y)]) return window._exerciseStatuses[String(y)];
+  try {
+    const d = JSON.parse(localStorage.getItem('ledger_' + y));
+    if(d && d._status) { window._exerciseStatuses[String(y)] = d._status; return d._status; }
+  } catch(e) {}
+  return 'open';
 }
 
 function requestDeleteExercise(y, rowEl) {
