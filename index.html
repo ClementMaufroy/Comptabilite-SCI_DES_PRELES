@@ -2076,81 +2076,128 @@ async function switchExercise(year) {
 
 function showExerciseModal() {
   const options = Array.from(document.getElementById('ex-year-select').options);
-  document.getElementById('exercise-list').innerHTML = `
-    <div style="font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:0.08em;margin-bottom:10px;">EXERCICES DISPONIBLES</div>
-    ${options.map(o => {
-      const y = o.value;
-      const isCurrent = String(y) === String(CURRENT_YEAR);
-      const isTest = isTestExercise(y);
-      const isClosed = window._exerciseStatuses?.[y] === 'closed';
-      const statusColor = isCurrent ? (EXERCISE_STATUS==='closed'?'var(--amber)':'var(--cyan)') : 'var(--text1)';
-      const borderColor = isCurrent ? 'rgba(42,235,255,0.25)' : 'var(--line)';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isCurrent?'var(--bg3)':'var(--bg2)'};border:1px solid ${borderColor};border-radius:var(--radius);margin-bottom:6px;">
-        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${statusColor};">${isTest?'🧪 ':''} ${y}</span>
-        ${isCurrent ? `<span style="font-family:var(--mono);font-size:9px;color:var(--text2);">${EXERCISE_STATUS==='closed'?'CLÔTURÉ':'EN COURS'}</span>` : ''}
-        ${!isCurrent && isClosed ? `<span style="font-family:var(--mono);font-size:9px;color:var(--amber);">CLÔTURÉ</span>` : ''}
-        <div style="margin-left:auto;display:flex;gap:6px;" id="ex-row-${y.replace(/[^a-zA-Z0-9]/g,'_')}">
-          ${!isCurrent ? `<button class="btn btn-sm btn-readonly-ok" style="pointer-events:all!important;" onclick="closeExerciseModal();switchExercise('${y}')">CHARGER</button>` : ''}
-          <button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="requestDeleteExercise('${y}')">🗑</button>
-        </div>
-      </div>`;
-    }).join('')}`;
+  const listEl = document.getElementById('exercise-list');
+
+  // Build header
+  listEl.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:0.08em;margin-bottom:10px;">EXERCICES DISPONIBLES</div>';
+
+  options.forEach(o => {
+    const y = o.value;
+    const isCurrent = String(y) === String(CURRENT_YEAR);
+    const isTest = isTestExercise(y);
+    const isClosed = window._exerciseStatuses?.[y] === 'closed';
+    const statusColor = isCurrent ? (EXERCISE_STATUS==='closed'?'var(--amber)':'var(--cyan)') : 'var(--text1)';
+    const borderColor = isCurrent ? 'rgba(42,235,255,0.25)' : 'var(--line)';
+
+    const row = document.createElement('div');
+    row.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isCurrent?'var(--bg3)':'var(--bg2)'};border:1px solid ${borderColor};border-radius:var(--radius);margin-bottom:6px;`;
+
+    const label = document.createElement('span');
+    label.style.cssText = `font-family:var(--mono);font-size:13px;font-weight:600;color:${statusColor};`;
+    label.textContent = (isTest ? '🧪 ' : '') + y;
+    row.appendChild(label);
+
+    if(isCurrent) {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--text2);';
+      badge.textContent = EXERCISE_STATUS==='closed' ? 'CLÔTURÉ' : 'EN COURS';
+      row.appendChild(badge);
+    } else if(isClosed) {
+      const badge = document.createElement('span');
+      badge.style.cssText = 'font-family:var(--mono);font-size:9px;color:var(--amber);';
+      badge.textContent = 'CLÔTURÉ';
+      row.appendChild(badge);
+    }
+
+    const actions = document.createElement('div');
+    actions.style.cssText = 'margin-left:auto;display:flex;gap:6px;';
+
+    if(!isCurrent) {
+      const btnLoad = document.createElement('button');
+      btnLoad.className = 'btn btn-sm btn-readonly-ok';
+      btnLoad.style.cssText = 'pointer-events:all!important;';
+      btnLoad.textContent = 'CHARGER';
+      btnLoad.addEventListener('click', () => { closeExerciseModal(); switchExercise(y); });
+      actions.appendChild(btnLoad);
+    }
+
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn btn-sm btn-danger btn-readonly-ok';
+    btnDel.style.cssText = 'pointer-events:all!important;';
+    btnDel.textContent = '🗑';
+    btnDel.addEventListener('click', () => requestDeleteExercise(y, row));
+    actions.appendChild(btnDel);
+
+    row.appendChild(actions);
+    listEl.appendChild(row);
+  });
+
   document.getElementById('btn-cloture').disabled = EXERCISE_STATUS === 'closed';
   document.getElementById('new-ex-name').value = '';
   document.getElementById('new-ex-err').textContent = '';
   document.getElementById('new-ex-istest').checked = false;
   document.getElementById('unlock-pw').value = '';
   document.getElementById('unlock-err').textContent = '';
+
   // Populate unlock and consult selectors with CLOSED exercises only
   const closedOptions = options.filter(o => window._exerciseStatuses?.[o.value] === 'closed');
-  const unlockSel = document.getElementById('unlock-ex-select');
-  const consultSel = document.getElementById('consult-ex-select');
   const closedHtml = closedOptions.length
     ? closedOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join('')
     : '<option value="">Aucun exercice clôturé</option>';
-  unlockSel.innerHTML = closedHtml;
-  consultSel.innerHTML = closedHtml;
+  document.getElementById('unlock-ex-select').innerHTML = closedHtml;
+  document.getElementById('consult-ex-select').innerHTML = closedHtml;
   document.getElementById('exercise-modal').style.display = 'flex';
 }
 
-function requestDeleteExercise(y) {
+function requestDeleteExercise(y, rowEl) {
   const isTest = isTestExercise(y);
-  const rowId = 'ex-row-' + y.replace(/[^a-zA-Z0-9]/g,'_');
-  const row = document.getElementById(rowId);
-  if(!row) return;
+  // Remove any existing confirm band
+  const existing = document.getElementById('del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_'));
+  if(existing) { existing.remove(); return; }
+
+  const conf = document.createElement('div');
+  conf.id = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
+  conf.style.cssText = 'padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);margin-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
+
   if(isTest) {
-    // Test exercises: direct confirm
-    deleteTestExercise(y);
+    // Test: just confirm
+    const txt = document.createTextNode('Supprimer "' + y + '" ? ');
+    const btnOk = document.createElement('button');
+    btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
+    btnOk.style.cssText = 'pointer-events:all!important;';
+    btnOk.textContent = '✓ SUPPRIMER';
+    btnOk.addEventListener('click', () => { conf.remove(); doDeleteExercise(y); });
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-sm btn-readonly-ok';
+    btnCancel.style.cssText = 'pointer-events:all!important;';
+    btnCancel.textContent = 'ANNULER';
+    btnCancel.addEventListener('click', () => conf.remove());
+    conf.appendChild(txt); conf.appendChild(btnOk); conf.appendChild(btnCancel);
   } else {
-    // Non-test: ask for admin password inline
-    if(document.getElementById('del-admin-' + rowId)) return;
-    const div = document.createElement('div');
-    div.id = 'del-admin-' + rowId;
-    div.style.cssText = 'margin-top:6px;padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
+    // Non-test: require admin password
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--text1);';
+    lbl.textContent = 'Mot de passe admin : ';
     const pw = document.createElement('input');
-    pw.type = 'password'; pw.placeholder = 'Mot de passe admin';
+    pw.type = 'password'; pw.placeholder = '••••••••';
     pw.style.cssText = 'height:28px;font-family:var(--mono);font-size:12px;flex:1;min-width:120px;';
     const btnOk = document.createElement('button');
     btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
     btnOk.style.cssText = 'pointer-events:all!important;';
-    btnOk.textContent = '🗑 CONFIRMER';
+    btnOk.textContent = '🗑 SUPPRIMER';
     btnOk.addEventListener('click', () => {
-      if(pw.value === ADMIN_PASSWORD) {
-        div.remove();
-        doDeleteExercise(y);
-      } else {
-        pw.style.border = '1px solid var(--red)';
-        pw.value = ''; pw.focus();
-      }
+      if(pw.value === ADMIN_PASSWORD) { conf.remove(); doDeleteExercise(y); }
+      else { pw.style.border = '1px solid var(--red)'; pw.value = ''; pw.focus(); }
     });
     const btnCancel = document.createElement('button');
     btnCancel.className = 'btn btn-sm btn-readonly-ok';
     btnCancel.style.cssText = 'pointer-events:all!important;';
     btnCancel.textContent = 'ANNULER';
-    btnCancel.addEventListener('click', () => div.remove());
-    div.appendChild(pw); div.appendChild(btnOk); div.appendChild(btnCancel);
-    row.closest('div[style*="display:flex"]').after(div);
+    btnCancel.addEventListener('click', () => conf.remove());
+    conf.appendChild(lbl); conf.appendChild(pw); conf.appendChild(btnOk); conf.appendChild(btnCancel);
   }
+
+  rowEl.after(conf);
 }
 
 async function doDeleteExercise(y) {
