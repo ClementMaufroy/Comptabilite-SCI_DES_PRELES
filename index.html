@@ -936,21 +936,24 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 
 <!-- EXERCISE MODAL -->
 <div id="exercise-modal" class="modal-overlay">
-  <div class="modal" style="width:540px;max-height:90vh;overflow-y:auto;">
+  <div class="modal" style="width:580px;max-height:90vh;overflow-y:auto;">
     <div class="modal-title"><span>⚙</span> GESTION DES EXERCICES</div>
     <div id="exercise-list" style="margin-bottom:16px;"></div>
 
     <!-- Inline create form -->
     <div style="border-top:1px solid var(--line);padding-top:14px;margin-bottom:12px;">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">CRÉER UN NOUVEL EXERCICE</div>
-      <div id="new-ex-step1" style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:9px;margin-bottom:4px;">Nom (ex: 2027, TEST, TEST-2)</label>
-          <input type="text" id="new-ex-name" placeholder="2027 ou TEST" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')createNewExerciseStep1()">
+      <div id="new-ex-step1" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div style="flex:1;min-width:120px;">
+          <label style="font-size:9px;margin-bottom:4px;">Nom (ex: 2027)</label>
+          <input type="text" id="new-ex-name" placeholder="2027" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')createNewExerciseStep1()">
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding-bottom:4px;">
+          <input type="checkbox" id="new-ex-istest" style="width:14px;height:14px;cursor:pointer;">
+          <label for="new-ex-istest" style="font-size:10px;margin-bottom:0;color:var(--text1);cursor:pointer;text-transform:none;letter-spacing:0;">🧪 Exercice de test</label>
         </div>
         <button class="btn btn-sm btn-primary" onclick="createNewExerciseStep1()" style="height:32px;white-space:nowrap;">+ CRÉER</button>
       </div>
-      <!-- Inline confirmation step -->
       <div id="new-ex-confirm" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--radius);">
         <div id="new-ex-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
         <div style="display:flex;gap:8px;">
@@ -961,7 +964,20 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="new-ex-err" style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:5px;min-height:14px;"></div>
     </div>
 
-    <!-- Inline unlock form -->
+    <!-- Consulter exercices clôturés -->
+    <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">CONSULTER UN EXERCICE CLÔTURÉ</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;">
+        <div style="flex:1;">
+          <label style="font-size:9px;margin-bottom:4px;">Exercice clôturé</label>
+          <select id="consult-ex-select" style="height:32px;font-family:var(--mono);font-size:12px;"></select>
+        </div>
+        <button class="btn btn-sm btn-primary" onclick="consultExercise()" style="height:32px;white-space:nowrap;">👁 CONSULTER</button>
+      </div>
+      <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-top:5px;">Mode lecture seule — aucune modification possible</div>
+    </div>
+
+    <!-- Déverrouiller -->
     <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">DÉVERROUILLER UN EXERCICE CLÔTURÉ</div>
       <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -985,8 +1001,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="cloture-step1">
         <button class="btn btn-sm btn-danger" onclick="clotureStep1()" id="btn-cloture">🔒 CLÔTURER L'EXERCICE EN COURS</button>
       </div>
-
-      <!-- Étape 1 : confirmation clôture -->
       <div id="cloture-confirm" style="display:none;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);">
         <div id="cloture-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
         <div style="display:flex;gap:8px;">
@@ -994,15 +1008,17 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <button class="btn btn-sm" onclick="clotureCancel()">ANNULER</button>
         </div>
       </div>
-
-      <!-- Étape 2 : choisir / créer N+1 -->
       <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(42,235,255,0.06);border:1px solid rgba(42,235,255,0.2);border-radius:var(--radius);">
         <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">OUVRIR L'EXERCICE SUIVANT</div>
         <div id="cloture-next-existing" style="margin-bottom:10px;"></div>
         <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">OU CRÉER UN NOUVEL EXERCICE</div>
-        <div style="display:flex;gap:8px;align-items:flex-end;">
-          <div style="flex:1;">
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:100px;">
             <input type="text" id="cloture-next-name" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')clotureCreateNext()">
+          </div>
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:4px;">
+            <input type="checkbox" id="cloture-next-istest" style="width:14px;height:14px;cursor:pointer;">
+            <label for="cloture-next-istest" style="font-size:10px;margin-bottom:0;color:var(--text1);cursor:pointer;text-transform:none;letter-spacing:0;">🧪 Test</label>
           </div>
           <button class="btn btn-sm btn-primary" onclick="clotureCreateNext()" style="height:32px;white-space:nowrap;">+ CRÉER ET OUVRIR</button>
         </div>
@@ -1011,7 +1027,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <button class="btn btn-sm" onclick="clotureSkipNext()">Rester sur <span id="cloture-skip-year"></span> (clôturé)</button>
         </div>
       </div>
-
       <div style="margin-top:10px;">
         <button class="btn btn-sm ml-auto" onclick="closeExerciseModal()">FERMER</button>
       </div>
@@ -1116,7 +1131,8 @@ let _unsubscribeListen = null;
 // ══════════════════════════════════════════════
 let _saveTimeout = null;
 function saveDB() {
-  if(EXERCISE_STATUS === 'closed') return;
+  if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
+  window._exerciseStatuses[String(CURRENT_YEAR)] = EXERCISE_STATUS;
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
@@ -1694,7 +1710,13 @@ function resetAnnuel(){
 // ══════════════════════════════════════════════
 // IMPORT
 // ══════════════════════════════════════════════
-function showImportModal(){document.getElementById('import-modal').style.display='flex';}
+function showImportModal(){
+  document.getElementById('import-text').value='';
+  document.getElementById('import-preview').innerHTML='';
+  document.getElementById('btn-confirm-import').disabled=true;
+  importParsed=[];
+  document.getElementById('import-modal').style.display='flex';
+}
 function closeImportModal(){
   document.getElementById('import-modal').style.display='none';
   document.getElementById('import-text').value='';
@@ -1951,7 +1973,16 @@ function simpleAcClose(fieldId) { setTimeout(()=>{ const d=document.getElementBy
 const ADMIN_PASSWORD = 'admin-scipreles'; // change this to unlock closed exercises
 
 // Is this a test exercise?
-function isTestExercise(y) { return String(y).toUpperCase().startsWith('TEST'); }
+function isTestExercise(y) {
+  // Check stored flag first, fallback to name-based for legacy data
+  const key = 'ledger_test_flag_' + String(y);
+  const flag = localStorage.getItem(key);
+  if(flag !== null) return flag === '1';
+  return String(y).toUpperCase().startsWith('TEST');
+}
+function setTestFlag(y, isTest) {
+  localStorage.setItem('ledger_test_flag_' + String(y), isTest ? '1' : '0');
+}
 
 function applyExerciseStatus() {
   const isClosed = (EXERCISE_STATUS === 'closed');
@@ -2049,31 +2080,104 @@ function showExerciseModal() {
     <div style="font-family:var(--mono);font-size:10px;color:var(--text2);letter-spacing:0.08em;margin-bottom:10px;">EXERCICES DISPONIBLES</div>
     ${options.map(o => {
       const y = o.value;
-      const isCurrent = y == CURRENT_YEAR;
+      const isCurrent = String(y) === String(CURRENT_YEAR);
       const isTest = isTestExercise(y);
+      const isClosed = window._exerciseStatuses?.[y] === 'closed';
       const statusColor = isCurrent ? (EXERCISE_STATUS==='closed'?'var(--amber)':'var(--cyan)') : 'var(--text1)';
-      const borderColor = isCurrent ? 'rgba(0,212,255,0.25)' : 'var(--line)';
+      const borderColor = isCurrent ? 'rgba(42,235,255,0.25)' : 'var(--line)';
       return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isCurrent?'var(--bg3)':'var(--bg2)'};border:1px solid ${borderColor};border-radius:var(--radius);margin-bottom:6px;">
         <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${statusColor};">${isTest?'🧪 ':''} ${y}</span>
-        ${isCurrent ? `<span style="font-family:var(--mono);font-size:9px;color:var(--text2);">EN COURS</span>` : ''}
-        <div style="margin-left:auto;display:flex;gap:6px;">
-          ${!isCurrent ? `<button class="btn btn-sm btn-readonly-ok" onclick="closeExerciseModal();switchExercise('${y}')">CHARGER</button>` : ''}
-          ${isTest ? `<button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="deleteTestExercise('${y}')">🗑 SUPPRIMER</button>` : ''}
+        ${isCurrent ? `<span style="font-family:var(--mono);font-size:9px;color:var(--text2);">${EXERCISE_STATUS==='closed'?'CLÔTURÉ':'EN COURS'}</span>` : ''}
+        ${!isCurrent && isClosed ? `<span style="font-family:var(--mono);font-size:9px;color:var(--amber);">CLÔTURÉ</span>` : ''}
+        <div style="margin-left:auto;display:flex;gap:6px;" id="ex-row-${y.replace(/[^a-zA-Z0-9]/g,'_')}">
+          ${!isCurrent ? `<button class="btn btn-sm btn-readonly-ok" style="pointer-events:all!important;" onclick="closeExerciseModal();switchExercise('${y}')">CHARGER</button>` : ''}
+          <button class="btn btn-sm btn-danger btn-readonly-ok" style="pointer-events:all!important;" onclick="requestDeleteExercise('${y}')">🗑</button>
         </div>
       </div>`;
     }).join('')}`;
   document.getElementById('btn-cloture').disabled = EXERCISE_STATUS === 'closed';
   document.getElementById('new-ex-name').value = '';
   document.getElementById('new-ex-err').textContent = '';
+  document.getElementById('new-ex-istest').checked = false;
   document.getElementById('unlock-pw').value = '';
   document.getElementById('unlock-err').textContent = '';
-  // Populate unlock selector with all known exercises
-  const allOptions = Array.from(document.getElementById('ex-year-select').options);
+  // Populate unlock and consult selectors with CLOSED exercises only
+  const closedOptions = options.filter(o => window._exerciseStatuses?.[o.value] === 'closed');
   const unlockSel = document.getElementById('unlock-ex-select');
-  unlockSel.innerHTML = allOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join('');
-  // Default to current if closed, else first option
-  unlockSel.value = EXERCISE_STATUS === 'closed' ? String(CURRENT_YEAR) : (allOptions[0]?.value || '');
+  const consultSel = document.getElementById('consult-ex-select');
+  const closedHtml = closedOptions.length
+    ? closedOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join('')
+    : '<option value="">Aucun exercice clôturé</option>';
+  unlockSel.innerHTML = closedHtml;
+  consultSel.innerHTML = closedHtml;
   document.getElementById('exercise-modal').style.display = 'flex';
+}
+
+function requestDeleteExercise(y) {
+  const isTest = isTestExercise(y);
+  const rowId = 'ex-row-' + y.replace(/[^a-zA-Z0-9]/g,'_');
+  const row = document.getElementById(rowId);
+  if(!row) return;
+  if(isTest) {
+    // Test exercises: direct confirm
+    deleteTestExercise(y);
+  } else {
+    // Non-test: ask for admin password inline
+    if(document.getElementById('del-admin-' + rowId)) return;
+    const div = document.createElement('div');
+    div.id = 'del-admin-' + rowId;
+    div.style.cssText = 'margin-top:6px;padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
+    const pw = document.createElement('input');
+    pw.type = 'password'; pw.placeholder = 'Mot de passe admin';
+    pw.style.cssText = 'height:28px;font-family:var(--mono);font-size:12px;flex:1;min-width:120px;';
+    const btnOk = document.createElement('button');
+    btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
+    btnOk.style.cssText = 'pointer-events:all!important;';
+    btnOk.textContent = '🗑 CONFIRMER';
+    btnOk.addEventListener('click', () => {
+      if(pw.value === ADMIN_PASSWORD) {
+        div.remove();
+        doDeleteExercise(y);
+      } else {
+        pw.style.border = '1px solid var(--red)';
+        pw.value = ''; pw.focus();
+      }
+    });
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'btn btn-sm btn-readonly-ok';
+    btnCancel.style.cssText = 'pointer-events:all!important;';
+    btnCancel.textContent = 'ANNULER';
+    btnCancel.addEventListener('click', () => div.remove());
+    div.appendChild(pw); div.appendChild(btnOk); div.appendChild(btnCancel);
+    row.closest('div[style*="display:flex"]').after(div);
+  }
+}
+
+async function doDeleteExercise(y) {
+  clearTimeout(_saveTimeout);
+  window._deletingYear = y;
+  try { localStorage.removeItem('ledger_' + y); localStorage.removeItem('ledger_test_flag_' + y); } catch(e) {}
+  if(window._fbReady && window._fbDelete) await window._fbDelete(y);
+  window._deletingYear = null;
+  if(String(CURRENT_YEAR) === String(y)) {
+    CURRENT_YEAR = new Date().getFullYear();
+    DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
+    await loadDB(); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
+    renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
+    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
+  }
+  await loadKnownYears(y);
+  closeExerciseModal();
+  toast(`Exercice "${y}" supprimé.`, 'warn');
+}
+
+async function consultExercise() {
+  const sel = document.getElementById('consult-ex-select');
+  const y = sel?.value;
+  if(!y) { toast('Aucun exercice clôturé à consulter', 'error'); return; }
+  closeExerciseModal();
+  await switchExercise(y);
+  // switchExercise will load the exercise; applyExerciseStatus will set read-only
 }
 function closeExerciseModal() {
   document.getElementById('exercise-modal').style.display = 'none';
@@ -2087,18 +2191,17 @@ function closeExerciseModal() {
 function createNewExerciseStep1() {
   const input = document.getElementById('new-ex-name');
   const errEl = document.getElementById('new-ex-err');
-  const trimmed = (input?.value||'').trim().toUpperCase();
+  const isTestChecked = document.getElementById('new-ex-istest')?.checked || false;
+  const trimmed = (input?.value||'').trim();
   errEl.textContent = '';
   if(!trimmed) { errEl.textContent = 'Saisissez un nom.'; return; }
-  const isTest = isTestExercise(trimmed);
-  const label = isTest ? trimmed : parseInt(trimmed);
-  if(!isTest && isNaN(label)) { errEl.textContent = 'Nom invalide — entrez une année (ex: 2027) ou TEST.'; return; }
+  const label = isTestChecked ? trimmed.toUpperCase() : parseInt(trimmed);
+  if(!isTestChecked && isNaN(label)) { errEl.textContent = 'Nom invalide — entrez une année (ex: 2027).'; return; }
   const existing = Array.from(document.getElementById('ex-year-select').options).map(o=>o.value);
   if(existing.includes(String(label))) { errEl.textContent = 'Cet exercice existe déjà.'; return; }
-  // Show inline confirmation
   document.getElementById('new-ex-step1').style.display = 'none';
   document.getElementById('new-ex-confirm-msg').innerHTML =
-    `Créer l'exercice <strong style="color:var(--cyan)">${label}</strong> ?<br>
+    `Créer l'exercice <strong style="color:var(--cyan)">${label}</strong>${isTestChecked?' <span style="color:#a78bfa">(TEST)</span>':''} ?<br>
     <span style="color:var(--text2);font-size:11px;">La TB Data sera copiée depuis l'exercice en cours (${CURRENT_YEAR}).</span>`;
   document.getElementById('new-ex-confirm').style.display = 'block';
 }
@@ -2108,34 +2211,29 @@ function createNewExerciseCancel() {
 }
 async function createNewExerciseConfirm() {
   const input = document.getElementById('new-ex-name');
-  // Read the value BEFORE clearing the field
-  const trimmed = (input?.value||'').trim().toUpperCase();
-  const isTest = isTestExercise(trimmed);
-  const label = isTest ? trimmed : parseInt(trimmed);
-  // Guard: if somehow label is invalid, abort
+  const isTestChecked = document.getElementById('new-ex-istest')?.checked || false;
+  const trimmed = (input?.value||'').trim();
+  const label = isTestChecked ? trimmed.toUpperCase() : parseInt(trimmed);
   if(!label || (typeof label === 'number' && isNaN(label))) {
     toast('Erreur : nom d\'exercice invalide', 'error'); return;
   }
   const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
   const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
   const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
-  // Clear UI and close modal
   input.value = '';
   createNewExerciseCancel();
   closeExerciseModal();
-  // Switch to new exercise
   CURRENT_YEAR = label;
+  setTestFlag(label, isTestChecked);
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   EXERCISE_STATUS = 'open';
-  // Save first (writes to Firebase meta), then reload the year list
   await saveDBNow();
   await loadKnownYears();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
-  document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
+  document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   startLiveSync();
   toast('Exercice "' + label + '" créé', 'success');
 }
-// Keep old name as alias for compatibility
 function createNewExercise() { createNewExerciseStep1(); }
 
 function clotureStep1() {
@@ -2707,14 +2805,22 @@ function dlCSV(csv, filename) {
 // BOOT
 // ══════════════════════════════════════════════
 async function boot() {
+  window._exerciseStatuses = {};
   // Clean up any corrupted localStorage keys (empty suffix, NaN, non-year non-test values)
   for(let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
-    if(key && key.startsWith('ledger_')) {
+    if(key && key.startsWith('ledger_') && !key.startsWith('ledger_test_flag_')) {
       const suffix = key.replace('ledger_', '');
       const isValid = suffix && suffix !== 'NaN' && suffix.trim() !== '' &&
         (isTestExercise(suffix) || (!isNaN(parseInt(suffix)) && parseInt(suffix) > 1900 && parseInt(suffix) < 2100));
       if(!isValid) { localStorage.removeItem(key); }
+      else {
+        // Read status from localStorage data
+        try {
+          const d = JSON.parse(localStorage.getItem(key));
+          if(d && d._status) window._exerciseStatuses[suffix] = d._status;
+        } catch(e) {}
+      }
     }
   }
   CURRENT_YEAR = new Date().getFullYear();
