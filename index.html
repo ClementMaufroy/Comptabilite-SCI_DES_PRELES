@@ -968,19 +968,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="new-ex-err" style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:5px;min-height:14px;"></div>
     </div>
 
-    <!-- Consulter exercices clôturés -->
-    <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">CONSULTER UN EXERCICE CLÔTURÉ</div>
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <div style="flex:1;">
-          <label style="font-size:9px;margin-bottom:4px;">Exercice clôturé</label>
-          <select id="consult-ex-select" style="height:32px;font-family:var(--mono);font-size:12px;"></select>
-        </div>
-        <button class="btn btn-sm btn-primary" onclick="consultExercise()" style="height:32px;white-space:nowrap;">👁 CONSULTER</button>
-      </div>
-      <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-top:5px;">Mode lecture seule — aucune modification possible</div>
-    </div>
-
     <!-- Déverrouiller -->
     <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">DÉVERROUILLER UN EXERCICE CLÔTURÉ</div>
@@ -2175,7 +2162,6 @@ function showExerciseModal() {
     ? closedOptions.map(o => `<option value="${o.value}">${o.text}</option>`).join('')
     : '<option value="">Aucun exercice clôturé</option>';
   document.getElementById('unlock-ex-select').innerHTML = closedHtml;
-  document.getElementById('consult-ex-select').innerHTML = closedHtml;
   document.getElementById('exercise-modal').style.display = 'flex';
 }
 
@@ -2705,144 +2691,416 @@ function exportBG(fmt) {
   }
 }
 
-// ── BILAN ──
-// PCG structure: ACTIF = comptes 1xx-5xx côté débiteur, PASSIF = créditeur
-// Convention: solde positif (débit > crédit) = Actif; négatif = Passif
-function buildBilan() {
-  const rows = getBalanceData(e => ['1','2','3','4','5'].includes(String(e.compte)[0]));
-  const actif = {}, passif = {};
-  rows.forEach(r => {
-    const solde = r.debit - r.credit;
-    const tb = r.tb || {};
-    const r2key = (tb.r2||'?') + ' — ' + (tb.libR2||'');
-    const r3key = (tb.r3||'?') + ' — ' + (tb.libR3||'');
-    const target = solde >= 0 ? actif : passif;
-    if(!target[r2key]) target[r2key] = {};
-    if(!target[r2key][r3key]) target[r2key][r3key] = 0;
-    target[r2key][r3key] += Math.abs(solde);
-  });
-  return { actif, passif };
+// ══════════════════════════════════════════════
+// STRUCTURE PCG — MAPPING COMPTES
+// ══════════════════════════════════════════════
+
+// Retourne le solde net d'un compte (débit - crédit)
+function getSolde(compte) {
+  let d=0, c=0;
+  DB.ecritures.forEach(e => { if(String(e.compte)===String(compte)){d+=e.debit||0;c+=e.credit||0;} });
+  return d - c;
 }
 
-function renderBilanSide(data, title) {
-  let total = 0;
-  let html = `<div><div class="rpt-col-title">${title}</div>`;
-  html += `<table><thead><tr><th>Poste</th><th class="r-num">Montant</th></tr></thead><tbody>`;
-  Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([r2, r3s]) => {
-    const r2total = Object.values(r3s).reduce((s,v)=>s+v,0);
-    total += r2total;
-    html += `<tr class="r-subsection"><td>${r2}</td><td class="r-num">${fmtEraw(r2total)} €</td></tr>`;
-    Object.entries(r3s).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([r3,v]) => {
-      html += `<tr><td style="padding-left:16px;color:#555">${r3}</td><td class="r-num">${fmtEraw(v)} €</td></tr>`;
-    });
+// Retourne le solde net de tous les comptes dont le numéro commence par un des préfixes
+function getSoldesPrefixes(prefixes) {
+  const map = {};
+  DB.ecritures.forEach(e => {
+    const cp = String(e.compte);
+    for(const p of prefixes) {
+      if(cp.startsWith(p)) {
+        if(!map[cp]) map[cp] = {d:0,c:0,lib:e.libelleCompte||''};
+        map[cp].d += e.debit||0; map[cp].c += e.credit||0;
+        break;
+      }
+    }
   });
-  html += `<tr class="r-total"><td>TOTAL ${title.toUpperCase()}</td><td class="r-num">${fmtEraw(total)} €</td></tr>`;
-  html += '</tbody></table></div>';
-  return { html, total };
+  return Object.values(map).reduce((s,v)=>s+(v.d-v.c),0);
+}
+
+function getSoldesComptes(comptes) {
+  return comptes.reduce((s,c)=>s+getSolde(c),0);
+}
+
+// ── BILAN PCG ──
+function buildBilanPCG() {
+  const solde = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
+
+  // ACTIF
+  const terrain = solde(['211']);
+  const constructions = solde(['213','214']);
+  // Amortissements constructions (créditeurs = négatifs en actif)
+  const amortConst = -solde(['2813','2814','2815','2816','2817','2818']);
+  const autresImmo = solde(['215','218']);
+  const amortAutres = -solde(['2815','2816','2818','2819','281','282']);
+  // Recalcul propre
+  const brut_terrain = getSoldesPrefixes(['211']);
+  const brut_constructions = getSoldesPrefixes(['213','214']);
+  const brut_instal = getSoldesPrefixes(['2135','2136','2138']);
+  const brut_autresImmoCorpo = getSoldesPrefixes(['2183','2184','2185','2186','2187','2188','2189']);
+  const brut_immoFinanciere = getSoldesPrefixes(['26','27']);
+  const amort_constructions = Math.abs(getSoldesPrefixes(['2813','28131','28132','28133','28135']));
+  const amort_instal = Math.abs(getSoldesPrefixes(['28135','28138']));
+  const amort_autresImmo = Math.abs(getSoldesPrefixes(['2818','28183','28184']));
+
+  const net_terrain = brut_terrain;
+  const net_constructions = brut_constructions - amort_constructions;
+  const net_instal = brut_instal - amort_instal;
+  const net_autresImmo = brut_autresImmoCorpo - amort_autresImmo;
+  const net_immoFinanciere = brut_immoFinanciere;
+  const totalActifImmobilise = net_terrain + net_constructions + net_instal + net_autresImmo + net_immoFinanciere;
+
+  const clients = getSoldesPrefixes(['411','416']);
+  const autresCreances = getSoldesPrefixes(['409','419','44','45','46','47','48','49'].filter(p=>!['455'].includes(p)));
+  // Retirer 455 (cc associés) des autres créances côté actif
+  const creancesTotal = clients + Math.max(0, autresCreances);
+  const banque = getSoldesPrefixes(['512','514','515','516','517','518','519','53']);
+  const totalActifCirculant = creancesTotal + banque;
+  const totalActif = totalActifImmobilise + totalActifCirculant;
+
+  // PASSIF
+  const capital = Math.abs(getSoldesPrefixes(['101','102','103']));
+  const reserves = Math.abs(getSoldesPrefixes(['106']));
+  const reportANouveau = getSolde('110000') - Math.abs(getSolde('119000')); // créditeur - débiteur
+  const resultat = getSoldesPrefixes(['120','129']); // 120 = bénéfice (créditeur), 129 = perte (débiteur)
+  const resultatNet = -getSoldesPrefixes(['120','129']); // négatif si perte
+  const totalCapitauxPropres = capital + reserves + reportANouveau + resultatNet;
+
+  const provisions = Math.abs(getSoldesPrefixes(['15']));
+
+  const emprunts = Math.abs(getSoldesPrefixes(['164']));
+  const depots = Math.abs(getSoldesPrefixes(['165']));
+  const ccAssocies455 = Math.abs(getSoldesPrefixes(['455']));
+  const dettesFinancieres = emprunts + depots + ccAssocies455;
+
+  const fournisseurs = Math.abs(getSoldesPrefixes(['401','404','408']));
+  const autresDettes = Math.abs(getSoldesPrefixes(['44','47']));
+  const dettesExploitation = fournisseurs + autresDettes;
+
+  const totalDettes = dettesFinancieres + dettesExploitation;
+  const totalPassif = totalCapitauxPropres + provisions + totalDettes;
+
+  return {
+    actif: {
+      immobilise: {
+        terrain: net_terrain,
+        constructions: net_constructions,
+        installations: net_instal,
+        autresImmo: net_autresImmo,
+        immoFinanciere: net_immoFinanciere,
+        total: totalActifImmobilise
+      },
+      circulant: {
+        clients,
+        autresCreances: Math.max(0, autresCreances),
+        banque,
+        total: totalActifCirculant
+      },
+      total: totalActif
+    },
+    passif: {
+      capitauxPropres: {
+        capital,
+        reserves,
+        reportANouveau,
+        resultat: resultatNet,
+        total: totalCapitauxPropres
+      },
+      provisions,
+      dettes: {
+        emprunts,
+        depots,
+        ccAssocies: ccAssocies455,
+        fournisseurs,
+        autresDettes,
+        totalFinancieres: dettesFinancieres,
+        totalExploitation: dettesExploitation,
+        total: totalDettes
+      },
+      total: totalPassif
+    }
+  };
+}
+
+function renderBilanHTML(b) {
+  const r = (v) => fmtEraw(Math.round(v*100)/100);
+  const sign = (v) => v < 0 ? 'r-neg' : '';
+
+  return `<div class="rpt">
+    ${rptHeader('Bilan', `Au 31 décembre ${CURRENT_YEAR}`)}
+    <div class="rpt-2col">
+      <div>
+        <div class="rpt-col-title">ACTIF</div>
+        <table>
+          <thead><tr><th>Poste</th><th class="r-num">Net €</th></tr></thead>
+          <tbody>
+            <tr class="r-section"><td colspan="2">ACTIF IMMOBILISÉ</td></tr>
+            <tr class="r-subsection"><td>Immobilisations corporelles</td><td class="r-num">${r(b.actif.immobilise.terrain+b.actif.immobilise.constructions+b.actif.immobilise.installations+b.actif.immobilise.autresImmo)}</td></tr>
+            <tr><td style="padding-left:16px">Terrain</td><td class="r-num">${r(b.actif.immobilise.terrain)}</td></tr>
+            <tr><td style="padding-left:16px">Constructions</td><td class="r-num">${r(b.actif.immobilise.constructions)}</td></tr>
+            <tr><td style="padding-left:16px">Installations générales, agenc., aménag.</td><td class="r-num">${r(b.actif.immobilise.installations)}</td></tr>
+            <tr><td style="padding-left:16px">Autres immobilisations corporelles</td><td class="r-num">${r(b.actif.immobilise.autresImmo)}</td></tr>
+            ${b.actif.immobilise.immoFinanciere ? `<tr class="r-subsection"><td>Immobilisations financières</td><td class="r-num">${r(b.actif.immobilise.immoFinanciere)}</td></tr>` : ''}
+            <tr class="r-subtotal"><td>Total Actif Immobilisé</td><td class="r-num">${r(b.actif.immobilise.total)}</td></tr>
+            <tr class="r-section"><td colspan="2">ACTIF CIRCULANT</td></tr>
+            <tr class="r-subsection"><td>Créances</td><td class="r-num">${r(b.actif.circulant.clients+b.actif.circulant.autresCreances)}</td></tr>
+            <tr><td style="padding-left:16px">Clients</td><td class="r-num">${r(b.actif.circulant.clients)}</td></tr>
+            ${b.actif.circulant.autresCreances ? `<tr><td style="padding-left:16px">Autres créances</td><td class="r-num">${r(b.actif.circulant.autresCreances)}</td></tr>` : ''}
+            <tr class="r-subsection"><td>Disponibilités</td><td class="r-num">${r(b.actif.circulant.banque)}</td></tr>
+            <tr><td style="padding-left:16px">Banque</td><td class="r-num">${r(b.actif.circulant.banque)}</td></tr>
+            <tr class="r-subtotal"><td>Total Actif Circulant</td><td class="r-num">${r(b.actif.circulant.total)}</td></tr>
+            <tr class="r-total"><td>TOTAL ACTIF</td><td class="r-num">${r(b.actif.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="rpt-col-title">PASSIF</div>
+        <table>
+          <thead><tr><th>Poste</th><th class="r-num">Net €</th></tr></thead>
+          <tbody>
+            <tr class="r-section"><td colspan="2">CAPITAUX PROPRES</td></tr>
+            <tr><td>Capital Social</td><td class="r-num">${r(b.passif.capitauxPropres.capital)}</td></tr>
+            ${b.passif.capitauxPropres.reserves ? `<tr><td>Réserves</td><td class="r-num">${r(b.passif.capitauxPropres.reserves)}</td></tr>` : ''}
+            <tr><td>Report à nouveau</td><td class="r-num ${sign(b.passif.capitauxPropres.reportANouveau)}">${r(b.passif.capitauxPropres.reportANouveau)}</td></tr>
+            <tr><td>Résultat de l'exercice</td><td class="r-num ${sign(b.passif.capitauxPropres.resultat)}">${r(b.passif.capitauxPropres.resultat)}</td></tr>
+            <tr class="r-subtotal"><td>Total Capitaux Propres</td><td class="r-num ${sign(b.passif.capitauxPropres.total)}">${r(b.passif.capitauxPropres.total)}</td></tr>
+            <tr class="r-section"><td colspan="2">PROVISIONS</td></tr>
+            <tr><td>Provisions pour charges</td><td class="r-num">${r(b.passif.provisions)}</td></tr>
+            <tr class="r-subtotal"><td>Total Provisions</td><td class="r-num">${r(b.passif.provisions)}</td></tr>
+            <tr class="r-section"><td colspan="2">DETTES</td></tr>
+            <tr class="r-subsection"><td>Dettes financières</td><td class="r-num">${r(b.passif.dettes.totalFinancieres)}</td></tr>
+            <tr><td style="padding-left:16px">Emprunts auprès des établissements de crédit</td><td class="r-num">${r(b.passif.dettes.emprunts)}</td></tr>
+            ${b.passif.dettes.depots ? `<tr><td style="padding-left:16px">Dépôts et cautionnements reçus</td><td class="r-num">${r(b.passif.dettes.depots)}</td></tr>` : ''}
+            ${b.passif.dettes.ccAssocies ? `<tr><td style="padding-left:16px">Comptes courants d'associés</td><td class="r-num">${r(b.passif.dettes.ccAssocies)}</td></tr>` : ''}
+            ${b.passif.dettes.totalExploitation ? `<tr class="r-subsection"><td>Dettes d'exploitation</td><td class="r-num">${r(b.passif.dettes.totalExploitation)}</td></tr>` : ''}
+            ${b.passif.dettes.fournisseurs ? `<tr><td style="padding-left:16px">Fournisseurs</td><td class="r-num">${r(b.passif.dettes.fournisseurs)}</td></tr>` : ''}
+            ${b.passif.dettes.autresDettes ? `<tr><td style="padding-left:16px">Autres dettes</td><td class="r-num">${r(b.passif.dettes.autresDettes)}</td></tr>` : ''}
+            <tr class="r-subtotal"><td>Total Dettes</td><td class="r-num">${r(b.passif.dettes.total)}</td></tr>
+            <tr class="r-total"><td>TOTAL PASSIF</td><td class="r-num">${r(b.passif.total)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    ${rptFooter()}
+  </div>`;
 }
 
 function exportBilan(fmt) {
-  const { actif, passif } = buildBilan();
-  const actifRender = renderBilanSide(actif, 'Actif');
-  const passifRender = renderBilanSide(passif, 'Passif');
-  if(fmt === 'excel') {
+  const b = buildBilanPCG();
+  if(fmt === 'pdf') {
+    printDoc(renderBilanHTML(b), `Bilan_${CURRENT_YEAR}`);
+  } else {
+    const r = (v) => fmtEraw(Math.round(v*100)/100);
     let csv = '\uFEFF';
     csv += `BILAN — SCI DES PRÊLES — Exercice ${CURRENT_YEAR}\n\n`;
     csv += 'ACTIF;;PASSIF\n';
-    csv += 'Rubrique;Montant;Rubrique;Montant\n';
-    const actifRows = []; const passifRows = [];
-    Object.entries(actif).sort().forEach(([r2,r3s]) => {
-      actifRows.push([r2, fmtEraw(Object.values(r3s).reduce((s,v)=>s+v,0))]);
-      Object.entries(r3s).sort().forEach(([r3,v]) => actifRows.push(['  '+r3, fmtEraw(v)]));
-    });
-    Object.entries(passif).sort().forEach(([r2,r3s]) => {
-      passifRows.push([r2, fmtEraw(Object.values(r3s).reduce((s,v)=>s+v,0))]);
-      Object.entries(r3s).sort().forEach(([r3,v]) => passifRows.push(['  '+r3, fmtEraw(v)]));
-    });
-    const maxLen = Math.max(actifRows.length, passifRows.length);
-    for(let i=0;i<maxLen;i++) {
-      const a = actifRows[i]||['',''];
-      const p = passifRows[i]||['',''];
-      csv += `${a[0]};${a[1]};${p[0]};${p[1]}\n`;
-    }
-    csv += `TOTAL ACTIF;${fmtEraw(actifRender.total)};TOTAL PASSIF;${fmtEraw(passifRender.total)}\n`;
+    csv += `Terrain;${r(b.actif.immobilise.terrain)};Capital Social;${r(b.passif.capitauxPropres.capital)}\n`;
+    csv += `Constructions;${r(b.actif.immobilise.constructions)};Réserves;${r(b.passif.capitauxPropres.reserves)}\n`;
+    csv += `Installations;${r(b.actif.immobilise.installations)};Report à nouveau;${r(b.passif.capitauxPropres.reportANouveau)}\n`;
+    csv += `Autres immo. corpo.;${r(b.actif.immobilise.autresImmo)};Résultat de l'exercice;${r(b.passif.capitauxPropres.resultat)}\n`;
+    csv += `Immobilisations financières;${r(b.actif.immobilise.immoFinanciere)};TOTAL CAPITAUX PROPRES;${r(b.passif.capitauxPropres.total)}\n`;
+    csv += `TOTAL ACTIF IMMOBILISÉ;${r(b.actif.immobilise.total)};Provisions pour charges;${r(b.passif.provisions)}\n`;
+    csv += `Clients;${r(b.actif.circulant.clients)};Emprunts;${r(b.passif.dettes.emprunts)}\n`;
+    csv += `Autres créances;${r(b.actif.circulant.autresCreances)};Dépôts et cautionnements;${r(b.passif.dettes.depots)}\n`;
+    csv += `Banque;${r(b.actif.circulant.banque)};Comptes courants d'associés;${r(b.passif.dettes.ccAssocies)}\n`;
+    csv += `TOTAL ACTIF CIRCULANT;${r(b.actif.circulant.total)};Dettes d'exploitation;${r(b.passif.dettes.totalExploitation)}\n`;
+    csv += `TOTAL ACTIF;${r(b.actif.total)};TOTAL PASSIF;${r(b.passif.total)}\n`;
     dlCSV(csv, `Bilan_${CURRENT_YEAR}.csv`);
-  } else {
-    const html = `<div class="rpt">
-      ${rptHeader('Bilan', 'Actif / Passif')}
-      <div class="rpt-2col">
-        ${actifRender.html}
-        ${passifRender.html}
-      </div>
-      ${rptFooter()}
-    </div>`;
-    printDoc(html, `Bilan_${CURRENT_YEAR}`);
   }
 }
 
-// ── COMPTE DE RÉSULTAT ──
-function buildCR() {
-  const charges = {}, produits = {};
-  getBalanceData(e => ['6','7'].includes(String(e.compte)[0])).forEach(r => {
-    const solde = r.debit - r.credit; // charges: positive; produits: negative
-    const tb = r.tb || {};
-    const r1 = String(r.compte)[0];
-    const r2key = (tb.r2||'?') + ' — ' + (tb.libR2||'');
-    const target = r1 === '6' ? charges : produits;
-    if(!target[r2key]) target[r2key] = 0;
-    target[r2key] += r1 === '6' ? Math.abs(solde) : Math.abs(solde);
-  });
-  return { charges, produits };
+// ── COMPTE DE RÉSULTAT PCG ──
+function buildCRPCG() {
+  const s = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
+
+  // PRODUITS D'EXPLOITATION
+  const loyers = s(['706','708']);
+  const locSaisonniere = s(['706100']);
+  const provChargesLoc = s(['708']);
+  const reprisesProv = Math.abs(s(['781']));
+  const autresProduits = s(['75','79']);
+  const totalProduitsExploit = loyers + reprisesProv + autresProduits;
+
+  // CHARGES D'EXPLOITATION
+  // Achats
+  const achatsEau = s(['6061']);
+  const achatsElec = s(['6062','60612']);
+  const achatsMatOutillage = s(['6063','6064']);
+  const totalAchats = s(['606']);
+
+  // Services extérieurs
+  const locationsLogiciel = s(['613']);
+  const entretienRep = s(['615']);
+  const assurances = s(['616']);
+  const chargesServExt = locationsLogiciel + entretienRep + assurances;
+
+  // Autres services extérieurs
+  const honoraires = s(['622']);
+  const deplMissions = s(['625']);
+  const fraisPostComm = s(['626']);
+  const servicesBancaires = s(['627','628']);
+  const autresServExt = honoraires + deplMissions + fraisPostComm + servicesBancaires;
+
+  // Impôts et taxes
+  const impotsTaxes = s(['635','637']);
+
+  // Dotations
+  const dotAmort = s(['681120','6811']);
+  const dotProv = s(['681000','6810']);
+  const totalDotations = dotAmort + dotProv;
+
+  // Reprises (déduites)
+  const reprises = Math.abs(s(['781','786']));
+
+  const totalChargesExploit = totalAchats + chargesServExt + autresServExt + impotsTaxes + totalDotations - reprises;
+  const resultatExploit = totalProduitsExploit - totalChargesExploit;
+
+  // FINANCIER
+  const produitsFinanciers = Math.abs(s(['762','764','766','768','786']));
+  const chargesInteretsEmprunts = s(['6611','661100']);
+  const chargesInteretsCC = s(['6615','661500']);
+  const chargesFinancieres = chargesInteretsEmprunts + chargesInteretsCC + s(['686']);
+  const resultatFinancier = produitsFinanciers - chargesFinancieres;
+
+  const resultatCourant = resultatExploit + resultatFinancier;
+
+  // EXCEPTIONNEL
+  const produitsExcept = s(['77']);
+  const chargesExcept = s(['67']);
+  const resultatExcept = produitsExcept - chargesExcept;
+
+  // IS
+  const is = s(['695']);
+
+  const resultatNet = resultatCourant + resultatExcept - is;
+
+  return {
+    produits: {
+      loyers: s(['706001','706002','706003']),
+      locSaisonniere: s(['706100']),
+      provChargesLoc: s(['708']),
+      reprisesProv,
+      autresProduits,
+      total: totalProduitsExploit
+    },
+    charges: {
+      achats: { eau: achatsEau, elec: Math.abs(getSoldesPrefixes(['60612','606120'])), matOutillage: achatsMatOutillage, total: totalAchats },
+      servExt: { logiciels: locationsLogiciel, entretien: entretienRep, assurances, total: chargesServExt },
+      autresServExt: { honoraires, deplMissions, fraisPostComm, servicesBancaires, total: autresServExt },
+      impotsTaxes,
+      dotations: { amort: dotAmort, prov: dotProv, total: totalDotations },
+      reprises,
+      total: totalChargesExploit
+    },
+    resultatExploit,
+    financier: {
+      produits: produitsFinanciers,
+      chargesInteretsEmprunts,
+      chargesInteretsCC,
+      dotProvFinancieres: s(['686']),
+      total: -chargesFinancieres + produitsFinanciers
+    },
+    resultatFinancier,
+    resultatCourant,
+    exceptionnel: { produits: produitsExcept, charges: chargesExcept, total: resultatExcept },
+    is,
+    resultatNet
+  };
 }
 
-function renderCRSide(data, title, color) {
-  const total = Object.values(data).reduce((s,v)=>s+v,0);
-  let html = `<div><div class="rpt-col-title" style="color:${color};border-color:${color}">${title}</div>`;
-  html += `<table><thead><tr><th>Poste</th><th class="r-num">Montant</th></tr></thead><tbody>`;
-  Object.entries(data).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([r2,v]) => {
-    html += `<tr><td>${r2}</td><td class="r-num">${fmtEraw(v)} €</td></tr>`;
-  });
-  html += `<tr class="r-total" style="background:${color}"><td>TOTAL ${title.toUpperCase()}</td><td class="r-num">${fmtEraw(total)} €</td></tr>`;
-  html += '</tbody></table></div>';
-  return { html, total };
+function renderCRHTML(cr) {
+  const r = (v) => { const n = Math.round(v*100)/100; return (n<0?'<span class="r-neg">':'<span class="r-pos">') + fmtEraw(n) + '</span>'; };
+  const rn = (v) => fmtEraw(Math.round(v*100)/100);
+  const rowStyle = (v) => v < 0 ? 'color:#991b1b' : v > 0 ? 'color:#166534' : '';
+
+  return `<div class="rpt">
+    ${rptHeader('Compte de Résultat', `Exercice ${CURRENT_YEAR}`)}
+    <table>
+      <thead>
+        <tr><th style="width:60%">Poste</th><th class="r-num">Exercice ${CURRENT_YEAR}</th></tr>
+      </thead>
+      <tbody>
+        <tr class="r-section"><td colspan="2">PRODUITS D'EXPLOITATION</td></tr>
+        <tr><td style="padding-left:12px">Chiffre d'affaires (loyers)</td><td class="r-num">${rn(cr.produits.loyers)}</td></tr>
+        ${cr.produits.locSaisonniere ? `<tr><td style="padding-left:12px">Locations saisonnières</td><td class="r-num">${rn(cr.produits.locSaisonniere)}</td></tr>` : ''}
+        ${cr.produits.provChargesLoc ? `<tr><td style="padding-left:12px">Provisions pour charges locatives</td><td class="r-num">${rn(cr.produits.provChargesLoc)}</td></tr>` : ''}
+        ${cr.produits.reprisesProv ? `<tr><td style="padding-left:12px">Reprises d'amortissements et provisions</td><td class="r-num">${rn(cr.produits.reprisesProv)}</td></tr>` : ''}
+        <tr class="r-subtotal"><td>Total Produits d'exploitation</td><td class="r-num">${rn(cr.produits.total)}</td></tr>
+
+        <tr class="r-section"><td colspan="2">CHARGES D'EXPLOITATION</td></tr>
+        ${cr.charges.achats.total ? `<tr class="r-subsection"><td>Achats</td><td class="r-num">${rn(cr.charges.achats.total)}</td></tr>` : ''}
+        ${cr.charges.achats.matOutillage ? `<tr><td style="padding-left:12px">Matériel et outillages</td><td class="r-num">${rn(cr.charges.achats.matOutillage)}</td></tr>` : ''}
+        ${cr.charges.servExt.total ? `<tr class="r-subsection"><td>Services extérieurs</td><td class="r-num">${rn(cr.charges.servExt.total)}</td></tr>` : ''}
+        ${cr.charges.servExt.logiciels ? `<tr><td style="padding-left:12px">Abonnements logiciels</td><td class="r-num">${rn(cr.charges.servExt.logiciels)}</td></tr>` : ''}
+        ${cr.charges.servExt.entretien ? `<tr><td style="padding-left:12px">Entretien et réparations</td><td class="r-num">${rn(cr.charges.servExt.entretien)}</td></tr>` : ''}
+        ${cr.charges.servExt.assurances ? `<tr><td style="padding-left:12px">Primes d'assurances</td><td class="r-num">${rn(cr.charges.servExt.assurances)}</td></tr>` : ''}
+        ${cr.charges.autresServExt.total ? `<tr class="r-subsection"><td>Autres services extérieurs</td><td class="r-num">${rn(cr.charges.autresServExt.total)}</td></tr>` : ''}
+        ${cr.charges.autresServExt.honoraires ? `<tr><td style="padding-left:12px">Honoraires divers</td><td class="r-num">${rn(cr.charges.autresServExt.honoraires)}</td></tr>` : ''}
+        ${cr.charges.autresServExt.deplMissions ? `<tr><td style="padding-left:12px">Voyages et déplacements</td><td class="r-num">${rn(cr.charges.autresServExt.deplMissions)}</td></tr>` : ''}
+        ${cr.charges.autresServExt.fraisPostComm ? `<tr><td style="padding-left:12px">Internet et téléphone</td><td class="r-num">${rn(cr.charges.autresServExt.fraisPostComm)}</td></tr>` : ''}
+        ${cr.charges.autresServExt.servicesBancaires ? `<tr><td style="padding-left:12px">Services bancaires</td><td class="r-num">${rn(cr.charges.autresServExt.servicesBancaires)}</td></tr>` : ''}
+        ${cr.charges.impotsTaxes ? `<tr class="r-subsection"><td>Impôts et taxes</td><td class="r-num">${rn(cr.charges.impotsTaxes)}</td></tr>` : ''}
+        ${cr.charges.dotations.total ? `<tr class="r-subsection"><td>Dotations aux amortissements et provisions</td><td class="r-num">${rn(cr.charges.dotations.total)}</td></tr>` : ''}
+        ${cr.charges.dotations.amort ? `<tr><td style="padding-left:12px">Amortissements</td><td class="r-num">${rn(cr.charges.dotations.amort)}</td></tr>` : ''}
+        ${cr.charges.dotations.prov ? `<tr><td style="padding-left:12px">Provisions pour charges</td><td class="r-num">${rn(cr.charges.dotations.prov)}</td></tr>` : ''}
+        ${cr.charges.reprises ? `<tr><td style="padding-left:12px">Reprises d'amortissements et provisions</td><td class="r-num">-${rn(cr.charges.reprises)}</td></tr>` : ''}
+        <tr class="r-subtotal"><td>Total Charges d'exploitation</td><td class="r-num">${rn(cr.charges.total)}</td></tr>
+
+        <tr class="r-total" style="background:${cr.resultatExploit>=0?'#166534':'#991b1b'}"><td>RÉSULTAT D'EXPLOITATION</td><td class="r-num">${rn(cr.resultatExploit)}</td></tr>
+
+        <tr class="r-section"><td colspan="2">RÉSULTAT FINANCIER</td></tr>
+        ${cr.financier.produits ? `<tr><td style="padding-left:12px">Produits financiers</td><td class="r-num">${rn(cr.financier.produits)}</td></tr>` : ''}
+        ${cr.financier.chargesInteretsEmprunts ? `<tr><td style="padding-left:12px">Intérêts des emprunts et dettes</td><td class="r-num">-${rn(cr.financier.chargesInteretsEmprunts)}</td></tr>` : ''}
+        ${cr.financier.chargesInteretsCC ? `<tr><td style="padding-left:12px">Intérêts des comptes courants</td><td class="r-num">-${rn(cr.financier.chargesInteretsCC)}</td></tr>` : ''}
+        ${cr.financier.dotProvFinancieres ? `<tr><td style="padding-left:12px">Dotations aux provisions financières</td><td class="r-num">-${rn(cr.financier.dotProvFinancieres)}</td></tr>` : ''}
+        <tr class="r-total" style="background:${cr.resultatFinancier>=0?'#166534':'#991b1b'}"><td>RÉSULTAT FINANCIER</td><td class="r-num">${rn(cr.resultatFinancier)}</td></tr>
+
+        <tr class="r-total" style="background:${cr.resultatCourant>=0?'#166534':'#991b1b'};font-size:12px"><td>RÉSULTAT COURANT</td><td class="r-num">${rn(cr.resultatCourant)}</td></tr>
+
+        ${(cr.exceptionnel.produits || cr.exceptionnel.charges) ? `
+        <tr class="r-section"><td colspan="2">RÉSULTAT EXCEPTIONNEL</td></tr>
+        ${cr.exceptionnel.produits ? `<tr><td style="padding-left:12px">Produits exceptionnels</td><td class="r-num">${rn(cr.exceptionnel.produits)}</td></tr>` : ''}
+        ${cr.exceptionnel.charges ? `<tr><td style="padding-left:12px">Charges exceptionnelles</td><td class="r-num">-${rn(cr.exceptionnel.charges)}</td></tr>` : ''}
+        <tr class="r-total" style="background:${cr.exceptionnel.total>=0?'#166534':'#991b1b'}"><td>RÉSULTAT EXCEPTIONNEL</td><td class="r-num">${rn(cr.exceptionnel.total)}</td></tr>` : ''}
+
+        ${cr.is ? `<tr><td>Impôt sur les bénéfices</td><td class="r-num">-${rn(cr.is)}</td></tr>` : ''}
+
+        <tr class="r-total" style="background:${cr.resultatNet>=0?'#166534':'#991b1b'};font-size:13px;font-weight:800"><td>RÉSULTAT DE L'EXERCICE</td><td class="r-num">${rn(cr.resultatNet)}</td></tr>
+      </tbody>
+    </table>
+    ${rptFooter()}
+  </div>`;
 }
 
 function exportCR(fmt) {
-  const { charges, produits } = buildCR();
-  const chargesR = renderCRSide(charges, 'Charges', '#991b1b');
-  const produitsR = renderCRSide(produits, 'Produits', '#166534');
-  const resultat = produitsR.total - chargesR.total;
-  const resultatLabel = resultat >= 0 ? '✓ Bénéfice' : '⚠ Perte';
-  const resultatColor = resultat >= 0 ? '#166534' : '#991b1b';
-  if(fmt === 'excel') {
+  const cr = buildCRPCG();
+  if(fmt === 'pdf') {
+    printDoc(renderCRHTML(cr), `CR_${CURRENT_YEAR}`);
+  } else {
+    const rn = (v) => fmtEraw(Math.round(v*100)/100);
     let csv = '\uFEFF';
     csv += `COMPTE DE RÉSULTAT — SCI DES PRÊLES — Exercice ${CURRENT_YEAR}\n\n`;
-    csv += 'CHARGES;;PRODUITS\n';
-    csv += 'Poste;Montant;Poste;Montant\n';
-    const cRows = Object.entries(charges).sort().map(([k,v])=>[k,fmtEraw(v)]);
-    const pRows = Object.entries(produits).sort().map(([k,v])=>[k,fmtEraw(v)]);
-    const maxLen = Math.max(cRows.length, pRows.length);
-    for(let i=0;i<maxLen;i++){
-      const c=cRows[i]||['',''], p=pRows[i]||['',''];
-      csv += `${c[0]};${c[1]};${p[0]};${p[1]}\n`;
-    }
-    csv += `TOTAL CHARGES;${fmtEraw(chargesR.total)};TOTAL PRODUITS;${fmtEraw(produitsR.total)}\n`;
-    csv += `;;RÉSULTAT NET;${fmtEraw(resultat)}\n`;
+    csv += `Chiffre d'affaires (loyers);${rn(cr.produits.loyers)}\n`;
+    csv += `Locations saisonnières;${rn(cr.produits.locSaisonniere)}\n`;
+    csv += `Reprises d'amortissements et provisions;${rn(cr.produits.reprisesProv)}\n`;
+    csv += `TOTAL PRODUITS D'EXPLOITATION;${rn(cr.produits.total)}\n\n`;
+    csv += `Achats;${rn(cr.charges.achats.total)}\n`;
+    csv += `Services extérieurs;${rn(cr.charges.servExt.total)}\n`;
+    csv += `Autres services extérieurs;${rn(cr.charges.autresServExt.total)}\n`;
+    csv += `Impôts et taxes;${rn(cr.charges.impotsTaxes)}\n`;
+    csv += `Dotations aux amortissements et provisions;${rn(cr.charges.dotations.total)}\n`;
+    csv += `Reprises;${rn(-cr.charges.reprises)}\n`;
+    csv += `TOTAL CHARGES D'EXPLOITATION;${rn(cr.charges.total)}\n\n`;
+    csv += `RÉSULTAT D'EXPLOITATION;${rn(cr.resultatExploit)}\n\n`;
+    csv += `Produits financiers;${rn(cr.financier.produits)}\n`;
+    csv += `Intérêts des emprunts;${rn(-cr.financier.chargesInteretsEmprunts)}\n`;
+    csv += `Intérêts des comptes courants;${rn(-cr.financier.chargesInteretsCC)}\n`;
+    csv += `RÉSULTAT FINANCIER;${rn(cr.resultatFinancier)}\n\n`;
+    csv += `RÉSULTAT COURANT;${rn(cr.resultatCourant)}\n`;
+    csv += `RÉSULTAT EXCEPTIONNEL;${rn(cr.exceptionnel.total)}\n`;
+    csv += `Impôt sur les bénéfices;${rn(-cr.is)}\n`;
+    csv += `RÉSULTAT DE L'EXERCICE;${rn(cr.resultatNet)}\n`;
     dlCSV(csv, `CR_${CURRENT_YEAR}.csv`);
-  } else {
-    const html = `<div class="rpt">
-      ${rptHeader('Compte de Résultat', 'Charges / Produits')}
-      <div class="rpt-2col">
-        ${chargesR.html}
-        ${produitsR.html}
-      </div>
-      <div style="margin-top:14px;padding:10px 14px;background:${resultat>=0?'#dcfce7':'#fee2e2'};border-radius:4px;display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-weight:700;font-size:12px;color:${resultatColor};">${resultatLabel}</span>
-        <span style="font-family:monospace;font-size:14px;font-weight:700;color:${resultatColor};">${fmtEraw(Math.abs(resultat))} €</span>
-      </div>
-      ${rptFooter()}
-    </div>`;
-    printDoc(html, `CR_${CURRENT_YEAR}`);
   }
 }
 
