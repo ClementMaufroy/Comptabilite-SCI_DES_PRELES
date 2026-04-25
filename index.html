@@ -1148,8 +1148,8 @@ function saveDB() {
     }
   }, 800);
 }
-async function saveDBNow() {
-  if(EXERCISE_STATUS === 'closed') return;
+async function saveDBNow(force) {
+  if(EXERCISE_STATUS === 'closed' && !force) return;
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
@@ -2319,7 +2319,7 @@ async function clotureGoToNext() {
   DB._status = 'closed';
   EXERCISE_STATUS = 'closed';
   applyExerciseStatus();
-  await saveDBNow();
+  await saveDBNow(true); // force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
   document.getElementById('cloture-confirm').style.display = 'none';
   // Build the N+1 panel
   const nextYear = isTestExercise(CURRENT_YEAR) ? CURRENT_YEAR + '_N1' : (parseInt(CURRENT_YEAR) + 1);
