@@ -2727,15 +2727,14 @@ function buildBilanPCG() {
 
   // ACTIF IMMOBILISÉ
   const brut_terrain = s(['211']);
-  const brut_constructions = s(['213','214']);
-  // Amortissements : s(['281']) capture TOUS les 281xxx (créditeurs → valeur négative)
-  const amort_total = s(['281']); // négatif : -4624
+  const brut_constructions = s(['2131','2132','2133','2134','2136','2137','2139','214']); // 2135 = installations, exclus
+  // Règle PCG : amort compte 28xxx = compte brut 21xxx avec 8 en 2ème position
+  // ex: 213100 → 2813100, 213500 → 28135, 218400 → 2818400
   const brut_instal = s(['2135','2136','2138']);
   const brut_autresImmo = s(['218']);
-  // On utilise amort_total pour le net global des immobilisations corporelles
-  const amort_constructions = amort_total; // toute la déduction sur constructions+instal+autres
-  const amort_instal = 0;
-  const amort_autresImmo = 0;
+  const amort_constructions = s(['2813','2814']); // amort de 213x et 214x (créditeur = négatif)
+  const amort_instal = s(['28135','28136','28138']); // amort de 2135x, 2136x, 2138x (créditeur = négatif)
+  const amort_autresImmo = s(['2818']); // amort de 218x (créditeur = négatif)
   const immoFinanciere = s(['26','27']);
 
   const net_terrain = brut_terrain;
