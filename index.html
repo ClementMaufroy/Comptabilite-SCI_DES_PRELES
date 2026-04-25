@@ -2732,9 +2732,10 @@ function buildBilanPCG() {
   // ex: 213100 → 2813100, 213500 → 28135, 218400 → 2818400
   const brut_instal = s(['2135','2136','2138']);
   const brut_autresImmo = s(['218']);
-  const amort_constructions = s(['2813','2814']); // amort de 213x et 214x (créditeur = négatif)
-  const amort_instal = s(['28135','28136','28138']); // amort de 2135x, 2136x, 2138x (créditeur = négatif)
-  const amort_autresImmo = s(['2818']); // amort de 218x (créditeur = négatif)
+  // Mapping exact : 213100→281300, 213200→281310, 213300→281320, 213500→281350, 218400→281830
+  const amort_constructions = s(['281300','281310','281320']); // constructions
+  const amort_instal = s(['281350']); // installations générales
+  const amort_autresImmo = s(['281830']); // autres immo corpo
   const immoFinanciere = s(['26','27']);
 
   const net_terrain = brut_terrain;
