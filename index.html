@@ -2898,11 +2898,15 @@ function buildCRPCG() {
   const provChargesLoc = -s(['708']);
   const subventions = -s(['74']);
   const indemnAssurance = -s(['791']);
+  // Reprises : dans votre modèle elles apparaissent UNIQUEMENT en déduction des charges (pas en produit séparé)
   const reprises781 = -s(['781']);
   const reprisesFinanc786 = -s(['786']);
   const autresProduits = -s(['75']);
-  const totalCA = loyers + locSaisonniere + provChargesLoc + subventions + indemnAssurance;
-  const totalProduitsExploit = totalCA + reprises781;
+  // CA = loyers + loc saisonnière + refact charges locatives - rabais/remises
+  const rabaisRemises = s(['709']); // débiteur = déduction du CA
+  const totalCA = loyers + locSaisonniere + provChargesLoc + subventions + indemnAssurance - rabaisRemises;
+  // Total produits = CA uniquement (reprises déduites des charges, pas ajoutées aux produits)
+  const totalProduitsExploit = totalCA;
 
   // CHARGES : 6xx DÉBITEURS → solde positif
   // Achats
@@ -2965,7 +2969,7 @@ function buildCRPCG() {
   const resultatNet = resultatCourant + resultatExcept - is;
 
   return {
-    produits: { loyers, locSaisonniere, provChargesLoc, subventions, indemnAssurance, reprises781, totalCA, total: totalProduitsExploit },
+    produits: { loyers, locSaisonniere, provChargesLoc, subventions, indemnAssurance, rabaisRemises, reprises781, totalCA, total: totalProduitsExploit },
     charges: {
       achats: { eau, elec, matOutillage, total: totalAchats },
       servExt: { locLogiciel, entretienRep, assurances, total: totalServExt },
@@ -3016,6 +3020,7 @@ function renderCRHTML(cr) {
         ${row('Provisions pour charges locatives', cr.produits.provChargesLoc, 1)}
         ${row('Subventions', cr.produits.subventions, 1)}
         ${row('Indemnités d\'assurance', cr.produits.indemnAssurance, 1)}
+        ${cr.produits.rabaisRemises ? `<tr><td style="padding-left:12px">Rabais, remises, ristournes</td><td class="r-num r-neg">-${rn(cr.produits.rabaisRemises)}</td></tr>` : ''}
         ${cr.produits.reprises781 ? row('Reprises d\'amortissements et provisions', cr.produits.reprises781, 0) : ''}
         ${rowS('Total Produits d\'exploitation', cr.produits.total)}
 
