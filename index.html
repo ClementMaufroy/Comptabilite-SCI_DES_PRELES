@@ -2025,10 +2025,10 @@ async function loadKnownYears(excludeYear) {
       years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
     }
   }
-  // Scan localStorage
+  // Scan localStorage — exclude meta keys like test_flag_
   for(let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if(key && key.startsWith('ledger_')) {
+    if(key && key.startsWith('ledger_') && !key.startsWith('ledger_test_flag_')) {
       const suffix = key.replace('ledger_', '');
       if(!suffix || suffix.trim() === '' || suffix === 'NaN') continue;
       if(!years.includes(suffix)) years.push(suffix);
@@ -2806,21 +2806,22 @@ function dlCSV(csv, filename) {
 // ══════════════════════════════════════════════
 async function boot() {
   window._exerciseStatuses = {};
-  // Clean up any corrupted localStorage keys (empty suffix, NaN, non-year non-test values)
+  // Clean up any corrupted localStorage keys
+  const validKeys = [];
   for(let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i);
-    if(key && key.startsWith('ledger_') && !key.startsWith('ledger_test_flag_')) {
+    if(!key) continue;
+    if(key.startsWith('ledger_test_flag_')) continue; // keep test flags
+    if(key.startsWith('ledger_')) {
       const suffix = key.replace('ledger_', '');
       const isValid = suffix && suffix !== 'NaN' && suffix.trim() !== '' &&
         (isTestExercise(suffix) || (!isNaN(parseInt(suffix)) && parseInt(suffix) > 1900 && parseInt(suffix) < 2100));
-      if(!isValid) { localStorage.removeItem(key); }
-      else {
-        // Read status from localStorage data
-        try {
-          const d = JSON.parse(localStorage.getItem(key));
-          if(d && d._status) window._exerciseStatuses[suffix] = d._status;
-        } catch(e) {}
-      }
+      if(!isValid) { localStorage.removeItem(key); continue; }
+      validKeys.push(suffix);
+      try {
+        const d = JSON.parse(localStorage.getItem(key));
+        if(d && d._status) window._exerciseStatuses[suffix] = d._status;
+      } catch(e) {}
     }
   }
   CURRENT_YEAR = new Date().getFullYear();
