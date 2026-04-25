@@ -2061,21 +2061,17 @@ async function loadKnownYears(excludeYear) {
     for(const y of years) {
       if(String(y) === String(CURRENT_YEAR)) continue; // current already in memory
       try {
-        const cached = localStorage.getItem('ledger_' + y);
-        if(cached) {
-          const d = JSON.parse(cached);
-          if(d && d._status) window._exerciseStatuses[String(y)] = d._status;
-        }
-        // Always check Firebase for authoritative status
+        // Firebase has priority over localStorage for status
         const remote = await window._fbLoad(y);
         if(remote && remote._status) {
           window._exerciseStatuses[String(y)] = remote._status;
-          // Update localStorage too
+        } else {
+          // Fallback to localStorage only if Firebase has no data
+          const cached = localStorage.getItem('ledger_' + y);
           if(cached) {
             try {
               const d = JSON.parse(cached);
-              d._status = remote._status;
-              localStorage.setItem('ledger_' + y, JSON.stringify(d));
+              if(d && d._status) window._exerciseStatuses[String(y)] = d._status;
             } catch(e) {}
           }
         }
