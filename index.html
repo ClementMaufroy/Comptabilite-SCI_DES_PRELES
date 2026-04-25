@@ -2367,15 +2367,18 @@ async function clotureOpenExisting(year) {
 }
 async function clotureCreateNext() {
   const input = document.getElementById('cloture-next-name');
+  const isTestChecked = document.getElementById('cloture-next-istest')?.checked || false;
   const errEl = document.getElementById('cloture-next-err');
-  const trimmed = (input?.value||'').trim().toUpperCase();
+  const trimmed = (input?.value||'').trim();
   errEl.textContent = '';
   if(!trimmed) { errEl.textContent = 'Saisissez un nom.'; return; }
-  const isTest = isTestExercise(trimmed);
-  const label = isTest ? trimmed : parseInt(trimmed);
-  if(!isTest && isNaN(label)) { errEl.textContent = 'Nom invalide (ex: 2026, TEST).'; return; }
+  // Label: if test checkbox, use as-is uppercase; else use as-is (allow 2027, 2027V2, etc.)
+  const label = isTestChecked ? trimmed.toUpperCase() : trimmed;
+  if(!label) { errEl.textContent = 'Nom invalide.'; return; }
   const existing = Array.from(document.getElementById('ex-year-select').options).map(o => o.value);
-  if(existing.includes(String(label))) { errEl.textContent = 'Cet exercice existe déjà — utilisez le bouton "Ouvrir" ci-dessus.'; return; }
+  if(existing.map(v => v.toLowerCase()).includes(String(label).toLowerCase())) {
+    errEl.textContent = 'Cet exercice existe déjà — utilisez le bouton "Ouvrir" ci-dessus.'; return;
+  }
   const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
   const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
   const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
@@ -2385,6 +2388,7 @@ async function clotureCreateNext() {
   input.value = '';
   closeExerciseModal();
   CURRENT_YEAR = label;
+  setTestFlag(label, isTestChecked);
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   EXERCISE_STATUS = 'open';
   // Inject FNO écritures
@@ -2393,7 +2397,7 @@ async function clotureCreateNext() {
     DB.nextGlobalNum = fnoEcritures.length + 1;
     DB.journalNums['OD'] = fnoEcritures.length + 1;
   }
-  await saveDBNow();
+  await saveDBNow(true);
   await loadKnownYears();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
