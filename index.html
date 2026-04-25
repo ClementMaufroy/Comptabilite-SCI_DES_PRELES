@@ -2056,6 +2056,33 @@ async function loadKnownYears(excludeYear) {
     return parseInt(b) - parseInt(a);
   });
   years = [...new Set(years)];
+  // Load statuses for all known exercises from Firebase
+  if(window._fbReady && window._fbLoad) {
+    for(const y of years) {
+      if(String(y) === String(CURRENT_YEAR)) continue; // current already in memory
+      try {
+        const cached = localStorage.getItem('ledger_' + y);
+        if(cached) {
+          const d = JSON.parse(cached);
+          if(d && d._status) window._exerciseStatuses[String(y)] = d._status;
+        }
+        // Always check Firebase for authoritative status
+        const remote = await window._fbLoad(y);
+        if(remote && remote._status) {
+          window._exerciseStatuses[String(y)] = remote._status;
+          // Update localStorage too
+          if(cached) {
+            try {
+              const d = JSON.parse(cached);
+              d._status = remote._status;
+              localStorage.setItem('ledger_' + y, JSON.stringify(d));
+            } catch(e) {}
+          }
+        }
+      } catch(e) {}
+    }
+  }
+
   const sel = document.getElementById('ex-year-select');
   if(sel) sel.innerHTML = years.map(y =>
     `<option value="${y}" ${y === curStr ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' + y : y}</option>`
