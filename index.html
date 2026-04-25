@@ -2151,12 +2151,12 @@ function showExerciseModal() {
 
 function requestDeleteExercise(y, rowEl) {
   const isTest = isTestExercise(y);
-  // Remove any existing confirm band
-  const existing = document.getElementById('del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_'));
-  if(existing) { existing.remove(); return; }
+  const confId = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
+  const existing = document.getElementById(confId);
+  if(existing && existing.remove) { existing.remove(); return; }
 
   const conf = document.createElement('div');
-  conf.id = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
+  conf.id = confId;
   conf.style.cssText = 'padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);margin-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
 
   if(isTest) {
