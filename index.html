@@ -2777,7 +2777,7 @@ function buildBilanPCG() { // v2025-04-25
   const ccAssocies = -s(['455']);
 
   const dettesFinancieres = emprunts + depots + ccAssocies;
-  const fournisseurs = -s(['401','404','408']);
+  const fournisseurs = Math.max(0, -s(['401','404','408']));
   const autresDettes = -s(['419','447','486','487']);
   const dettesExploitation = fournisseurs + autresDettes;
   const totalDettes = dettesFinancieres + dettesExploitation;
