@@ -398,27 +398,32 @@ tbody tr:hover td { background: var(--bg3); }
   @page { margin: 15mm 12mm; size: A4; }
 }
 /* Report styles (used both in print and PDF preview) */
-.rpt { font-family: 'DM Sans', sans-serif; font-size: 11px; color: #111; background: #fff; padding: 0; max-width: 780px; margin: 0 auto; }
-.rpt-header { display:flex; align-items:center; gap:20px; padding-bottom:12px; border-bottom:2px solid #e84b0f; margin-bottom:16px; }
-.rpt-logo { width:60px; height:60px; object-fit:contain; }
+.rpt { font-family: 'DM Sans', Arial, sans-serif; font-size: 10.5px; color: #111; background: #fff; padding: 0; max-width: 800px; margin: 0 auto; }
+.rpt-header { display:flex; align-items:center; gap:16px; padding-bottom:10px; border-bottom:2px solid #111; margin-bottom:16px; }
+.rpt-logo { width:52px; height:52px; object-fit:contain; }
 .rpt-title-block { flex:1; }
-.rpt-company { font-size:16px; font-weight:700; color:#e84b0f; }
-.rpt-doc-title { font-size:13px; font-weight:600; color:#222; margin-top:2px; }
-.rpt-meta { font-size:10px; color:#666; margin-top:2px; }
-.rpt table { width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:12px; }
-.rpt th { background:#f5f5f5; padding:5px 8px; text-align:left; font-weight:600; font-size:9.5px; letter-spacing:0.04em; text-transform:uppercase; border-bottom:1px solid #ddd; }
-.rpt td { padding:4px 8px; border-bottom:1px solid #eee; }
+.rpt-company { font-size:15px; font-weight:700; color:#111; letter-spacing:0.02em; }
+.rpt-doc-title { font-size:12px; font-weight:600; color:#333; margin-top:2px; }
+.rpt-meta { font-size:9.5px; color:#666; margin-top:2px; }
+.rpt table { width:100%; border-collapse:collapse; font-size:10px; margin-bottom:0; }
+.rpt th { background:#fff; padding:4px 8px; text-align:left; font-weight:700; font-size:9px; letter-spacing:0.06em; text-transform:uppercase; border-top:1px solid #111; border-bottom:1px solid #111; color:#333; }
+.rpt th.r-num { text-align:right; }
+.rpt td { padding:3px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
 .rpt tr:last-child td { border-bottom:none; }
-.rpt .r-num { text-align:right; font-variant-numeric:tabular-nums; }
-.rpt .r-section { background:#f0f0f0; font-weight:700; font-size:10px; letter-spacing:0.03em; }
-.rpt .r-subsection { background:#f9f9f9; font-weight:600; font-style:italic; }
-.rpt .r-total { background:#e84b0f; color:#fff; font-weight:700; }
-.rpt .r-subtotal { background:#fde8df; font-weight:600; }
-.rpt .r-pos { color:#166534; font-weight:600; }
-.rpt .r-neg { color:#991b1b; font-weight:600; }
-.rpt-footer { font-size:9px; color:#999; border-top:1px solid #eee; padding-top:6px; margin-top:12px; text-align:center; }
-.rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-.rpt-col-title { font-size:11px; font-weight:700; color:#e84b0f; border-bottom:2px solid #e84b0f; padding-bottom:4px; margin-bottom:8px; letter-spacing:0.04em; }
+.rpt .r-num { text-align:right; font-variant-numeric:tabular-nums; font-family:'DM Mono', 'Courier New', monospace; }
+/* Sections principales */
+.rpt .r-section td { background:#fff; font-weight:700; font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:#111; border-top:1px solid #ccc; border-bottom:none; padding-top:10px; padding-bottom:2px; }
+/* Sous-sections (Immobilisations corpo, Dettes financières...) */
+.rpt .r-subsection td { background:#fff; font-weight:600; font-style:italic; color:#222; border-bottom:none; padding-top:4px; }
+/* Totaux intermédiaires */
+.rpt .r-subtotal td { background:#fff; font-weight:700; border-top:1px solid #111; border-bottom:1px solid #111; padding-top:4px; padding-bottom:4px; }
+/* Total final */
+.rpt .r-total td { background:#fff; font-weight:700; font-size:10.5px; border-top:2px solid #111; border-bottom:2px solid #111; padding-top:5px; padding-bottom:5px; letter-spacing:0.02em; }
+.rpt .r-pos { color:#166534; }
+.rpt .r-neg { color:#991b1b; }
+.rpt-footer { font-size:8.5px; color:#999; border-top:1px solid #ddd; padding-top:6px; margin-top:16px; text-align:center; }
+.rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.rpt-col-title { font-size:10px; font-weight:700; color:#111; border-bottom:2px solid #111; padding-bottom:4px; margin-bottom:0; letter-spacing:0.06em; text-transform:uppercase; }
 
 .ex-selector { display: flex; align-items: center; gap: 6px; }
 .ex-selector select {
@@ -1727,6 +1732,7 @@ function previewImport(){
     const parts=line.split(sep);
     if(parts.length<2) return;
     if(li===0&&isNaN(parseFloat(parts[1]))&&parts[2]&&isNaN(parseFloat(parts[2]))) return;
+    const origNum=parseInt(parts[0])||0;
     const date=parts[1]?.trim()||'';
     const compte=parts[2]?.trim()||'';
     const libC=parts[3]?.trim()||'';
@@ -1736,7 +1742,7 @@ function previewImport(){
     const credit=pn(parts[7]);
     const journal=(parts[8]?.trim()||'OD').toUpperCase();
     if(!compte&&!debit&&!credit) return;
-    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD'});
+    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD',_origNum:origNum});
   });
   if(!importParsed.length){toast('Aucune ligne valide','error');return;}
   const totD=importParsed.reduce((s,r)=>s+r.debit,0);
@@ -1757,7 +1763,7 @@ async function confirmImport(){
   redoStack = []; updUndoRedo();
   const t=Date.now();
   importParsed.forEach((r,i)=>{
-    DB.ecritures.push({id:crypto.randomUUID(),_io:t+i,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
+    DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
   });
   renum(); updateNavCounts();
   await saveDBNow(); // Sauvegarde immédiate (pas de debounce) pour éviter la perte de données au rechargement
@@ -3110,33 +3116,34 @@ function exportCR(fmt) {
 
 // ── PRINT / DOWNLOAD HELPERS ──
 function printDoc(html, title) {
-  // Open in new window for printing - avoids file:// protocol restrictions
   const win = window.open('', '_blank', 'width=900,height=700');
   if(!win) { toast('Autorisez les popups pour imprimer', 'error'); return; }
   win.document.write(`<!DOCTYPE html><html><head>
     <meta charset="UTF-8">
     <title>${title}</title>
     <style>
-      body { font-family: 'DM Sans', Arial, sans-serif; margin: 0; padding: 20px; color: #111; background: #fff; }
+      body { font-family: Arial, sans-serif; margin: 0; padding: 20px; color: #111; background: #fff; }
       @page { margin: 15mm 12mm; size: A4; }
-      .rpt { max-width: 780px; margin: 0 auto; }
-      .rpt-header { display:flex; align-items:center; gap:20px; padding-bottom:12px; border-bottom:2px solid #e84b0f; margin-bottom:16px; }
-      .rpt-logo { width:60px; height:60px; object-fit:contain; }
-      .rpt-company { font-size:16px; font-weight:700; color:#e84b0f; }
-      .rpt-doc-title { font-size:13px; font-weight:600; color:#222; margin-top:2px; }
-      .rpt-meta { font-size:10px; color:#666; margin-top:2px; }
-      table { width:100%; border-collapse:collapse; font-size:10.5px; margin-bottom:12px; }
-      th { background:#f5f5f5; padding:5px 8px; text-align:left; font-weight:600; font-size:9.5px; letter-spacing:0.04em; text-transform:uppercase; border-bottom:1px solid #ddd; }
-      td { padding:4px 8px; border-bottom:1px solid #eee; }
-      .r-num { text-align:right; font-variant-numeric:tabular-nums; }
-      .r-total { background:#e84b0f; color:#fff; font-weight:700; }
-      .r-subtotal { background:#fde8df; font-weight:600; }
-      .r-subsection { background:#f9f9f9; font-weight:600; font-style:italic; }
-      .r-pos { color:#166534; font-weight:600; }
-      .r-neg { color:#991b1b; font-weight:600; }
-      .rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-      .rpt-col-title { font-size:11px; font-weight:700; color:#e84b0f; border-bottom:2px solid #e84b0f; padding-bottom:4px; margin-bottom:8px; }
-      .rpt-footer { font-size:9px; color:#999; border-top:1px solid #eee; padding-top:6px; margin-top:12px; text-align:center; }
+      .rpt { max-width: 800px; margin: 0 auto; font-size: 10.5px; }
+      .rpt-header { display:flex; align-items:center; gap:16px; padding-bottom:10px; border-bottom:2px solid #111; margin-bottom:16px; }
+      .rpt-logo { width:52px; height:52px; object-fit:contain; }
+      .rpt-company { font-size:15px; font-weight:700; color:#111; letter-spacing:0.02em; }
+      .rpt-doc-title { font-size:12px; font-weight:600; color:#333; margin-top:2px; }
+      .rpt-meta { font-size:9.5px; color:#666; margin-top:2px; }
+      table { width:100%; border-collapse:collapse; font-size:10px; }
+      th { background:#fff; padding:4px 8px; text-align:left; font-weight:700; font-size:9px; letter-spacing:0.06em; text-transform:uppercase; border-top:1px solid #111; border-bottom:1px solid #111; color:#333; }
+      th.r-num { text-align:right; }
+      td { padding:3px 8px; border-bottom:1px solid #e8e8e8; vertical-align:middle; }
+      .r-num { text-align:right; font-variant-numeric:tabular-nums; font-family:'Courier New', monospace; }
+      .r-section td { background:#fff; font-weight:700; font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:#111; border-top:1px solid #ccc; border-bottom:none; padding-top:10px; padding-bottom:2px; }
+      .r-subsection td { background:#fff; font-weight:600; font-style:italic; color:#222; border-bottom:none; padding-top:4px; }
+      .r-subtotal td { background:#fff; font-weight:700; border-top:1px solid #111; border-bottom:1px solid #111; padding-top:4px; padding-bottom:4px; }
+      .r-total td { background:#fff; font-weight:700; font-size:10.5px; border-top:2px solid #111; border-bottom:2px solid #111; padding-top:5px; padding-bottom:5px; letter-spacing:0.02em; }
+      .r-pos { color:#166534; }
+      .r-neg { color:#991b1b; }
+      .rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+      .rpt-col-title { font-size:10px; font-weight:700; color:#111; border-bottom:2px solid #111; padding-bottom:4px; margin-bottom:0; letter-spacing:0.06em; text-transform:uppercase; }
+      .rpt-footer { font-size:8.5px; color:#999; border-top:1px solid #ddd; padding-top:6px; margin-top:16px; text-align:center; }
     </style>
   </head><body>${html}</body></html>`);
   win.document.close();
