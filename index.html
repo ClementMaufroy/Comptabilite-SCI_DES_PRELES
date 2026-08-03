@@ -1217,28 +1217,12 @@ function fmtN(n) { return n===0?'':fmt(n); }
 function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(',','.').replace(/\s/g,''))||0; }
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
-function renum() {
-  function normDate(d) {
-    if(!d) return '';
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
-    if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
-      const [dd,mm,yyyy] = d.split('/');
-      return `${yyyy}-${mm}-${dd}`;
-    }
-    return d;
-  }
+function renum() { // BUILD-20260803-v4
+  // Trier par ordre de saisie (_io) uniquement — pas par date
+  const sorted=[...DB.ecritures].sort((a,b) => (a._io||0) - (b._io||0));
 
-  const sorted=[...DB.ecritures].sort((a,b)=>{
-    const da = normDate(a.date), db = normDate(b.date);
-    if(da < db) return -1;
-    if(da > db) return 1;
-    return (a._io||0) - (b._io||0);
-  });
-
-  // Trouver le max des numéros de groupe importés
   const maxImportedNum = sorted.reduce((m, e) => e._origGroup ? Math.max(m, e._origGroup) : m, 0);
-  let manualCounter = maxImportedNum; // les manuelles partiront après
-
+  let manualCounter = maxImportedNum;
   let lastIo = null;
   let currentNum = 0;
   const jN={VE:0,HA:0,IMMO:0,OD:0,TRESO:0};
