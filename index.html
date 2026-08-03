@@ -1156,6 +1156,12 @@ async function loadDB() {
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { const r = localStorage.getItem(lsKey); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
 }
+async function loadDBAndRenum() {
+  await loadDB();
+  renum();
+  // Sauvegarder après renum pour consolider les numéros et dates normalisées
+  await saveDBNow();
+}
 function startLiveSync() {
   if(_unsubscribeListen) { try { _unsubscribeListen(); } catch(e) {} }
   if(!window._fbReady || !window._fbListen) return;
@@ -1212,24 +1218,36 @@ function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(','
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
 function renum() {
-  // Trier par date, puis par _io (même _io = même écriture)
+  // Normalise date en YYYY-MM-DD pour tri correct
+  function normDate(d) {
+    if(!d) return '';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; // déjà YYYY-MM-DD
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) { // DD/MM/YYYY
+      const [dd,mm,yyyy] = d.split('/');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    if(/^\d{2}-[a-zA-Zéû]+$/.test(d)) { // DD-mon (sans année)
+      return d; // garder tel quel, sera trié ensemble
+    }
+    return d;
+  }
+
   const sorted=[...DB.ecritures].sort((a,b)=>{
-    if(a.date<b.date) return -1;
-    if(a.date>b.date) return 1;
+    const da = normDate(a.date), db = normDate(b.date);
+    if(da < db) return -1;
+    if(da > db) return 1;
     return (a._io||0) - (b._io||0);
   });
 
-  // Attribuer un numéro d'écriture unique par groupe de lignes ayant le même _io
-  // (toutes les lignes d'une même écriture partagent le même _io)
+  // Attribuer numéros : même _io = même écriture = même numéro
   let currentNum = 0;
   let lastIo = null;
   const jN={VE:0,HA:0,IMMO:0,OD:0,TRESO:0};
 
   sorted.forEach((e) => {
     if(e._io !== lastIo) {
-      // Nouvelle écriture
       if(e._origGroup) {
-        currentNum = e._origGroup; // Conserver le numéro original pour les imports
+        currentNum = e._origGroup;
       } else {
         currentNum++;
       }
@@ -1768,11 +1786,15 @@ function previewImport(){
 
   function parseDate(raw) {
     raw = raw.trim();
-    if(raw.includes('/')) return raw; // already DD/MM/YYYY
-    if(raw.includes('-')) {
+    if(/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw; // already YYYY-MM-DD
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) { // DD/MM/YYYY → YYYY-MM-DD
+      const [dd,mm,yyyy] = raw.split('/');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+    if(raw.includes('-')) { // DD-mon format
       const [day, mon] = raw.split('-');
       const m = MONTHS[mon.toLowerCase()] || '01';
-      return `${day.padStart(2,'0')}/${m}/${csvYear}`;
+      return `${csvYear}-${m}-${day.padStart(2,'0')}`;
     }
     return raw;
   }
@@ -3256,8 +3278,9 @@ async function boot() {
   await loadDB();
   initDefaults();
   EXERCISE_STATUS = DB._status || 'open';
-  saveDB();
-  fillYears(); initSaisie(); upDl(); renum(); updateNavCounts();
+  renum(); // normalise dates et numéros
+  await saveDBNow(); // persiste les corrections dans Firebase
+  fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
   checkMonthlyExport();
