@@ -1218,16 +1218,12 @@ function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(','
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
 function renum() {
-  // Normalise date en YYYY-MM-DD pour tri correct
   function normDate(d) {
     if(!d) return '';
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d; // déjà YYYY-MM-DD
-    if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) { // DD/MM/YYYY
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
       const [dd,mm,yyyy] = d.split('/');
       return `${yyyy}-${mm}-${dd}`;
-    }
-    if(/^\d{2}-[a-zA-Zéû]+$/.test(d)) { // DD-mon (sans année)
-      return d; // garder tel quel, sera trié ensemble
     }
     return d;
   }
@@ -1239,9 +1235,12 @@ function renum() {
     return (a._io||0) - (b._io||0);
   });
 
-  // Attribuer numéros : même _io = même écriture = même numéro
-  let currentNum = 0;
+  // Trouver le max des numéros de groupe importés
+  const maxImportedNum = sorted.reduce((m, e) => e._origGroup ? Math.max(m, e._origGroup) : m, 0);
+  let manualCounter = maxImportedNum; // les manuelles partiront après
+
   let lastIo = null;
+  let currentNum = 0;
   const jN={VE:0,HA:0,IMMO:0,OD:0,TRESO:0};
 
   sorted.forEach((e) => {
@@ -1249,7 +1248,8 @@ function renum() {
       if(e._origGroup) {
         currentNum = e._origGroup;
       } else {
-        currentNum++;
+        manualCounter++;
+        currentNum = manualCounter;
       }
       lastIo = e._io;
     }
@@ -1259,7 +1259,7 @@ function renum() {
   });
 
   DB.ecritures = sorted;
-  DB.nextGlobalNum = currentNum + 1;
+  DB.nextGlobalNum = Math.max(maxImportedNum, manualCounter) + 1;
   DB.journalNums = {};
   Object.keys(jN).forEach(j => DB.journalNums[j] = (jN[j]||0) + 1);
 }
