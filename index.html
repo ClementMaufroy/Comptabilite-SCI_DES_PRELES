@@ -1737,37 +1737,79 @@ function previewImport(){
   const text=document.getElementById('import-text').value.trim();
   if(!text){toast('Aucune donnée','error');return;}
   const lines=text.split('\n').filter(l=>l.trim());
-  // Auto-detect separator from first line
   const firstLine=lines[0]||'';
   const tabCount=(firstLine.match(/\t/g)||[]).length;
   const semiCount=(firstLine.match(/;/g)||[]).length;
   const sep = tabCount>=semiCount ? '\t' : ';';
+
+  // Detect format by checking date column
+  const sampleLine = lines[1] || lines[0] || '';
+  const sampleParts = sampleLine.split(sep);
+  const sampleDate = sampleParts[1]?.trim() || '';
+  const isNewFormat = sampleDate.includes('-') && !sampleDate.includes('/'); // '01-janv' format
+
+  // Month mapping for new format
+  const MONTHS = {'janv':'01','févr':'02','mars':'03','avr':'04','mai':'05','juin':'06',
+                  'juil':'07','août':'08','sept':'09','oct':'10','nov':'11','déc':'12'};
+
+  // Detect year from CURRENT_YEAR
+  const csvYear = String(CURRENT_YEAR).length === 4 ? String(CURRENT_YEAR) : String(new Date().getFullYear());
+
+  function parseDate(raw) {
+    raw = raw.trim();
+    if(raw.includes('/')) return raw; // already DD/MM/YYYY
+    if(raw.includes('-')) {
+      const [day, mon] = raw.split('-');
+      const m = MONTHS[mon.toLowerCase()] || '01';
+      return `${day.padStart(2,'0')}/${m}/${csvYear}`;
+    }
+    return raw;
+  }
+
+  function parseAmount(s) {
+    if(!s) return 0;
+    s = s.replace(/€/g,'').replace(/\s/g,'').replace(/\xa0/g,'').replace(',','.').trim();
+    const n = parseFloat(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function parseJournal(s) {
+    if(!s) return 'OD';
+    s = s.trim().toUpperCase();
+    // Extract journal code from refs like 'OD1BG ouverture', 'VE12', etc.
+    const match = s.match(/^(VE|HA|IMMO|OD|TRESO)/);
+    if(match) return match[1];
+    return 'OD';
+  }
+
   importParsed=[];
   lines.forEach((line,li)=>{
     const parts=line.split(sep);
     if(parts.length<2) return;
-    if(li===0&&isNaN(parseFloat(parts[1]))&&parts[2]&&isNaN(parseFloat(parts[2]))) return;
-    const origNum=parseInt(parts[0])||0;
-    const date=parts[1]?.trim()||'';
-    const compte=parts[2]?.trim()||'';
-    const libC=parts[3]?.trim()||'';
-    const libE=parts[4]?.trim()||'';
-    const numDoc=parts[5]?.trim()||'';
-    const debit=pn(parts[6]);
-    const credit=pn(parts[7]);
-    const journal=(parts[8]?.trim()||'OD').toUpperCase();
+    // Skip header line
+    if(li===0 && isNaN(parseFloat(parts[0]))) return;
+    const origNum = parseInt(parts[0])||0;
+    const date = parseDate(parts[1]||'');
+    const compte = parts[2]?.trim()||'';
+    const libC = parts[3]?.trim()||'';
+    const libE = parts[4]?.trim()||'';
+    const numDoc = parts[5]?.trim()||'';
+    const debit = parseAmount(parts[6]);
+    const credit = parseAmount(parts[7]);
+    const journal = parseJournal(parts[8]);
     if(!compte&&!debit&&!credit) return;
-    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD',_origNum:origNum,_origGroup:origNum});
+    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal,_origNum:origNum,_origGroup:origNum});
   });
+
   if(!importParsed.length){toast('Aucune ligne valide','error');return;}
   const totD=importParsed.reduce((s,r)=>s+r.debit,0);
   const totC=importParsed.reduce((s,r)=>s+r.credit,0);
   document.getElementById('import-preview').innerHTML=`
     <div class="alert alert-success" style="margin-bottom:8px;">${importParsed.length} ligne(s) détectée(s) — D: ${fmt(totD)} € / C: ${fmt(totC)} €</div>
     <div class="tbl-wrap" style="max-height:160px;overflow:auto;font-size:11px;">
-      <table><thead><tr><th>DATE</th><th>COMPTE</th><th>LIBELLÉ COMPTE</th><th>LIBELLÉ ÉCRITURE</th><th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th>JNL</th></tr></thead>
-      <tbody>${importParsed.slice(0,20).map(r=>`<tr><td style="font-family:var(--mono)">${r.date}</td><td style="font-family:var(--mono);color:var(--cyan)">${r.compte}</td><td>${r.libelleCompte}</td><td>${r.libelleEcriture}</td><td class="td-num c-debit">${fmtN(r.debit)}</td><td class="td-num c-credit">${fmtN(r.credit)}</td><td><span class="jbadge j-${r.journal}">${r.journal}</span></td></tr>`).join('')}
-      ${importParsed.length>20?`<tr><td colspan="7" style="text-align:center;color:var(--text2);font-family:var(--mono);font-size:10px;">… +${importParsed.length-20} ligne(s)</td></tr>`:''}
+      <table><thead><tr><th>N°</th><th>DATE</th><th>COMPTE</th><th>LIBELLÉ COMPTE</th><th>LIBELLÉ ÉCRITURE</th><th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th>JNL</th></tr></thead>
+      <tbody>${importParsed.slice(0,20).map(r=>`<tr><td style="font-family:var(--mono)">${r._origGroup}</td><td style="font-family:var(--mono)">${r.date}</td><td style="font-family:var(--mono);color:var(--cyan)">${r.compte}</td><td>${r.libelleCompte}</td><td>${r.libelleEcriture}</td><td class="td-num c-debit">${fmtN(r.debit)}</td><td class="td-num c-credit">${fmtN(r.credit)}</td><td><span class="jbadge j-${r.journal}">${r.journal}</span></td></tr>`).join('')}
+      ${importParsed.length>20?`<tr><td colspan="8" style="text-align:center;color:var(--text2);font-family:var(--mono);font-size:10px;">… +${importParsed.length-20} ligne(s)</td></tr>`:''}
       </tbody></table>
     </div>`;
   document.getElementById('btn-confirm-import').disabled=false;
