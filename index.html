@@ -1212,9 +1212,24 @@ function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(','
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
 function renum() {
-  const sorted=[...DB.ecritures].sort((a,b)=>{ if(a.date<b.date)return -1; if(a.date>b.date)return 1; return a._io-b._io; });
+  // Trier par date, puis par numéro de groupe original CSV (_io), puis par timestamp
+  const sorted=[...DB.ecritures].sort((a,b)=>{
+    if(a.date<b.date) return -1;
+    if(a.date>b.date) return 1;
+    return (a._io||0) - (b._io||0);
+  });
   const jN={VE:0,HA:0,IMMO:0,OD:0,TRESO:0};
-  sorted.forEach((e,i)=>{ e.num=i+1; jN[e.journal]=(jN[e.journal]||0)+1; e.numJ=jN[e.journal]; });
+  sorted.forEach((e,i)=>{
+    // Pour les écritures importées, conserver le numéro de groupe original
+    if(e._origGroup) {
+      e.num = e._origGroup;
+    } else {
+      e.num = i+1;
+    }
+    jN[e.journal]=(jN[e.journal]||0)+1;
+    e.numJ=jN[e.journal];
+  });
+  DB.ecritures=sorted;
   DB.nextGlobalNum=sorted.length+1;
   DB.journalNums={};
   Object.keys(jN).forEach(j=>DB.journalNums[j]=(jN[j]||0)+1);
@@ -1742,7 +1757,7 @@ function previewImport(){
     const credit=pn(parts[7]);
     const journal=(parts[8]?.trim()||'OD').toUpperCase();
     if(!compte&&!debit&&!credit) return;
-    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD',_origNum:origNum});
+    importParsed.push({date,compte,libelleCompte:libC,libelleEcriture:libE,numDoc,debit,credit,journal:['VE','HA','IMMO','OD','TRESO'].includes(journal)?journal:'OD',_origNum:origNum,_origGroup:origNum});
   });
   if(!importParsed.length){toast('Aucune ligne valide','error');return;}
   const totD=importParsed.reduce((s,r)=>s+r.debit,0);
@@ -1763,7 +1778,7 @@ async function confirmImport(){
   redoStack = []; updUndoRedo();
   const t=Date.now();
   importParsed.forEach((r,i)=>{
-    DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
+    DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,_origGroup:r._origGroup||0,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
   });
   renum(); updateNavCounts();
   await saveDBNow(); // Sauvegarde immédiate (pas de debounce) pour éviter la perte de données au rechargement
