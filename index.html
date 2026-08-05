@@ -1176,7 +1176,14 @@ async function saveDBNow(force) {
 async function loadDB() {
   if(window._fbReady && window._fbLoad) {
     const remote = await window._fbLoad(CURRENT_YEAR);
-    if(remote) { Object.assign(DB, remote); return; }
+    if(remote) {
+      Object.assign(DB, remote);
+      // Sync _isTest flag to localStorage cache
+      if(DB._isTest !== undefined) {
+        localStorage.setItem('ledger_test_flag_' + String(CURRENT_YEAR), DB._isTest ? '1' : '0');
+      }
+      return;
+    }
   }
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { const r = localStorage.getItem(lsKey); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
@@ -2184,7 +2191,7 @@ function previewImport(){
     <div class="alert alert-success" style="margin-bottom:8px;">${importParsed.length} ligne(s) détectée(s) — D: ${fmt(totD)} € / C: ${fmt(totC)} €</div>
     <div class="tbl-wrap" style="max-height:160px;overflow:auto;font-size:11px;">
       <table><thead><tr><th>N°</th><th>DATE</th><th>COMPTE</th><th>LIBELLÉ COMPTE</th><th>LIBELLÉ ÉCRITURE</th><th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th>JNL</th></tr></thead>
-      <tbody>${importParsed.slice(0,20).map(r=>`<tr><td style="font-family:var(--mono)">${r._origGroup}</td><td style="font-family:var(--mono)">${r.date}</td><td style="font-family:var(--mono);color:var(--cyan)">${r.compte}</td><td>${r.libelleCompte}</td><td>${r.libelleEcriture}</td><td class="td-num c-debit">${fmtN(r.debit)}</td><td class="td-num c-credit">${fmtN(r.credit)}</td><td><span class="jbadge j-${r.journal}">${r.journal}</span></td></tr>`).join('')}
+      <tbody>${importParsed.slice(0,20).map(r=>`<tr><td style="font-family:var(--mono)">${r._origGroup}</td><td style="font-family:var(--mono)">${fmtDateGL(r.date)}</td><td style="font-family:var(--mono);color:var(--cyan)">${r.compte}</td><td>${r.libelleCompte}</td><td>${r.libelleEcriture}</td><td class="td-num c-debit">${fmtN(r.debit)}</td><td class="td-num c-credit">${fmtN(r.credit)}</td><td><span class="jbadge j-${r.journal}">${r.journal}</span></td></tr>`).join('')}
       ${importParsed.length>20?`<tr><td colspan="8" style="text-align:center;color:var(--text2);font-family:var(--mono);font-size:10px;">… +${importParsed.length-20} ligne(s)</td></tr>`:''}
       </tbody></table>
     </div>`;
@@ -2429,14 +2436,25 @@ const ADMIN_PASSWORD = 'admin-scipreles'; // change this to unlock closed exerci
 
 // Is this a test exercise?
 function isTestExercise(y) {
-  // Check stored flag first, fallback to name-based for legacy data
+  // 1. Si c'est l'exercice courant, lire depuis DB (Firebase)
+  if(String(y) === String(CURRENT_YEAR) && DB._isTest !== undefined) return !!DB._isTest;
+  // 2. Lire depuis le cache mémoire (_exerciseStatuses)
+  if(window._exerciseStatuses?.[String(y)]?._isTest !== undefined) return !!window._exerciseStatuses[String(y)]._isTest;
+  // 3. Fallback localStorage
   const key = 'ledger_test_flag_' + String(y);
   const flag = localStorage.getItem(key);
   if(flag !== null) return flag === '1';
+  // 4. Fallback nom (legacy)
   return String(y).toUpperCase().startsWith('TEST');
 }
+
 function setTestFlag(y, isTest) {
+  // Stocker dans localStorage comme cache local
   localStorage.setItem('ledger_test_flag_' + String(y), isTest ? '1' : '0');
+  // Si c'est l'exercice courant, mettre à jour DB pour que Firebase le persiste
+  if(String(y) === String(CURRENT_YEAR)) {
+    DB._isTest = isTest ? true : false;
+  }
 }
 
 function applyExerciseStatus() {
@@ -2516,6 +2534,15 @@ async function loadKnownYears(excludeYear) {
         const remote = await window._fbLoad(y);
         if(remote && remote._status) {
           window._exerciseStatuses[String(y)] = remote._status;
+        }
+        if(remote && remote._isTest !== undefined) {
+          if(!window._exerciseStatuses[String(y)]) window._exerciseStatuses[String(y)] = {};
+          if(typeof window._exerciseStatuses[String(y)] === 'string') {
+            const st = window._exerciseStatuses[String(y)];
+            window._exerciseStatuses[String(y)] = {_status: st};
+          }
+          window._exerciseStatuses[String(y)]._isTest = remote._isTest;
+          localStorage.setItem('ledger_test_flag_' + String(y), remote._isTest ? '1' : '0');
         } else {
           // Fallback to localStorage only if Firebase has no data
           const cached = localStorage.getItem('ledger_' + y);
@@ -2630,10 +2657,12 @@ function showExerciseModal() {
 }
 
 function getExerciseStatus(y) {
-  if(window._exerciseStatuses?.[String(y)]) return window._exerciseStatuses[String(y)];
+  const val = window._exerciseStatuses?.[String(y)];
+  if(typeof val === 'string') return val;
+  if(val && typeof val === 'object' && val._status) return val._status;
   try {
     const d = JSON.parse(localStorage.getItem('ledger_' + y));
-    if(d && d._status) { window._exerciseStatuses[String(y)] = d._status; return d._status; }
+    if(d && d._status) return d._status;
   } catch(e) {}
   return 'open';
 }
@@ -3442,7 +3471,7 @@ function exportBilan(fmt) {
 function showBilanN1Modal() {
   const years = Array.from(document.getElementById('ex-year-select').options)
     .map(o => o.value)
-    .filter(y => y !== String(CURRENT_YEAR) && !isTestExercise(y))
+    .filter(y => y !== String(CURRENT_YEAR))
     .sort((a,b) => b.localeCompare(a));
   const existing = document.getElementById('bilan-n1-modal');
   if(existing) existing.remove();
