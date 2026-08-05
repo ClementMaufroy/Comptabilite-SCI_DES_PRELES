@@ -2083,7 +2083,28 @@ function closeImportModal(){
   document.getElementById('btn-confirm-import').disabled=true;
   importParsed=[];
 }
-function loadImportFile(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{document.getElementById('import-text').value=e.target.result;};r.readAsText(f,'UTF-8');}
+function loadImportFile(input){
+  const f=input.files[0]; if(!f)return;
+  // Try UTF-8 first, fallback to Windows-1252 for files from French accounting software
+  const r=new FileReader();
+  r.onload=e=>{
+    const bytes=new Uint8Array(e.target.result);
+    // Try UTF-8 decode
+    let text='';
+    try {
+      const dec=new TextDecoder('utf-8',{fatal:true});
+      text=dec.decode(bytes);
+    } catch(err) {
+      // Fallback to Windows-1252 (common for French Windows exports)
+      try { text=new TextDecoder('windows-1252').decode(bytes); }
+      catch(e2) { text=new TextDecoder('latin-1').decode(bytes); }
+    }
+    // Remove BOM if present
+    if(text.charCodeAt(0)===0xFEFF) text=text.slice(1);
+    document.getElementById('import-text').value=text;
+  };
+  r.readAsArrayBuffer(f);
+}
 function previewImport(){
   const text=document.getElementById('import-text').value.trim();
   if(!text){toast('Aucune donnée','error');return;}
@@ -3166,143 +3187,210 @@ function getSoldesComptes(comptes) {
 }
 
 // ── BILAN PCG ──
-function buildBilanPCG() { // v2025-04-25
+function buildBilanPCG() {
   const s = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
+  const rnd = (v) => Math.round(v * 100) / 100;
 
-  // ACTIF IMMOBILISÉ
-  const brut_terrain = s(['211']);
-  const brut_constructions = s(['2131','2132','2133','2134','2136','2137','2139','214']); // 2135 = installations, exclus
-  // Règle PCG : amort compte 28xxx = compte brut 21xxx avec 8 en 2ème position
-  // ex: 213100 → 2813100, 213500 → 28135, 218400 → 2818400
-  const brut_instal = s(['2135','2136','2138']);
-  const brut_autresImmo = s(['218']);
-  // Mapping exact : 213100→281300, 213200→281310, 213300→281320, 213500→281350, 218400→281830
-  const amort_constructions = s(['281300','281310','281320']); // constructions
-  const amort_instal = s(['281350']); // installations générales
-  const amort_autresImmo = s(['281830']); // autres immo corpo
-  const immoFinanciere = s(['26','27']);
+  // ── ACTIF IMMOBILISÉ ──
+  // Bruts (débiteurs → positifs)
+  const brut_terrain = rnd(s(['211']));
+  const brut_constructions = rnd(s(['2131','2132','2133','2134','2136','2137','2139','214']));
+  const brut_instal = rnd(s(['2135','2136','2138']));
+  const brut_autresImmo = rnd(s(['218']));
+  const brut_immoFinanciere = rnd(s(['26','27']));
+  const brut_immoCorpo = rnd(brut_terrain + brut_constructions + brut_instal + brut_autresImmo);
+  const brut_total = rnd(brut_immoCorpo + brut_immoFinanciere);
 
+  // Amortissements (créditeurs → soldes négatifs → on prend la valeur absolue)
+  const amort_constructions = rnd(Math.abs(s(['281300','281310','281320'])));
+  const amort_instal = rnd(Math.abs(s(['281350'])));
+  const amort_autresImmo = rnd(Math.abs(s(['281830'])));
+  const amort_immoCorpo = rnd(amort_constructions + amort_instal + amort_autresImmo);
+  const amort_total = amort_immoCorpo;
+
+  // Nets
   const net_terrain = brut_terrain;
-  const net_constructions = brut_constructions + amort_constructions;
-  const net_instal = brut_instal + amort_instal;
-  const net_autresImmo = brut_autresImmo + amort_autresImmo;
-  const totalActifImmobilise = net_terrain + net_constructions + net_instal + net_autresImmo + immoFinanciere;
+  const net_constructions = rnd(brut_constructions - amort_constructions);
+  const net_instal = rnd(brut_instal - amort_instal);
+  const net_autresImmo = rnd(brut_autresImmo - amort_autresImmo);
+  const net_immoCorpo = rnd(net_terrain + net_constructions + net_instal + net_autresImmo);
+  const net_immoFinanciere = brut_immoFinanciere;
+  const net_immoTotal = rnd(net_immoCorpo + net_immoFinanciere);
 
-  // ACTIF CIRCULANT
-  const clients = s(['411','412','413','416','418']);
-  const autresCreances = s(['409','44','46','47','48']);
-  const banque = s(['512','514','515','516','517','518','53']);
-  const totalActifCirculant = clients + autresCreances + banque;
-  const totalActif = totalActifImmobilise + totalActifCirculant;
+  // ── ACTIF CIRCULANT ──
+  const brut_clients = rnd(s(['411','412','413','416','418']));
+  const fournisseursRaw = s(['401','404','408']); // positif si débiteur (avoir fournisseur)
+  const avanceFournisseurs = rnd(Math.max(0, fournisseursRaw)); // solde débiteur → créance actif
+  const brut_autresCreances = rnd(s(['409','44','46','47','48']) + avanceFournisseurs);
+  const brut_creances = rnd(brut_clients + brut_autresCreances);
+  const brut_banque = rnd(s(['512','514','515','516','517','518','53']));
+  const brut_circulant = rnd(brut_creances + brut_banque);
+  const net_clients = brut_clients;
+  const net_autresCreances = brut_autresCreances;
+  const net_creances = brut_creances;
+  const net_banque = brut_banque;
+  const net_circulant = brut_circulant;
 
-  // PASSIF
-  const capital = -s(['101','102','103']);
-  const reserves = -s(['106']);
-  const reportCredit = -s(['110']);
-  const reportDebit = -s(['119']);
-  const reportANouveau = reportCredit + reportDebit;
-  const resultatNet = -s(['120','129']);
-  const totalCapitauxPropres = capital + reserves + reportANouveau + resultatNet;
+  const brut_total_actif = rnd(brut_total + brut_circulant);
+  const amort_total_actif = amort_total;
+  const net_total_actif = rnd(net_immoTotal + net_circulant);
 
-  const provisions = -s(['15']);
-  const emprunts = -s(['164']);
-  const depots = -s(['165']);
+  // ── PASSIF ──
+  const capital = rnd(-s(['101','102','103']));
+  const primesCapital = rnd(-s(['104','105']));
+  const reserves = rnd(-s(['106']));
+  const reportANouveau = rnd(-s(['110']) + (-s(['119'])));
+  const resultatNet = rnd(-s(['120','129']));
+  const totalCapitauxPropres = rnd(capital + primesCapital + reserves + reportANouveau + resultatNet);
 
-  // CC associés — par associé pour le détail
+  const provisions_charges = rnd(-s(['15']));
+  const totalProvisions = provisions_charges;
+
+  const emprunts = rnd(-s(['164']));
+  const depots = rnd(-s(['165']));
+
+  // CC associés par associé
   const ccMap = {};
   DB.ecritures.forEach(e => {
     const cp = String(e.compte);
     if(cp.startsWith('455')) {
       if(!ccMap[cp]) ccMap[cp] = {lib: e.libelleCompte||cp, solde:0};
-      ccMap[cp].solde += e.credit - e.debit; // créditeur = positif au passif
+      ccMap[cp].solde += (e.credit||0) - (e.debit||0);
     }
   });
-  const ccDetail = Object.entries(ccMap).sort((a,b)=>a[0].localeCompare(b[0])).map(([cp,v])=>({compte:cp,lib:v.lib,montant:v.solde}));
-  const ccAssocies = -s(['455']);
+  const ccDetail = Object.entries(ccMap).sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(([cp,v])=>({compte:cp, lib:v.lib, montant:rnd(v.solde)}));
+  const ccTotal = rnd(ccDetail.reduce((sum,cc)=>sum+cc.montant, 0));
+  const dettesFinancieres = rnd(emprunts + depots + ccTotal);
 
-  const dettesFinancieres = emprunts + depots + ccAssocies;
-  const fournisseurs = Math.max(0, -s(['401','404','408']));
-  const autresDettes = -s(['419','447','486','487']);
-  const dettesExploitation = fournisseurs + autresDettes;
-  const totalDettes = dettesFinancieres + dettesExploitation;
-  const totalPassif = totalCapitauxPropres + provisions + totalDettes;
+  // Fournisseurs : solde créditeur = dette passif ; solde débiteur = déjà dans actif circulant
+  const fournisseurs = rnd(Math.max(0, -fournisseursRaw)); // créditeur → passif
+  const autresDettesExploit = rnd(-s(['419','447','486','487']));
+  const dettesExploitation = rnd(fournisseurs + autresDettesExploit);
+  const totalDettes = rnd(dettesFinancieres + dettesExploitation);
+  const totalPassif = rnd(totalCapitauxPropres + totalProvisions + totalDettes);
 
   return {
     actif: {
       immobilise: {
-        brut_terrain, brut_constructions, amort_constructions,
-        brut_instal, amort_instal, brut_autresImmo, amort_autresImmo,
-        net_terrain, net_constructions, net_instal, net_autresImmo, immoFinanciere,
-        total: totalActifImmobilise
+        brut_terrain, brut_constructions, brut_instal, brut_autresImmo, brut_immoCorpo, brut_immoFinanciere, brut_total,
+        amort_constructions, amort_instal, amort_autresImmo, amort_immoCorpo, amort_total,
+        net_terrain, net_constructions, net_instal, net_autresImmo, net_immoCorpo, net_immoFinanciere, net_immoTotal
       },
-      circulant: { clients, autresCreances, banque, total: totalActifCirculant },
-      total: totalActif
+      circulant: { brut_clients, brut_autresCreances, brut_creances, brut_banque, brut_circulant, net_clients, net_autresCreances, net_creances, net_banque, net_circulant },
+      brut_total: brut_total_actif, amort_total: amort_total_actif, net_total: net_total_actif
     },
     passif: {
-      capitauxPropres: { capital, reserves, reportANouveau, resultat: resultatNet, total: totalCapitauxPropres },
-      provisions,
-      dettes: { emprunts, depots, ccAssocies, ccDetail, fournisseurs, autresDettes, totalFinancieres: dettesFinancieres, totalExploitation: dettesExploitation, total: totalDettes },
+      capitauxPropres: { capital, primesCapital, reserves, reportANouveau, resultat: resultatNet, total: totalCapitauxPropres },
+      provisions: { charges: provisions_charges, total: totalProvisions },
+      dettes: { emprunts, depots, ccDetail, ccTotal, fournisseurs, autresDettesExploit, dettesFinancieres, dettesExploitation, total: totalDettes },
       total: totalPassif
     }
   };
 }
 
-function renderBilanHTML(b) {
-  const rn = (v) => { const n=Math.round(v*100)/100; return fmtEraw(n); };
-  const cls = (v) => v < 0 ? ' class="r-neg"' : '';
-  const row = (label, val, indent) => {
-    if(Math.abs(val) < 0.005) return '';
-    const pad = indent ? `style="padding-left:${indent*12}px"` : '';
-    return `<tr><td ${pad}>${label}</td><td class="r-num"${cls(val)}>${rn(val)}</td></tr>`;
+function renderBilanHTML(b, bn1, n1Year) {
+  const rn = (v) => v === 0 ? '' : fmtEraw(Math.round(v*100)/100);
+  const rnz = (v) => fmtEraw(Math.round(v*100)/100);
+  const neg = (v) => v < 0 ? ' style="color:#991b1b"' : '';
+  const hasN1 = !!bn1;
+  const varVal = (n, n1) => { if(n1===null||n1===undefined) return ''; const v=Math.round((n-n1)*100)/100; return (v>0?'+':'')+fmtEraw(v); };
+  const varCls = (n, n1) => { if(n1===null||n1===undefined) return ''; const v=n-n1; return v<0?' style="color:#991b1b"':v>0?' style="color:#166534"':''; };
+
+  const rowActif = (label, brut, amort, net, indent=0, n1net=null) => {
+    const pad = indent ? `style="padding-left:${indent*14}px"` : '';
+    const negNet = net < 0 ? ' style="color:#991b1b"' : '';
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rn(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr><td ${pad}>${label}</td><td class="r-num">${rn(brut)}</td><td class="r-num" style="color:#991b1b">${amort?rn(amort):''}</td><td class="r-num"${negNet}>${rn(net)}</td>${n1cols}</tr>`;
   };
-  const rowB = (label, val, cls2='r-subtotal') => `<tr class="${cls2}"><td>${label}</td><td class="r-num">${rn(val)}</td></tr>`;
+
+  const rowPassif = (label, net, indent=0, n1net=null) => {
+    const pad = indent ? `style="padding-left:${indent*14}px"` : '';
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr><td ${pad}>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
+  };
+
+  const subtotalActif = (label, brut, amort, net, n1net=null) => {
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr class="r-subtotal"><td>${label}</td><td class="r-num">${rnz(brut)}</td><td class="r-num" style="color:#991b1b">${amort?rnz(amort):''}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
+  };
+
+  const totalActifRow = (label, brut, amort, net, n1net=null) => {
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr class="r-total"><td>${label}</td><td class="r-num">${rnz(brut)}</td><td class="r-num">${amort?rnz(amort):''}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
+  };
+
+  const subtotalPassif = (label, net, n1net=null) => {
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr class="r-subtotal"><td>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
+  };
+
+  const totalPassifRow = (label, net, n1net=null) => {
+    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
+    return `<tr class="r-total"><td>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
+  };
+
+  const n1 = bn1;
+  const colspan = hasN1 ? 6 : 4;
+  const colspanP = hasN1 ? 4 : 2;
+  const actifThExtra = hasN1 ? `<th class="r-num" style="width:72px;color:#999">${n1Year}</th><th class="r-num" style="width:55px">VAR.</th>` : '';
+  const passifThExtra = hasN1 ? `<th class="r-num" style="width:72px;color:#999">${n1Year}</th><th class="r-num" style="width:55px">VAR.</th>` : '';
 
   return `<div class="rpt">
     ${rptHeader('Bilan', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR}`)}
     <div class="rpt-2col">
       <div>
         <div class="rpt-col-title">ACTIF</div>
-        <table><thead><tr><th>Poste</th><th class="r-num">Net €</th></tr></thead><tbody>
-          <tr class="r-section"><td colspan="2">ACTIF IMMOBILISÉ</td></tr>
-          <tr class="r-subsection"><td>Immobilisations corporelles</td><td class="r-num">${rn(b.actif.immobilise.net_terrain+b.actif.immobilise.net_constructions+b.actif.immobilise.net_instal+b.actif.immobilise.net_autresImmo)}</td></tr>
-          ${row('Terrain', b.actif.immobilise.net_terrain, 1)}
-          ${row('Constructions', b.actif.immobilise.net_constructions, 1)}
-          ${row('Installations générales, agencements', b.actif.immobilise.net_instal, 1)}
-          ${b.actif.immobilise.net_autresImmo ? row('Autres immobilisations corporelles', b.actif.immobilise.net_autresImmo, 1) : ''}
-          ${b.actif.immobilise.immoFinanciere ? `<tr class="r-subsection"><td>Immobilisations financières</td><td class="r-num">${rn(b.actif.immobilise.immoFinanciere)}</td></tr>` : ''}
-          ${rowB('Total Actif Immobilisé', b.actif.immobilise.total)}
-          <tr class="r-section"><td colspan="2">ACTIF CIRCULANT</td></tr>
-          <tr class="r-subsection"><td>Créances</td><td class="r-num">${rn(b.actif.circulant.clients+b.actif.circulant.autresCreances)}</td></tr>
-          ${row('Clients', b.actif.circulant.clients, 1)}
-          ${b.actif.circulant.autresCreances ? row('Autres créances', b.actif.circulant.autresCreances, 1) : ''}
-          <tr class="r-subsection"><td>Disponibilités</td><td class="r-num">${rn(b.actif.circulant.banque)}</td></tr>
-          ${row('Banque', b.actif.circulant.banque, 1)}
-          ${rowB('Total Actif Circulant', b.actif.circulant.total)}
-          ${rowB('TOTAL ACTIF', b.actif.total, 'r-total')}
+        <table><thead><tr>
+          <th>Poste</th>
+          <th class="r-num" style="width:72px">Brut</th>
+          <th class="r-num" style="width:60px">Amort.</th>
+          <th class="r-num" style="width:72px">${CURRENT_YEAR}</th>
+          ${actifThExtra}
+        </tr></thead><tbody>
+          <tr class="r-section"><td colspan="${colspan}">ACTIF IMMOBILISÉ</td></tr>
+          <tr class="r-subsection"><td colspan="${colspan}">Immobilisations corporelles</td></tr>
+          ${rowActif('Terrain', b.actif.immobilise.brut_terrain, 0, b.actif.immobilise.net_terrain, 1, n1?.actif.immobilise.net_terrain)}
+          ${rowActif('Constructions', b.actif.immobilise.brut_constructions, b.actif.immobilise.amort_constructions, b.actif.immobilise.net_constructions, 1, n1?.actif.immobilise.net_constructions)}
+          ${rowActif('Installations générales, agencements, aménagements divers', b.actif.immobilise.brut_instal+b.actif.immobilise.brut_autresImmo, b.actif.immobilise.amort_instal+b.actif.immobilise.amort_autresImmo, b.actif.immobilise.net_instal+b.actif.immobilise.net_autresImmo, 1, n1?n1.actif.immobilise.net_instal+n1.actif.immobilise.net_autresImmo:null)}
+          ${b.actif.immobilise.brut_immoFinanciere?rowActif('Immobilisations financières', b.actif.immobilise.brut_immoFinanciere, 0, b.actif.immobilise.net_immoFinanciere, 1, n1?.actif.immobilise.net_immoFinanciere):''}
+          ${subtotalActif('Total Actif Immobilisé', b.actif.immobilise.brut_total, b.actif.immobilise.amort_total, b.actif.immobilise.net_immoTotal, n1?.actif.immobilise.net_immoTotal)}
+          <tr class="r-section"><td colspan="${colspan}">ACTIF CIRCULANT</td></tr>
+          <tr class="r-subsection"><td colspan="${colspan}">Créances</td></tr>
+          ${rowActif('Clients', b.actif.circulant.brut_clients, 0, b.actif.circulant.net_clients, 1, n1?.actif.circulant.net_clients)}
+          ${b.actif.circulant.brut_autresCreances?rowActif('Autres créances', b.actif.circulant.brut_autresCreances, 0, b.actif.circulant.net_autresCreances, 1, n1?.actif.circulant.net_autresCreances):''}
+          <tr class="r-subsection"><td colspan="${colspan}">Disponibilités</td></tr>
+          ${rowActif('Banque', b.actif.circulant.brut_banque, 0, b.actif.circulant.net_banque, 1, n1?.actif.circulant.net_banque)}
+          ${subtotalActif('Total Actif Circulant', b.actif.circulant.brut_circulant, 0, b.actif.circulant.net_circulant, n1?.actif.circulant.net_circulant)}
+          ${totalActifRow('TOTAL ACTIF', b.actif.brut_total, b.actif.amort_total, b.actif.net_total, n1?.actif.net_total)}
         </tbody></table>
       </div>
       <div>
         <div class="rpt-col-title">PASSIF</div>
-        <table><thead><tr><th>Poste</th><th class="r-num">Net €</th></tr></thead><tbody>
-          <tr class="r-section"><td colspan="2">CAPITAUX PROPRES</td></tr>
-          ${row('Capital Social', b.passif.capitauxPropres.capital, 1)}
-          ${b.passif.capitauxPropres.reserves ? row('Réserves', b.passif.capitauxPropres.reserves, 1) : ''}
-          <tr><td style="padding-left:12px">Report à nouveau</td><td class="r-num"${cls(b.passif.capitauxPropres.reportANouveau)}>${rn(b.passif.capitauxPropres.reportANouveau)}</td></tr>
-          <tr><td style="padding-left:12px">Résultat de l'exercice</td><td class="r-num"${cls(b.passif.capitauxPropres.resultat)}>${rn(b.passif.capitauxPropres.resultat)}</td></tr>
-          <tr class="r-subtotal"><td>Total Capitaux Propres</td><td class="r-num"${cls(b.passif.capitauxPropres.total)}>${rn(b.passif.capitauxPropres.total)}</td></tr>
-          <tr class="r-section"><td colspan="2">PROVISIONS</td></tr>
-          ${row('Provisions pour charges', b.passif.provisions, 1)}
-          ${rowB('Total Provisions', b.passif.provisions)}
-          <tr class="r-section"><td colspan="2">DETTES</td></tr>
-          <tr class="r-subsection"><td>Dettes financières</td><td class="r-num">${rn(b.passif.dettes.totalFinancieres)}</td></tr>
-          ${row('Emprunts auprès des établissements de crédit', b.passif.dettes.emprunts, 1)}
-          ${b.passif.dettes.depots ? row('Dépôts et cautionnements reçus', b.passif.dettes.depots, 1) : ''}
-          ${b.passif.dettes.ccDetail.map(cc => row(cc.lib, cc.montant, 1)).join('')}
-          ${b.passif.dettes.totalExploitation ? `<tr class="r-subsection"><td>Dettes d'exploitation</td><td class="r-num">${rn(b.passif.dettes.totalExploitation)}</td></tr>` : ''}
-          ${b.passif.dettes.fournisseurs ? row('Fournisseurs', b.passif.dettes.fournisseurs, 1) : ''}
-          ${b.passif.dettes.autresDettes ? row('Autres dettes', b.passif.dettes.autresDettes, 1) : ''}
-          ${rowB('Total Dettes', b.passif.dettes.total)}
-          ${rowB('TOTAL PASSIF', b.passif.total, 'r-total')}
+        <table><thead><tr>
+          <th>Poste</th>
+          <th class="r-num" style="width:80px">${CURRENT_YEAR}</th>
+          ${passifThExtra}
+        </tr></thead><tbody>
+          <tr class="r-section"><td colspan="${colspanP}">CAPITAUX PROPRES</td></tr>
+          ${rowPassif('Capital Social', b.passif.capitauxPropres.capital, 1, n1?.passif.capitauxPropres.capital)}
+          ${rowPassif('Réserves', b.passif.capitauxPropres.reserves, 1, n1?.passif.capitauxPropres.reserves)}
+          ${rowPassif('Report à nouveau', b.passif.capitauxPropres.reportANouveau, 1, n1?.passif.capitauxPropres.reportANouveau)}
+          ${rowPassif('Résultat de l\'exercice', b.passif.capitauxPropres.resultat, 1, n1?.passif.capitauxPropres.resultat)}
+          ${subtotalPassif('Total Capitaux Propres', b.passif.capitauxPropres.total, n1?.passif.capitauxPropres.total)}
+          <tr class="r-section"><td colspan="${colspanP}">PROVISIONS</td></tr>
+          ${rowPassif('Provisions pour charges', b.passif.provisions.charges, 1, n1?.passif.provisions.charges)}
+          ${subtotalPassif('Total Provisions', b.passif.provisions.total, n1?.passif.provisions.total)}
+          <tr class="r-section"><td colspan="${colspanP}">DETTES</td></tr>
+          <tr class="r-subsection"><td colspan="${colspanP}">Dettes financières</td></tr>
+          ${rowPassif('Emprunts auprès des établissements de crédit', b.passif.dettes.emprunts, 1, n1?.passif.dettes.emprunts)}
+          ${b.passif.dettes.depots?rowPassif('Dépôts et cautionnements reçus', b.passif.dettes.depots, 1, n1?.passif.dettes.depots):''}
+          ${b.passif.dettes.ccDetail.map((cc,i)=>rowPassif(cc.lib, cc.montant, 1, n1?.passif.dettes.ccDetail[i]?.montant??null)).join('')}
+          ${b.passif.dettes.dettesExploitation?`<tr class="r-subsection"><td colspan="${colspanP}">Dettes d\'exploitation</td></tr>`:''}
+          ${b.passif.dettes.fournisseurs?rowPassif('Fournisseurs', b.passif.dettes.fournisseurs, 1, n1?.passif.dettes.fournisseurs):''}
+          ${b.passif.dettes.autresDettesExploit?rowPassif('Autres dettes', b.passif.dettes.autresDettesExploit, 1, n1?.passif.dettes.autresDettesExploit):''}
+          ${subtotalPassif('Total Dettes', b.passif.dettes.total, n1?.passif.dettes.total)}
+          ${totalPassifRow('TOTAL PASSIF', b.passif.total, n1?.passif.total)}
         </tbody></table>
       </div>
     </div>
@@ -3311,30 +3399,92 @@ function renderBilanHTML(b) {
 }
 
 function exportBilan(fmt) {
-  const b = buildBilanPCG();
   if(fmt === 'pdf') {
-    printDoc(renderBilanHTML(b), `Bilan_${CURRENT_YEAR}`);
+    showBilanN1Modal();
+    return;
+  }
+  const b = buildBilanPCG();
+  if(false) {
+    // pdf handled above
   } else {
     const rn = (v) => fmtEraw(Math.round(v*100)/100);
     let csv = '\uFEFF';
     csv += `BILAN — SCI DES PRÊLES — Exercice ${CURRENT_YEAR}\n\n`;
-    csv += 'ACTIF;;PASSIF\n';
-    csv += `Terrain (net);${rn(b.actif.immobilise.net_terrain)};Capital Social;${rn(b.passif.capitauxPropres.capital)}\n`;
-    csv += `Constructions (net);${rn(b.actif.immobilise.net_constructions)};Réserves;${rn(b.passif.capitauxPropres.reserves)}\n`;
-    csv += `Installations (net);${rn(b.actif.immobilise.net_instal)};Report à nouveau;${rn(b.passif.capitauxPropres.reportANouveau)}\n`;
-    csv += `Autres immo corpo (net);${rn(b.actif.immobilise.net_autresImmo)};Résultat de l'exercice;${rn(b.passif.capitauxPropres.resultat)}\n`;
-    csv += `Immobilisations financières;${rn(b.actif.immobilise.immoFinanciere)};TOTAL CAPITAUX PROPRES;${rn(b.passif.capitauxPropres.total)}\n`;
-    csv += `TOTAL ACTIF IMMOBILISÉ;${rn(b.actif.immobilise.total)};Provisions pour charges;${rn(b.passif.provisions)}\n`;
-    csv += `Clients;${rn(b.actif.circulant.clients)};Emprunts;${rn(b.passif.dettes.emprunts)}\n`;
-    csv += `Autres créances;${rn(b.actif.circulant.autresCreances)};Dépôts et cautionnements;${rn(b.passif.dettes.depots)}\n`;
-    b.passif.dettes.ccDetail.forEach(cc => { csv += `;; ${cc.lib};${rn(cc.montant)}\n`; });
-    csv += `Banque;${rn(b.actif.circulant.banque)};Fournisseurs;${rn(b.passif.dettes.fournisseurs)}\n`;
-    csv += `TOTAL ACTIF CIRCULANT;${rn(b.actif.circulant.total)};Autres dettes;${rn(b.passif.dettes.autresDettes)}\n`;
-    csv += `TOTAL ACTIF;${rn(b.actif.total)};TOTAL PASSIF;${rn(b.passif.total)}\n`;
+    csv += 'ACTIF;Brut;Amort.;Net\n';
+    csv += `Terrain;${rn(b.actif.immobilise.brut_terrain)};;${rn(b.actif.immobilise.net_terrain)}\n`;
+    csv += `Constructions;${rn(b.actif.immobilise.brut_constructions)};${rn(b.actif.immobilise.amort_constructions)};${rn(b.actif.immobilise.net_constructions)}\n`;
+    csv += `Installations générales;${rn(b.actif.immobilise.brut_instal)};${rn(b.actif.immobilise.amort_instal)};${rn(b.actif.immobilise.net_instal)}\n`;
+    csv += `Autres immobilisations corporelles;${rn(b.actif.immobilise.brut_autresImmo)};${rn(b.actif.immobilise.amort_autresImmo)};${rn(b.actif.immobilise.net_autresImmo)}\n`;
+    csv += `TOTAL ACTIF IMMOBILISÉ;${rn(b.actif.immobilise.brut_total)};${rn(b.actif.immobilise.amort_total)};${rn(b.actif.immobilise.net_immoTotal)}\n`;
+    csv += `Clients;${rn(b.actif.circulant.brut_clients)};;${rn(b.actif.circulant.net_clients)}\n`;
+    csv += `Autres créances;${rn(b.actif.circulant.brut_autresCreances)};;${rn(b.actif.circulant.net_autresCreances)}\n`;
+    csv += `Banque;${rn(b.actif.circulant.brut_banque)};;${rn(b.actif.circulant.net_banque)}\n`;
+    csv += `TOTAL ACTIF CIRCULANT;${rn(b.actif.circulant.brut_circulant)};;${rn(b.actif.circulant.net_circulant)}\n`;
+    csv += `TOTAL ACTIF;${rn(b.actif.brut_total)};${rn(b.actif.amort_total)};${rn(b.actif.net_total)}\n\n`;
+    csv += 'PASSIF;Net\n';
+    csv += `Capital Social;${rn(b.passif.capitauxPropres.capital)}\n`;
+    csv += `Réserves;${rn(b.passif.capitauxPropres.reserves)}\n`;
+    csv += `Report à nouveau;${rn(b.passif.capitauxPropres.reportANouveau)}\n`;
+    csv += `Résultat de l'exercice;${rn(b.passif.capitauxPropres.resultat)}\n`;
+    csv += `TOTAL CAPITAUX PROPRES;${rn(b.passif.capitauxPropres.total)}\n`;
+    csv += `Provisions pour charges;${rn(b.passif.provisions.charges)}\n`;
+    csv += `Emprunts;${rn(b.passif.dettes.emprunts)}\n`;
+    csv += `Dépôts et cautionnements;${rn(b.passif.dettes.depots)}\n`;
+    b.passif.dettes.ccDetail.forEach(cc => { csv += `${cc.lib};${rn(cc.montant)}\n`; });
+    csv += `Fournisseurs;${rn(b.passif.dettes.fournisseurs)}\n`;
+    csv += `TOTAL DETTES;${rn(b.passif.dettes.total)}\n`;
+    csv += `TOTAL PASSIF;${rn(b.passif.total)}\n`;
     dlCSV(csv, `Bilan_${CURRENT_YEAR}.csv`);
   }
 }
 
+
+function showBilanN1Modal() {
+  const years = Array.from(document.getElementById('ex-year-select').options)
+    .map(o => o.value)
+    .filter(y => y !== String(CURRENT_YEAR) && !isTestExercise(y))
+    .sort((a,b) => b.localeCompare(a));
+  const existing = document.getElementById('bilan-n1-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'bilan-n1-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 28px;width:380px;font-family:var(--mono);">
+    <div style="font-size:13px;font-weight:700;color:var(--text0);margin-bottom:6px;letter-spacing:0.04em;">⎙ ÉDITION DU BILAN</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:16px;">Exercice : <strong style="color:var(--cyan)">${CURRENT_YEAR}</strong></div>
+    <div style="font-size:11px;color:var(--text1);margin-bottom:8px;">Exercice de comparaison N-1 :</div>
+    <select id="bilan-n1-select" style="width:100%;height:32px;font-family:var(--mono);font-size:12px;margin-bottom:6px;">
+      <option value="">— Aucun (sans comparaison) —</option>
+      ${years.map(y=>`<option value="${y}">${y}</option>`).join('')}
+    </select>
+    <div style="font-size:9px;color:var(--text2);margin-bottom:16px;">Les données N-1 seront chargées depuis Firebase.</div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-sm" onclick="document.getElementById('bilan-n1-modal').remove()">ANNULER</button>
+      <button class="btn btn-sm btn-primary" onclick="generateBilanPDF()">⎙ GÉNÉRER PDF</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function generateBilanPDF() {
+  const n1Year = document.getElementById('bilan-n1-select')?.value || '';
+  document.getElementById('bilan-n1-modal')?.remove();
+  const b = buildBilanPCG();
+  let bn1 = null;
+  if(n1Year && window._fbLoad) {
+    const remote = await window._fbLoad(n1Year);
+    if(remote && remote.ecritures) {
+      const savedDB = JSON.parse(JSON.stringify(DB));
+      const savedYear = CURRENT_YEAR;
+      Object.assign(DB, remote);
+      CURRENT_YEAR = n1Year;
+      bn1 = buildBilanPCG();
+      Object.assign(DB, savedDB);
+      CURRENT_YEAR = savedYear;
+    }
+  }
+  printDoc(renderBilanHTML(b, bn1, n1Year), `Bilan_${CURRENT_YEAR}`);
+}
 
 function buildCRPCG() {
   const s = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
