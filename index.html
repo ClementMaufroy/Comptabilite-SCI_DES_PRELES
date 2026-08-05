@@ -1545,12 +1545,47 @@ function getGLF() {
     return true;
   });
 }
-function glSort(col) { if(glSortCol===col) glSortAsc=!glSortAsc; else{glSortCol=col;glSortAsc=true;} renderGL(); }
+function fmtDateGL(d) {
+  if(!d) return '';
+  // YYYY-MM-DD → DD/MM/YYYY
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    const [y,m,day] = d.split('-');
+    return `${day}/${m}/${y}`;
+  }
+  // DD/MM/YYYY → already correct
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
+  // DD-mon → DD/MM (sans année connue)
+  return d;
+}
+
+function normDateSort(d) {
+  if(!d) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
+    const [dd,mm,yyyy] = d.split('/');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return d;
+}
+
+function glSort(col) {
+  if(col === 'date' && glSortCol === 'date') {
+    // Deuxième clic sur date → retour au tri par numéro
+    glSortCol = 'num'; glSortAsc = true;
+  } else if(glSortCol === col) {
+    glSortAsc = !glSortAsc;
+  } else {
+    glSortCol = col; glSortAsc = true;
+  }
+  renderGL();
+}
+
 function renderGL() {
   let rows=getGLF();
   rows.sort((a,b)=>{
     let va=a[glSortCol],vb=b[glSortCol];
     if(glSortCol==='num'){va=+va;vb=+vb;}
+    if(glSortCol==='date'){va=normDateSort(a.date);vb=normDateSort(b.date);}
     if(glSortCol==='compte'){va=String(va);vb=String(vb);}
     return glSortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
   });
@@ -1560,7 +1595,7 @@ function renderGL() {
     const s=e.debit-e.credit;
     return `<tr>
       <td><span class="npill">${e.num}</span></td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text2);">${e.date}</td>
+      <td style="font-family:var(--mono);font-size:11px;color:var(--text2);">${fmtDateGL(e.date)}</td>
       <td><span class="jbadge j-${e.journal}">${e.journal}</span></td>
       <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleCompte||''}</td>
