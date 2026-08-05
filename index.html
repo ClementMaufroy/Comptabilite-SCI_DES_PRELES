@@ -262,6 +262,7 @@ th {
 }
 th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--cyan); }
+#gl-table thead th { background: var(--bg2); }
 td { padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--text0); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--bg3); }
@@ -679,9 +680,9 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <button class="btn btn-sm" onclick="resetGLFilters()" style="align-self:flex-end;">RESET</button>
         </div>
       </div>
-      <div class="tbl-wrap">
-        <table id="gl-table">
-          <thead>
+      <div class="tbl-wrap" style="max-height:calc(100vh - 280px);overflow-y:auto;">
+        <table id="gl-table" style="position:relative;">
+          <thead style="position:sticky;top:0;z-index:10;">
             <tr>
               <th class="sortable" onclick="glSort('num')" style="width:55px">N° ↕</th>
               <th class="sortable" onclick="glSort('date')" style="width:90px">DATE ↕</th>
@@ -1218,6 +1219,25 @@ function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(','
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
 function renum() { // BUILD-20260803-v4
+  const MONTHS = {'janv':'01','févr':'02','mars':'03','avr':'04','mai':'05','juin':'06',
+                  'juil':'07','août':'08','sept':'09','oct':'10','nov':'11','déc':'12'};
+  const yr = String(CURRENT_YEAR);
+
+  // Normaliser toutes les dates en YYYY-MM-DD
+  DB.ecritures.forEach(e => {
+    if(!e.date) return;
+    const d = e.date;
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return; // déjà bon
+    if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
+      const [dd,mm,yyyy] = d.split('/');
+      e.date = `${yyyy}-${mm}-${dd}`;
+    } else if(d.includes('-')) {
+      const [day, mon] = d.split('-');
+      const m = MONTHS[mon?.toLowerCase()] || '01';
+      e.date = `${yr}-${m}-${day.padStart(2,'0')}`;
+    }
+  });
+
   // Trier par ordre de saisie (_io) uniquement — pas par date
   const sorted=[...DB.ecritures].sort((a,b) => (a._io||0) - (b._io||0));
 
@@ -1547,14 +1567,25 @@ function getGLF() {
 }
 function fmtDateGL(d) {
   if(!d) return '';
-  // YYYY-MM-DD → DD/MM/YYYY
+  const MONTHS = {'janv':'01','févr':'02','mars':'03','avr':'04','mai':'05','juin':'06',
+                  'juil':'07','août':'08','sept':'09','oct':'10','nov':'11','déc':'12'};
+  // YYYY-MM-DD → DD/MM/AA
   if(/^\d{4}-\d{2}-\d{2}$/.test(d)) {
     const [y,m,day] = d.split('-');
-    return `${day}/${m}/${y}`;
+    return `${day}/${m}/${y.slice(2)}`;
   }
-  // DD/MM/YYYY → already correct
-  if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) return d;
-  // DD-mon → DD/MM (sans année connue)
+  // DD/MM/YYYY → DD/MM/AA
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
+    const [dd,mm,yyyy] = d.split('/');
+    return `${dd}/${mm}/${yyyy.slice(2)}`;
+  }
+  // DD-mon → DD/MM/AA using CURRENT_YEAR
+  if(d.includes('-')) {
+    const [day, mon] = d.split('-');
+    const m = MONTHS[mon?.toLowerCase()] || '01';
+    const y = String(CURRENT_YEAR).slice(2);
+    return `${day.padStart(2,'0')}/${m}/${y}`;
+  }
   return d;
 }
 
@@ -1569,13 +1600,13 @@ function normDateSort(d) {
 }
 
 function glSort(col) {
-  if(col === 'date' && glSortCol === 'date') {
-    // Deuxième clic sur date → retour au tri par numéro
-    glSortCol = 'num'; glSortAsc = true;
-  } else if(glSortCol === col) {
+  if(glSortCol === col) {
+    // Même colonne : inverser l'ordre
     glSortAsc = !glSortAsc;
   } else {
-    glSortCol = col; glSortAsc = true;
+    // Nouvelle colonne
+    glSortCol = col;
+    glSortAsc = true;
   }
   renderGL();
 }
