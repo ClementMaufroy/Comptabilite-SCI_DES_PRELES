@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SCI DES PRÊLES — Comptabilité</title>
+<title>SCI DES PRÊLES — Comptabilité v20260805</title>
 <!-- ═══ FIREBASE SDK ═══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -120,7 +120,7 @@
   --amber-dim: rgba(255,200,64,0.14);
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'DM Sans', sans-serif;
-  --nav-w: 210px;
+  --nav-w: 185px;
   --hdr: 50px;
   --radius: 4px;
 }
@@ -253,7 +253,8 @@ select option { background: var(--bg2); }
 
 /* ── TABLES ── */
 .tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 10px; }
+
 th {
   background: var(--bg3); padding: 8px 12px; text-align: left;
   font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: 0.1em;
@@ -262,13 +263,14 @@ th {
 }
 th.sortable { cursor: pointer; }
 th.sortable:hover { color: var(--cyan); }
+#gl-table { table-layout: fixed; width: 100%; }
 #gl-table thead th { background: var(--bg2); }
 td { padding: 7px 12px; border-bottom: 1px solid var(--line); color: var(--text0); vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--bg3); }
-.td-num { text-align: right; font-family: var(--mono); font-size: 12px; }
+.td-num { text-align: right; font-family: var(--mono); font-size: 10px; }
 .td-act { text-align: center; white-space: nowrap; }
-.tfoot-row td { background: var(--bg3) !important; border-top: 1px solid var(--line2) !important; font-family: var(--mono); font-weight: 600; font-size: 12px; }
+.tfoot-row td { background: var(--bg3) !important; border-top: 1px solid var(--line2) !important; font-family: var(--mono); font-weight: 600; font-size: 10px; }
 
 /* ── JOURNAL BADGES ── */
 .jbadge { display: inline-block; font-family: var(--mono); font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 2px; letter-spacing: 0.06em; }
@@ -558,7 +560,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="nav-item" onclick="showTab('annuel')" id="nav-annuel">
       <span class="ni-icon">◷</span> Annuel
     </div>
-    <div class="nav-version">v2.0 · SCI DES PRÊLES</div>
+    <div class="nav-version">Designed and developed by Clément Maufroy</div>
   </nav>
 
   <main class="main">
@@ -655,8 +657,8 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     </div>
 
     <!-- ══════════════ GRAND LIVRE ══════════════ -->
-    <div class="tab-content" id="tab-grandlivre">
-      <div class="page-hdr">
+    <div class="tab-content" id="tab-grandlivre" style="padding:12px 14px;">
+      <div class="page-hdr" style="margin-bottom:8px;">
         <div>
           <div class="page-title">GRAND LIVRE</div>
           <div class="page-sub">Toutes les écritures comptables</div>
@@ -665,7 +667,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
       <div class="card">
         <div class="gl-filters">
-          <div class="ff"><label>N° Compte</label><input type="text" id="gl-f-compte" placeholder="512..." oninput="renderGL()"></div>
+          <div class="ff" style="position:relative;"><label>N° Compte</label><input type="text" id="gl-f-compte" placeholder="512000..." oninput="glCompteAc();renderGL()" onkeydown="glCompteAcKey(event)" onblur="glCompteAcClose()" autocomplete="off"><div id="gl-compte-ac" class="ac-list" style="position:fixed;z-index:999;display:none;"></div></div>
           <div class="ff"><label>Journal</label>
             <select id="gl-f-journal" onchange="renderGL()" style="height:30px;padding:3px 8px;font-size:11px;">
               <option value="">Tous</option>
@@ -678,23 +680,25 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="ff"><label>Date fin</label><input type="date" id="gl-f-date2" onchange="renderGL()"></div>
           <div class="ff"><label>N° Écriture</label><input type="text" id="gl-f-num" placeholder="Ex: 42" oninput="renderGL()"></div>
           <button class="btn btn-sm" onclick="resetGLFilters()" style="align-self:flex-end;">RESET</button>
+          <span id="gl-solde-chip" style="display:none;align-self:flex-end;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>
         </div>
       </div>
-      <div class="tbl-wrap" style="max-height:calc(100vh - 280px);overflow-y:auto;">
+      <div class="tbl-wrap" style="max-height:calc(100vh - 240px);overflow-y:auto;overflow-x:hidden;">
         <table id="gl-table" style="position:relative;">
           <thead style="position:sticky;top:0;z-index:10;">
             <tr>
-              <th class="sortable" onclick="glSort('num')" style="width:55px">N° ↕</th>
-              <th class="sortable" onclick="glSort('date')" style="width:90px">DATE ↕</th>
-              <th style="width:60px">JNL</th>
-              <th class="sortable" onclick="glSort('compte')" style="width:80px">COMPTE ↕</th>
-              <th style="min-width:160px">LIBELLÉ COMPTE</th>
-              <th style="min-width:180px">LIBELLÉ ÉCRITURE</th>
-              <th style="width:100px">N° DOC</th>
-              <th class="td-num" style="width:110px">DÉBIT</th>
-              <th class="td-num" style="width:110px">CRÉDIT</th>
-              <th class="td-num" style="width:110px">SOLDE</th>
-              <th style="width:40px"></th>
+              <th id="gl-th-check" style="width:26px;display:none;text-align:center;padding:0 2px;" title="Tout cocher/décocher"><input type="checkbox" id="gl-check-all" checked onchange="glToggleAll(this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;"></th>
+              <th class="sortable" onclick="glSort('num')" style="width:38px">N°↕</th>
+              <th class="sortable" onclick="glSort('date')" style="width:57px">DATE↕</th>
+              <th style="width:48px">JNL</th>
+              <th class="sortable" onclick="glSort('compte')" style="width:58px">COMPTE↕</th>
+              <th style="width:12%">LIBELLÉ COMPTE</th>
+              <th>LIBELLÉ ÉCRITURE</th>
+              <th style="width:10%">N° DOC</th>
+              <th class="td-num" style="width:7%">DÉBIT</th>
+              <th class="td-num" style="width:7%">CRÉDIT</th>
+              <th class="td-num" style="width:7%">SOLDE</th>
+              <th style="width:30px;padding-right:6px;"></th>
             </tr>
           </thead>
           <tbody id="gl-body"></tbody>
@@ -883,6 +887,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="page-sub">Suivi des opérations récurrentes par mois</div>
         </div>
         <div class="page-actions">
+          <button class="btn btn-sm btn-primary" onclick="addRappelMensuel()">+ AJOUTER</button>
           <button class="btn btn-sm btn-danger" onclick="resetMensuel()">RESET</button>
         </div>
       </div>
@@ -897,6 +902,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="page-sub">Suivi des opérations de clôture d'exercice</div>
         </div>
         <div class="page-actions">
+          <button class="btn btn-sm btn-primary" onclick="addRappelAnnuel()">+ AJOUTER</button>
           <button class="btn btn-sm btn-danger" onclick="resetAnnuel()">RESET</button>
         </div>
       </div>
@@ -1057,7 +1063,6 @@ if(sessionStorage.getItem('sci_auth') === '1') {
 
 // ── MONTHLY AUTO-EXPORT (CSV) ──
 function checkMonthlyExport() {
-  // Skip for test exercises
   if(isTestExercise(CURRENT_YEAR)) return;
   const key = 'last_monthly_export';
   const lastExport = localStorage.getItem(key) || '';
@@ -1067,9 +1072,28 @@ function checkMonthlyExport() {
     localStorage.setItem(key, thisMonth);
     setTimeout(() => {
       exportMonthlyCSV();
-      toast('📅 Sauvegarde mensuelle automatique téléchargée', 'success');
+      showMonthlyExportModal();
     }, 2000);
   }
+}
+
+function showMonthlyExportModal() {
+  const existing = document.getElementById('monthly-export-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'monthly-export-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:28px 32px;max-width:480px;text-align:center;font-family:var(--mono);">
+    <div style="font-size:28px;margin-bottom:12px;">💾</div>
+    <div style="font-size:14px;font-weight:700;color:var(--text0);margin-bottom:10px;letter-spacing:0.04em;">SAUVEGARDE MENSUELLE AUTOMATIQUE</div>
+    <div style="font-size:11px;color:var(--text1);line-height:1.7;margin-bottom:20px;">
+      Un fichier de sauvegarde de vos données a été téléchargé automatiquement.<br>
+      <span style="color:var(--amber);">Merci de conserver ce fichier en lieu sûr</span> (disque externe, cloud personnel…)<br>
+      afin de pouvoir restaurer vos données en cas de besoin.
+    </div>
+    <button class="btn btn-primary" onclick="document.getElementById('monthly-export-modal').remove()" style="padding:8px 24px;font-size:12px;letter-spacing:0.06em;">✓ OK, J'AI BIEN NOTÉ</button>
+  </div>`;
+  document.body.appendChild(overlay);
 }
 function exportMonthlyCSV() {
   const now = new Date();
@@ -1201,8 +1225,9 @@ function showTab(name) {
   updateNavCounts();
 }
 function updateNavCounts() {
-  document.getElementById('nc-journaux').textContent = DB.ecritures.length;
-  document.getElementById('nc-gl').textContent = DB.ecritures.length;
+  const nbEcritures = new Set(DB.ecritures.map(e => e.num)).size;
+  document.getElementById('nc-journaux').textContent = nbEcritures;
+  document.getElementById('nc-gl').textContent = nbEcritures;
   document.getElementById('nc-tb').textContent = DB.tbData.length;
 }
 function renderEditions() {
@@ -1272,7 +1297,7 @@ function renum() { // BUILD-20260803-v4
 // SAISIE
 // ══════════════════════════════════════════════
 function initSaisie() {
-  document.getElementById('s-date').value = today();
+  // date laissée vide — l'utilisateur saisit la date comptable
   addLine(undefined, true); // force=true : toujours créer la ligne initiale même si exercice clôturé
   updateNextNum();
 }
@@ -1287,22 +1312,49 @@ function addLine(focusId, force) {
   const tr = document.createElement('tr');
   tr.id = 'ln-'+id;
   tr.innerHTML = `
-    <td class="ac-wrap"><input type="text" class="lc" id="lc${id}" oninput="acSearch(${id})" onkeydown="acKey(event,${id})" onblur="acBlur(${id})" autocomplete="off" style="font-family:var(--mono);font-size:12px;"></td>
+    <td class="ac-wrap"><input type="text" class="lc" id="lc${id}" oninput="acSearch(${id})" onkeydown="acKey(event,${id})" onblur="acBlur(${id})" autocomplete="off" style="font-family:var(--mono);font-size:12px;" maxlength="6"></td>
     <td><input type="text" class="ll" id="ll${id}" readonly tabindex="-1" style="background:transparent;color:var(--text0);cursor:default;font-size:12px;border-color:var(--line);"></td>
-    <td><input type="number" class="ld" id="ld${id}" step="0.01" min="0" oninput="upTotals()" style="font-family:var(--mono);text-align:right;"></td>
-    <td><input type="number" class="lcr" id="lcr${id}" step="0.01" min="0" oninput="upTotals()" style="font-family:var(--mono);text-align:right;"></td>
-    <td><input type="text" class="le" id="le${id}" style="font-size:12px;" onkeydown="onLibTab(event,${id})" oninput="propagateLibelle(${id})"></td>
+    <td><input type="number" class="ld" id="ld${id}" step="0.01" min="0" oninput="upTotals()" onkeydown="lineNavKey(event,'ld',${id})" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="number" class="lcr" id="lcr${id}" step="0.01" min="0" oninput="upTotals()" onkeydown="lineNavKey(event,'lcr',${id})" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="text" class="le" id="le${id}" style="font-size:12px;" onkeydown="lineNavKey(event,'le',${id});onLibTab(event,${id});" oninput="propagateLibelle(${id})"></td>
     <td class="line-del" onclick="delLine(${id})">✕</td>`;
   document.getElementById('lines-body').appendChild(tr);
   upDl(); upTotals();
-  // pre-fill libellé from first line
   const firstLib = getFirstLibelle();
   if(firstLib) { const le = document.getElementById('le'+id); if(le) le.value = firstLib; }
   if (focusId === undefined) {
-    // focus the compte field of the new line
     setTimeout(() => document.getElementById('lc'+id)?.focus(), 30);
   }
   return id;
+}
+
+// Navigation clavier entre cellules (flèches directionnelles)
+function lineNavKey(e, prefix, id) {
+  const COLS = ['lc','ll','ld','lcr','le'];
+  const colIdx = COLS.indexOf(prefix);
+  const rows = Array.from(document.querySelectorAll('#lines-body tr'));
+  const rowIdx = rows.findIndex(r => r.id === 'ln-'+id);
+
+  if(e.key === 'ArrowRight') {
+    // Aller à la colonne suivante (skip ll qui est readonly)
+    let next = colIdx + 1;
+    while(next < COLS.length && COLS[next] === 'll') next++;
+    if(next < COLS.length) { e.preventDefault(); document.getElementById(COLS[next]+id)?.focus(); }
+  } else if(e.key === 'ArrowLeft') {
+    let next = colIdx - 1;
+    while(next >= 0 && COLS[next] === 'll') next--;
+    if(next >= 0) { e.preventDefault(); document.getElementById(COLS[next]+id)?.focus(); }
+  } else if(e.key === 'ArrowDown') {
+    if(rowIdx < rows.length - 1) {
+      const nextRowId = rows[rowIdx+1].id.replace('ln-','');
+      e.preventDefault(); document.getElementById(prefix+nextRowId)?.focus();
+    }
+  } else if(e.key === 'ArrowUp') {
+    if(rowIdx > 0) {
+      const prevRowId = rows[rowIdx-1].id.replace('ln-','');
+      e.preventDefault(); document.getElementById(prefix+prevRowId)?.focus();
+    }
+  }
 }
 function onLibTab(e, id) {
   if (e.key === 'Tab' && !e.shiftKey) {
@@ -1377,14 +1429,55 @@ function acPick(id, compte, libelle) {
 function acKey(e, id) {
   const list = getAcList(id);
   const items = list?.querySelectorAll('.ac-item') || [];
-  if(e.key==='ArrowDown'){ e.preventDefault(); acIdx=Math.min(acIdx+1,items.length-1); acHL(items); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); acIdx=Math.max(acIdx-1,0); acHL(items); }
-  else if(e.key==='Enter'&&acIdx>=0){ e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); }
-  else if(e.key==='Escape'){ acClose(id); }
-  else if(e.key==='Tab'){ if(list?.classList.contains('open')&&acIdx>=0){ e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); } else acClose(id); }
+  const isOpen = list?.classList.contains('open');
+
+  if(e.key === 'ArrowDown') {
+    if(isOpen) { e.preventDefault(); acIdx=Math.min(acIdx+1,items.length-1); acHL(items); }
+    else { lineNavKey(e, 'lc', id); }
+    return;
+  }
+  if(e.key === 'ArrowUp') {
+    if(isOpen) { e.preventDefault(); acIdx=Math.max(acIdx-1,0); acHL(items); }
+    else { lineNavKey(e, 'lc', id); }
+    return;
+  }
+  if(e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if(!isOpen) lineNavKey(e, 'lc', id);
+    return;
+  }
+  if(e.key === 'Enter' && acIdx >= 0) { e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); return; }
+  if(e.key === 'Escape') { acClose(id); return; }
+  if(e.key === 'Tab') {
+    if(isOpen) {
+      // Si un seul résultat ou un item sélectionné → auto-sélectionner
+      if(items.length === 1) { e.preventDefault(); items[0].dispatchEvent(new MouseEvent('mousedown')); return; }
+      if(acIdx >= 0) { e.preventDefault(); items[acIdx]?.dispatchEvent(new MouseEvent('mousedown')); return; }
+    }
+    acClose(id);
+  }
 }
-function acHL(items) { items.forEach((el,i)=>el.classList.toggle('active',i===acIdx)); items[acIdx]?.scrollIntoView({block:'nearest'}); }
-function acBlur(id) { setTimeout(()=>{ fillLib(id); acClose(id); }, 150); }
+
+function acBlur(id) {
+  setTimeout(() => {
+    fillLib(id);
+    acClose(id);
+    // Validation : le compte doit exister dans tbData et avoir 6 caractères
+    const ci = document.getElementById('lc'+id);
+    if(!ci) return;
+    const val = ci.value.trim();
+    if(!val) return;
+    const exists = DB.tbData.some(r => String(r.compte) === val);
+    if(!exists || val.length !== 6) {
+      ci.style.borderColor = 'var(--red)';
+      ci.style.color = 'var(--red)';
+      ci.title = 'Compte inconnu ou invalide (6 chiffres requis)';
+    } else {
+      ci.style.borderColor = '';
+      ci.style.color = '';
+      ci.title = '';
+    }
+  }, 150);
+}
 function acClose(id) { const l=getAcList(id); if(l) l.classList.remove('open'); acActiveId=null; acIdx=-1; }
 function upDl() {} // kept for compatibility, no longer used
 function upTotals() {
@@ -1427,6 +1520,13 @@ function saveEcriture() {
   const lines=getLines();
   if(lines.length<2){toast('Au moins 2 lignes requises','error');return;}
   if(lines.some(l=>!l.libelleEcriture)){toast('Chaque ligne doit avoir un libellé écriture','error');return;}
+  // Bloquer si un compte est invalide (rouge)
+  const invalidCompte = Array.from(document.querySelectorAll('.lc')).find(ci => {
+    const val = ci.value.trim();
+    if(!val) return false;
+    return !DB.tbData.some(r => String(r.compte) === val) || val.length !== 6;
+  });
+  if(invalidCompte) { toast('Un ou plusieurs comptes sont invalides — corrigez avant de valider','error'); invalidCompte.focus(); return; }
   const totD=lines.reduce((s,l)=>s+l.debit,0);
   const totC=lines.reduce((s,l)=>s+l.credit,0);
   if(Math.abs(totD-totC)>0.005){toast('Écriture non équilibrée','error');return;}
@@ -1440,6 +1540,9 @@ function saveEcriture() {
   renum(); saveDB(); updateNavCounts();
   toast('Écriture #'+(DB.nextGlobalNum-1)+' enregistrée','success');
   document.getElementById('s-refdoc').value='';
+  document.getElementById('s-typedoc').value='';
+  document.getElementById('s-date').value='';
+  document.getElementById('s-journal').value='';
   document.getElementById('lines-body').innerHTML='';
   addLine(); updateNextNum(); upTotals();
 }
@@ -1475,18 +1578,23 @@ function redoNext() {
 function askDelete(id) {
   const e=DB.ecritures.find(x=>x.id===id); if(!e) return;
   deleteTargetId=id;
-  document.getElementById('delete-msg').innerHTML=`Écriture <strong style="color:var(--cyan)">#${e.num}</strong> · ${e.date} · <em>${e.libelleEcriture}</em><br>Compte ${e.compte} · D: ${fmt(e.debit)} € / C: ${fmt(e.credit)} €`;
+  const groupLines = DB.ecritures.filter(x=>x.num===e.num);
+  const totD = groupLines.reduce((s,x)=>s+x.debit,0);
+  const totC = groupLines.reduce((s,x)=>s+x.credit,0);
+  document.getElementById('delete-msg').innerHTML=`Écriture <strong style="color:var(--cyan)">#${e.num}</strong> · ${fmtDateGL(e.date)} · <em>${e.libelleEcriture}</em><br><strong style="color:var(--amber)">${groupLines.length} ligne(s) seront supprimées</strong> · D: ${fmt(totD)} € / C: ${fmt(totC)} €`;
   document.getElementById('delete-modal').style.display='flex';
 }
 function closeDeleteModal() { document.getElementById('delete-modal').style.display='none'; deleteTargetId=null; }
 function confirmDelete() {
   if(EXERCISE_STATUS === 'closed') { closeDeleteModal(); toast('Exercice clôturé — suppression impossible','error'); return; }
   if(!deleteTargetId) return;
+  const e=DB.ecritures.find(x=>x.id===deleteTargetId); if(!e) return;
+  const numToDelete = e.num;
   undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
   redoStack = []; updUndoRedo();
-  DB.ecritures=DB.ecritures.filter(e=>e.id!==deleteTargetId);
+  DB.ecritures=DB.ecritures.filter(x=>x.num!==numToDelete);
   renum(); saveDB(); closeDeleteModal(); updateNavCounts();
-  toast('Écriture supprimée — renumérotation effectuée','warn');
+  toast(`Écriture #${numToDelete} supprimée (toutes les lignes)`, 'warn');
   renderGL(); renderBalance();
 }
 
@@ -1600,19 +1708,22 @@ function normDateSort(d) {
 }
 
 function glSort(col) {
-  if(glSortCol === col) {
-    // Même colonne : inverser l'ordre
+  if(col === 'date' && glSortCol === 'date') {
+    // Reclique sur date → retour au tri par numéro
+    glSortCol = 'num'; glSortAsc = true;
+  } else if(glSortCol === col) {
     glSortAsc = !glSortAsc;
   } else {
-    // Nouvelle colonne
-    glSortCol = col;
-    glSortAsc = true;
+    glSortCol = col; glSortAsc = true;
   }
   renderGL();
 }
 
 function renderGL() {
   let rows=getGLF();
+  const compteFilter = (document.getElementById('gl-f-compte')?.value||'').trim();
+  const isCompteMode = compteFilter.length >= 6;
+
   rows.sort((a,b)=>{
     let va=a[glSortCol],vb=b[glSortCol];
     if(glSortCol==='num'){va=+va;vb=+vb;}
@@ -1620,32 +1731,121 @@ function renderGL() {
     if(glSortCol==='compte'){va=String(va);vb=String(vb);}
     return glSortAsc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0);
   });
+
+  // Show/hide checkbox column header and solde chip
+  const thCheck = document.getElementById('gl-th-check');
+  const soldeChip = document.getElementById('gl-solde-chip');
+  if(thCheck) thCheck.style.display = isCompteMode ? 'table-cell' : 'none';
+  if(soldeChip) soldeChip.style.display = isCompteMode ? 'inline-flex' : 'none';
+  const checkAll = document.getElementById('gl-check-all');
+  if(checkAll) checkAll.checked = true;
+
   let totD=0,totC=0;
-  document.getElementById('gl-body').innerHTML=rows.map(e=>{
+  document.getElementById('gl-body').innerHTML=rows.map((e,i)=>{
     totD+=e.debit; totC+=e.credit;
     const s=e.debit-e.credit;
+    const checkCell = isCompteMode
+      ? `<td style="width:28px;text-align:center;padding:0 4px;"><input type="checkbox" class="gl-row-check" checked onchange="glUpdateSolde()" style="width:13px;height:13px;cursor:pointer;margin:0;vertical-align:middle;"></td>`
+      : `<td style="width:28px;display:none;"></td>`;
     return `<tr>
+      ${checkCell}
       <td><span class="npill">${e.num}</span></td>
-      <td style="font-family:var(--mono);font-size:11px;color:var(--text2);">${fmtDateGL(e.date)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;">${fmtDateGL(e.date)}</td>
       <td><span class="jbadge j-${e.journal}">${e.journal}</span></td>
-      <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
-      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleCompte||''}</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleEcriture||''}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${e.numDoc||''}</td>
-      <td class="td-num c-debit">${fmtN(e.debit)}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap;">${e.compte}</td>
+      <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleCompte||''}</td>
+      <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${e.libelleEcriture||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.numDoc||''}</td>
+      <td class="td-num c-debit" data-debit="${e.debit}" data-credit="${e.credit}">${fmtN(e.debit)}</td>
       <td class="td-num c-credit">${fmtN(e.credit)}</td>
       <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
-      <td class="td-act"><button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer">✕</button></td>
+      <td style="text-align:center;padding:0 4px;"><button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button></td>
     </tr>`;
   }).join('');
+
   document.getElementById('gl-total-d').textContent=fmt(totD);
   document.getElementById('gl-total-c').textContent=fmt(totC);
   const ts=totD-totC;
   document.getElementById('gl-total-s').innerHTML=`<span class="${ts>0?'c-pos':ts<0?'c-neg':''}">${fmt(ts)}</span>`;
   document.getElementById('gl-count-chip').textContent=rows.length+' ligne(s)';
+
+  if(isCompteMode) glUpdateSolde();
+
+  // Scroll to bottom by default (latest entries)
+  if(!isCompteMode && glSortCol === 'num' && glSortAsc) {
+    const wrap = document.querySelector('#tab-grandlivre .tbl-wrap');
+    if(wrap) setTimeout(() => { wrap.scrollTop = wrap.scrollHeight; }, 0);
+  }
 }
+function glUpdateSolde() {
+  const checks = document.querySelectorAll('.gl-row-check');
+  let d=0, c=0;
+  checks.forEach(cb => {
+    if(cb.checked) {
+      const td = cb.closest('tr').querySelector('[data-debit]');
+      if(td) { d += parseFloat(td.dataset.debit)||0; c += parseFloat(td.dataset.credit)||0; }
+    }
+  });
+  const solde = d - c;
+  const chip = document.getElementById('gl-solde-chip');
+  if(chip) {
+    const neg = solde < 0;
+    chip.textContent = `Solde : ${fmt(solde)}`;
+    chip.style.color = neg ? 'var(--red)' : 'var(--green)';
+    chip.style.background = neg ? 'rgba(255,96,96,0.1)' : 'rgba(68,232,122,0.12)';
+    chip.style.borderColor = neg ? 'rgba(255,96,96,0.3)' : 'rgba(68,232,122,0.3)';
+  }
+}
+
+function glToggleAll(checked) {
+  document.querySelectorAll('.gl-row-check').forEach(cb => cb.checked = checked);
+  glUpdateSolde();
+}
+
+function glCompteAc() {
+  const inp = document.getElementById('gl-f-compte');
+  const drop = document.getElementById('gl-compte-ac');
+  if(!inp || !drop) return;
+  const q = inp.value.toLowerCase().trim();
+  if(!q) { drop.style.display='none'; return; }
+  const matches = DB.tbData.filter(r => String(r.compte).startsWith(q) || (r.libelle||'').toLowerCase().includes(q)).slice(0,20);
+  if(!matches.length) { drop.style.display='none'; return; }
+  drop.innerHTML = matches.map(r =>
+    `<div class="ac-item" onmousedown="glComptePick('${r.compte}')"><span class="ac-num">${r.compte}</span><span class="ac-lib">${r.libelle||''}</span></div>`
+  ).join('');
+  const rect = inp.getBoundingClientRect();
+  drop.style.top = (rect.bottom + 2) + 'px';
+  drop.style.left = rect.left + 'px';
+  drop.style.width = Math.max(320, rect.width) + 'px';
+  drop.style.display = 'block';
+}
+
+function glComptePick(compte) {
+  const inp = document.getElementById('gl-f-compte');
+  if(inp) inp.value = compte;
+  document.getElementById('gl-compte-ac').style.display = 'none';
+  renderGL();
+}
+
+function glCompteAcKey(e) {
+  const drop = document.getElementById('gl-compte-ac');
+  const items = drop?.querySelectorAll('.ac-item') || [];
+  if(!drop || drop.style.display==='none') return;
+  if(e.key==='ArrowDown') { e.preventDefault(); glAcIdx=Math.min((glAcIdx||0)+1,items.length-1); items.forEach((el,i)=>el.classList.toggle('active',i===glAcIdx)); items[glAcIdx]?.scrollIntoView({block:'nearest'}); }
+  else if(e.key==='ArrowUp') { e.preventDefault(); glAcIdx=Math.max((glAcIdx||0)-1,0); items.forEach((el,i)=>el.classList.toggle('active',i===glAcIdx)); items[glAcIdx]?.scrollIntoView({block:'nearest'}); }
+  else if(e.key==='Enter' && (glAcIdx||0)>=0 && items[glAcIdx]) { e.preventDefault(); items[glAcIdx].dispatchEvent(new MouseEvent('mousedown')); }
+  else if(e.key==='Escape') { drop.style.display='none'; }
+}
+
+function glCompteAcClose() {
+  setTimeout(() => { const d=document.getElementById('gl-compte-ac'); if(d) d.style.display='none'; glAcIdx=-1; }, 150);
+}
+
+let glAcIdx = -1;
+
 function resetGLFilters() {
   ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const d=document.getElementById('gl-compte-ac'); if(d) d.style.display='none';
   renderGL();
 }
 
@@ -1744,24 +1944,60 @@ function showTBImport() {
 const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 function renderMensuel() {
   const year = CURRENT_YEAR;
-  const items=DB.rappelsMensuelList; const state=DB.rappelsMensuel[year]||{};
-  if(!items.length){document.getElementById('mensuel-content').innerHTML='<div class="alert alert-info">Aucune écriture mensuelle configurée.</div>';return;}
-  document.getElementById('mensuel-content').innerHTML=items.map(item=>{
-    return `<div class="rappel-group">
-      <div class="rappel-group-hdr">${item}</div>
-      ${MOIS.map((m,mi)=>{
-        const key=item+'_'+mi; const done=!!state[key];
-        return `<div class="rappel-row ${done?'is-done':''}">
-          <span class="rappel-label"></span>
-          <span class="rappel-mois">${m} ${year}</span>
-          <label class="rappel-ck">
-            <input type="checkbox" ${done?'checked':''} onchange="togM('${year}','${key.replace(/'/g,"\\'")}',this.checked)">
-            ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text2);">—</span>'}
-          </label>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }).join('');
+  const items = DB.rappelsMensuelList;
+  const state = DB.rappelsMensuel[year] || {};
+  const el = document.getElementById('mensuel-content');
+  if(!items.length) { el.innerHTML='<div class="alert alert-info">Aucune écriture mensuelle. Cliquez + AJOUTER.</div>'; return; }
+
+  el.innerHTML = `<div class="card" style="padding:0;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="background:var(--bg3);">
+          <th style="padding:8px 14px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.06em;color:var(--text2);width:180px;">ÉCRITURE</th>
+          ${MOIS.map(m=>`<th style="padding:6px 4px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--text2);letter-spacing:0.04em;">${m.slice(0,4).toUpperCase()}</th>`).join('')}
+          <th style="width:32px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item,idx)=>{
+          return `<tr style="border-top:1px solid var(--line);">
+            <td style="padding:8px 14px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text1);">${item}</td>
+            ${MOIS.map((m,mi)=>{
+              const key=item+'_'+mi;
+              const done=!!state[key];
+              return `<td style="text-align:center;padding:6px 4px;">
+                <input type="checkbox" ${done?'checked':''} title="${m} ${year}"
+                  onchange="togM('${year}','${key.replace(/'/g,"\\'")}',this.checked)"
+                  style="width:14px;height:14px;cursor:pointer;accent-color:var(--green);">
+              </td>`;
+            }).join('')}
+            <td style="text-align:center;padding:4px;">
+              <button class="btn btn-sm btn-danger btn-icon" onclick="delRappelMensuel(${idx})" title="Supprimer" style="padding:2px 6px;font-size:10px;">✕</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function addRappelMensuel() {
+  const nom = prompt('Nom de l\'écriture mensuelle :');
+  if(!nom || !nom.trim()) return;
+  DB.rappelsMensuelList.push(nom.trim());
+  saveDB(); renderMensuel();
+}
+
+function delRappelMensuel(idx) {
+  const nom = DB.rappelsMensuelList[idx];
+  if(!nom) return;
+  DB.rappelsMensuelList.splice(idx, 1);
+  // Nettoyer les états associés
+  Object.keys(DB.rappelsMensuel).forEach(y => {
+    MOIS.forEach((m,mi) => { delete DB.rappelsMensuel[y][nom+'_'+mi]; });
+  });
+  saveDB(); renderMensuel();
+  toast(`"${nom}" supprimé`, 'warn');
 }
 function togM(y,k,v){if(!DB.rappelsMensuel[y])DB.rappelsMensuel[y]={};DB.rappelsMensuel[y][k]=v;saveDB();renderMensuel();}
 function resetMensuel(){
@@ -1771,21 +2007,57 @@ function resetMensuel(){
 }
 function renderAnnuel() {
   const year = CURRENT_YEAR;
-  const items=DB.rappelsAnnuelList; const state=DB.rappelsAnnuel[year]||{};
-  if(!items.length){document.getElementById('annuel-content').innerHTML='<div class="alert alert-info">Aucune écriture annuelle configurée.</div>';return;}
-  document.getElementById('annuel-content').innerHTML=`<div class="rappel-group">
-    <div class="rappel-group-hdr">Exercice ${year}</div>
-    ${items.map(item=>{
-      const done=!!state[item];
-      return `<div class="rappel-row ${done?'is-done':''}">
-        <span class="rappel-label">${item}</span><span></span>
-        <label class="rappel-ck">
-          <input type="checkbox" ${done?'checked':''} onchange="togA('${year}','${item.replace(/'/g,"\\'")}',this.checked)">
-          ${done?'<span class="done-tag">✓ OK</span>':'<span style="color:var(--text2);">—</span>'}
-        </label>
-      </div>`;
-    }).join('')}
+  const items = DB.rappelsAnnuelList;
+  const state = DB.rappelsAnnuel[year] || {};
+  const el = document.getElementById('annuel-content');
+  if(!items.length) { el.innerHTML='<div class="alert alert-info">Aucune écriture annuelle. Cliquez + AJOUTER.</div>'; return; }
+
+  el.innerHTML = `<div class="card" style="padding:0;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:11px;">
+      <thead>
+        <tr style="background:var(--bg3);">
+          <th style="padding:8px 14px;text-align:left;font-family:var(--mono);font-size:9px;letter-spacing:0.06em;color:var(--text2);">ÉCRITURE</th>
+          <th style="padding:8px 14px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--text2);">STATUT ${year}</th>
+          <th style="width:32px;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item,idx)=>{
+          const done = !!state[item];
+          return `<tr style="border-top:1px solid var(--line);">
+            <td style="padding:8px 14px;font-family:var(--mono);font-size:11px;font-weight:600;color:var(--text1);">${item}</td>
+            <td style="text-align:center;padding:8px 14px;">
+              <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" ${done?'checked':''} 
+                  onchange="togA('${year}','${item.replace(/'/g,"\\'")}',this.checked)"
+                  style="width:14px;height:14px;cursor:pointer;accent-color:var(--green);">
+                <span style="font-family:var(--mono);font-size:10px;color:${done?'var(--green)':'var(--text2)'};">${done?'✓ OK':'—'}</span>
+              </label>
+            </td>
+            <td style="text-align:center;padding:4px;">
+              <button class="btn btn-sm btn-danger btn-icon" onclick="delRappelAnnuel(${idx})" title="Supprimer" style="padding:2px 6px;font-size:10px;">✕</button>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
   </div>`;
+}
+
+function addRappelAnnuel() {
+  const nom = prompt('Nom de l\'écriture annuelle :');
+  if(!nom || !nom.trim()) return;
+  DB.rappelsAnnuelList.push(nom.trim());
+  saveDB(); renderAnnuel();
+}
+
+function delRappelAnnuel(idx) {
+  const nom = DB.rappelsAnnuelList[idx];
+  if(!nom) return;
+  DB.rappelsAnnuelList.splice(idx, 1);
+  Object.keys(DB.rappelsAnnuel).forEach(y => { delete DB.rappelsAnnuel[y][nom]; });
+  saveDB(); renderAnnuel();
+  toast(`"${nom}" supprimé`, 'warn');
 }
 function togA(y,k,v){if(!DB.rappelsAnnuel[y])DB.rappelsAnnuel[y]={};DB.rappelsAnnuel[y][k]=v;saveDB();renderAnnuel();}
 function resetAnnuel(){
@@ -1905,10 +2177,11 @@ async function confirmImport(){
   importParsed.forEach((r,i)=>{
     DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,_origGroup:r._origGroup||0,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
   });
+  const nbGroupes = new Set(importParsed.map(r => r._origGroup)).size;
   renum(); updateNavCounts();
-  await saveDBNow(); // Sauvegarde immédiate (pas de debounce) pour éviter la perte de données au rechargement
+  await saveDBNow();
   closeImportModal();
-  toast(importParsed.length+' ligne(s) importée(s)','success');
+  toast(nbGroupes+' écriture(s) importée(s) ('+importParsed.length+' lignes)','success');
   importParsed=[];
 }
 
@@ -1916,10 +2189,35 @@ async function confirmImport(){
 // EXPORT
 // ══════════════════════════════════════════════
 function exportData(){
+  // Export JSON backup
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='ledger_backup_'+today()+'.json'; a.click();
-  toast('Backup exporté','success');
+  a.download='ledger_backup_'+CURRENT_YEAR+'_'+today()+'.json'; a.click();
+  // Export GL Excel
+  setTimeout(() => exportGLExcel(), 500);
+  toast('Export JSON + Excel du grand livre téléchargés','success');
+}
+
+function exportGLExcel() {
+  let csv = '\uFEFF';
+  csv += 'N° Écriture;Journal;Date;N° Compte;Libellé Compte;Libellé Écriture;N° Document;Débit;Crédit;Solde\n';
+  [...DB.ecritures].sort((a,b)=>a.num-b.num).forEach(e => {
+    const s = (e.debit||0) - (e.credit||0);
+    csv += [
+      e.num, e.journal, fmtDateGL(e.date), e.compte,
+      (e.libelleCompte||'').replace(/;/g,','),
+      (e.libelleEcriture||'').replace(/;/g,','),
+      (e.numDoc||'').replace(/;/g,','),
+      String(e.debit||0).replace('.',','),
+      String(e.credit||0).replace('.',','),
+      String(Math.round(s*100)/100).replace('.',',')
+    ].join(';') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'GL_' + CURRENT_YEAR + '_' + today() + '.csv';
+  a.click();
 }
 
 // ══════════════════════════════════════════════
