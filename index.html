@@ -560,6 +560,12 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="nav-item" onclick="showTab('annuel')" id="nav-annuel">
       <span class="ni-icon">◷</span> Annuel
     </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">Modules intégrés</div>
+    <div class="nav-item" onclick="showTab('immos')" id="nav-immos">
+      <span class="ni-icon">🏛</span> Immobilisations
+      <span class="ni-count" id="nc-immos">0</span>
+    </div>
     <div class="nav-version">Designed and developed by Clément Maufroy</div>
   </nav>
 
@@ -569,12 +575,16 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="tab-content active" id="tab-saisie">
       <div class="page-hdr">
         <div>
-          <div class="page-title">SAISIE COMPTABLE</div>
-          <div class="page-sub">Enregistrement d'une nouvelle écriture</div>
+          <div class="page-title" id="saisie-title">SAISIE COMPTABLE</div>
+          <div class="page-sub" id="saisie-sub">Enregistrement d'une nouvelle écriture</div>
         </div>
         <div class="page-actions">
           <span id="bal-indicator"></span>
         </div>
+      </div>
+      <div id="edit-banner" style="display:none;background:rgba(245,208,96,0.12);border:1px solid rgba(245,208,96,0.4);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--gold);align-items:center;justify-content:space-between;">
+        <span>✎ Modification de l'écriture <strong id="edit-banner-num"></strong> — le numéro d'origine sera conservé</span>
+        <button class="btn btn-sm" onclick="cancelEditEcriture()" style="padding:3px 10px;">ANNULER LA MODIFICATION</button>
       </div>
 
       <div class="card">
@@ -638,7 +648,8 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;">
         <span id="bal-indicator-2"></span>
-        <button class="btn btn-primary" onclick="saveEcriture()" style="padding:9px 24px;font-size:12px;letter-spacing:0.08em;">▶ ENREGISTRER L'ÉCRITURE</button>
+        <button class="btn" onclick="resetSaisieForm()" style="padding:9px 20px;font-size:12px;">✕ ANNULER</button>
+        <button class="btn btn-primary" id="save-ecriture-btn" onclick="saveEcriture()" style="padding:9px 24px;font-size:12px;letter-spacing:0.08em;">▶ ENREGISTRER L'ÉCRITURE</button>
       </div>
     </div>
     <div class="tab-content" id="tab-journaux">
@@ -698,7 +709,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
               <th class="td-num" style="width:7%">DÉBIT</th>
               <th class="td-num" style="width:7%">CRÉDIT</th>
               <th class="td-num" style="width:7%">SOLDE</th>
-              <th style="width:30px;padding-right:6px;"></th>
+              <th style="width:56px;padding-right:6px;"></th>
             </tr>
           </thead>
           <tbody id="gl-body"></tbody>
@@ -909,6 +920,41 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="annuel-content"></div>
     </div>
 
+    <!-- ══════════════ IMMOBILISATIONS ══════════════ -->
+    <div class="tab-content" id="tab-immos">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">GESTION DES IMMOBILISATIONS</div>
+          <div class="page-sub">Suivi des immobilisations et calcul des amortissements linéaires</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm btn-primary" onclick="openImmoModal()">+ AJOUTER UNE IMMOBILISATION</button>
+        </div>
+      </div>
+      <div id="immos-list-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Libellé</th>
+              <th style="width:80px">Compte Immo</th>
+              <th style="width:90px">Date acquisition</th>
+              <th class="td-num" style="width:100px">Valeur brute</th>
+              <th style="width:70px">Durée</th>
+              <th style="width:85px">Compte Dotation</th>
+              <th style="width:85px">Compte Amort.</th>
+              <th class="td-num" style="width:100px">Amort. cumulés</th>
+              <th class="td-num" style="width:100px">VNC actuelle</th>
+              <th style="width:90px"></th>
+            </tr>
+          </thead>
+          <tbody id="immos-body"></tbody>
+        </table>
+        <div id="immos-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+          Aucune immobilisation enregistrée. Cliquez sur "+ AJOUTER UNE IMMOBILISATION" pour commencer.
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -941,6 +987,96 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="flex gap8">
       <button class="btn btn-danger" onclick="confirmDelete()">SUPPRIMER</button>
       <button class="btn ml-auto" onclick="closeDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMMOBILISATION ADD/EDIT MODAL -->
+<div id="immo-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-title" id="immo-modal-title">🏛 NOUVELLE IMMOBILISATION</div>
+    <input type="hidden" id="immo-edit-id">
+    <div class="form-row c2 mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Libellé de l'immobilisation *</label>
+        <input type="text" id="immo-libelle" placeholder="Ex : Toiture 16 Concorde Hénin-Beaumont">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Compte d'immobilisation *</label>
+        <input type="text" id="immo-compte-immo" placeholder="213100" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Date d'acquisition *</label>
+        <input type="date" id="immo-date-achat">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Valeur brute (€) *</label>
+        <input type="number" step="0.01" min="0" id="immo-valeur-brute" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Durée d'amortissement (années) *</label>
+        <input type="number" step="1" min="1" id="immo-duree" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Compte de dotation aux amortissements *</label>
+        <input type="text" id="immo-compte-dotation" placeholder="681120" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte d'amortissement (28x) *</label>
+        <input type="text" id="immo-compte-amort" placeholder="281300" maxlength="6" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Notes (optionnel)</label>
+        <input type="text" id="immo-notes" placeholder="Précisions diverses...">
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="saveImmo()">✓ ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closeImmoModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMMOBILISATION SCHEDULE MODAL -->
+<div id="immo-schedule-modal" class="modal-overlay">
+  <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto;">
+    <div class="modal-title" id="immo-schedule-title">📊 TABLEAU D'AMORTISSEMENT</div>
+    <div id="immo-schedule-info" style="font-size:11px;color:var(--text2);margin-bottom:12px;"></div>
+    <table style="font-size:11px;">
+      <thead>
+        <tr>
+          <th>Exercice</th>
+          <th class="td-num">Base</th>
+          <th class="td-num">Prorata</th>
+          <th class="td-num">Dotation</th>
+          <th class="td-num">Cumul amort.</th>
+          <th class="td-num">VNC fin d'exercice</th>
+        </tr>
+      </thead>
+      <tbody id="immo-schedule-body"></tbody>
+    </table>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn ml-auto" onclick="closeImmoScheduleModal()">FERMER</button>
+    </div>
+  </div>
+</div>
+
+<!-- IMMOBILISATION DELETE CONFIRM MODAL -->
+<div id="immo-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UNE IMMOBILISATION</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;" id="immo-delete-msg"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteImmo()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closeImmoDeleteModal()">ANNULER</button>
     </div>
   </div>
 </div>
@@ -1128,6 +1264,7 @@ let DB = {
   rappelsMensuelList: [],
   rappelsAnnuel: {},
   rappelsAnnuelList: [],
+  immobilisations: [],
   nextGlobalNum: 1,
   journalNums: {VE:1,HA:1,IMMO:1,OD:1,TRESO:1},
 };
@@ -1178,6 +1315,7 @@ async function loadDB() {
     const remote = await window._fbLoad(CURRENT_YEAR);
     if(remote) {
       Object.assign(DB, remote);
+      if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
       // Sync _isTest flag to localStorage cache
       if(DB._isTest !== undefined) {
         localStorage.setItem('ledger_test_flag_' + String(CURRENT_YEAR), DB._isTest ? '1' : '0');
@@ -1187,6 +1325,7 @@ async function loadDB() {
   }
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { const r = localStorage.getItem(lsKey); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
+  if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
 }
 async function loadDBAndRenum() {
   await loadDB();
@@ -1227,7 +1366,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -1236,6 +1375,8 @@ function updateNavCounts() {
   document.getElementById('nc-journaux').textContent = nbEcritures;
   document.getElementById('nc-gl').textContent = nbEcritures;
   document.getElementById('nc-tb').textContent = DB.tbData.length;
+  const ncImmos = document.getElementById('nc-immos');
+  if(ncImmos) ncImmos.textContent = (DB.immobilisations||[]).length;
 }
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
@@ -1247,6 +1388,27 @@ function renderEditions() {
 // ══════════════════════════════════════════════
 function fmt(n) { if(n===null||n===undefined||isNaN(n)) return ''; return parseFloat(n).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtN(n) { return n===0?'':fmt(n); }
+function evalMontant(input) {
+  const raw = (input.value||'').trim();
+  if(!raw) return;
+  // Autoriser uniquement chiffres, + - * / . , ( ) et espaces — aucune autre entrée n'est évaluée
+  if(!/^[0-9+\-*/.,()\s]+$/.test(raw)) return;
+  // Rien à calculer si c'est juste un nombre simple
+  if(/^-?[0-9]+([.,][0-9]+)?$/.test(raw)) {
+    input.value = raw.replace(',', '.');
+    upTotals();
+    return;
+  }
+  try {
+    const expr = raw.replace(/,/g, '.');
+    // eslint-disable-next-line no-new-func
+    const result = Function('"use strict"; return (' + expr + ')')();
+    if(typeof result === 'number' && isFinite(result)) {
+      input.value = Math.round(result * 100) / 100;
+      upTotals();
+    }
+  } catch(e) { /* expression invalide — on laisse tel quel */ }
+}
 function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(',','.').replace(/\s/g,''))||0; }
 function today() { return new Date().toISOString().slice(0,10); }
 function getLib(compte) { const r=DB.tbData.find(x=>String(x.compte)===String(compte)); return r?r.libelle:''; }
@@ -1321,8 +1483,8 @@ function addLine(focusId, force) {
   tr.innerHTML = `
     <td class="ac-wrap"><input type="text" class="lc" id="lc${id}" oninput="acSearch(${id})" onkeydown="acKey(event,${id})" onblur="acBlur(${id})" autocomplete="off" style="font-family:var(--mono);font-size:12px;" maxlength="6"></td>
     <td><input type="text" class="ll" id="ll${id}" readonly tabindex="-1" style="background:transparent;color:var(--text0);cursor:default;font-size:12px;border-color:var(--line);"></td>
-    <td><input type="number" class="ld" id="ld${id}" step="0.01" min="0" oninput="upTotals()" onkeydown="lineNavKey(event,'ld',${id})" style="font-family:var(--mono);text-align:right;"></td>
-    <td><input type="number" class="lcr" id="lcr${id}" step="0.01" min="0" oninput="upTotals()" onkeydown="lineNavKey(event,'lcr',${id})" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="text" inputmode="decimal" class="ld" id="ld${id}" oninput="upTotals()" onblur="evalMontant(this)" onkeydown="lineNavKey(event,'ld',${id})" style="font-family:var(--mono);text-align:right;"></td>
+    <td><input type="text" inputmode="decimal" class="lcr" id="lcr${id}" oninput="upTotals()" onblur="evalMontant(this)" onkeydown="lineNavKey(event,'lcr',${id})" style="font-family:var(--mono);text-align:right;"></td>
     <td><input type="text" class="le" id="le${id}" style="font-size:12px;" onkeydown="lineNavKey(event,'le',${id});onLibTab(event,${id});" oninput="propagateLibelle(${id})"></td>
     <td class="line-del" onclick="delLine(${id})">✕</td>`;
   document.getElementById('lines-body').appendChild(tr);
@@ -1397,7 +1559,21 @@ function getFirstLibelle() {
   const id = first.id.replace('ln-','');
   return document.getElementById('le'+id)?.value || '';
 }
-function delLine(id) { const e=document.getElementById('ln-'+id); if(e)e.remove(); upTotals(); }
+function delLine(id) {
+  const rows = document.querySelectorAll('#lines-body tr');
+  if(rows.length <= 1) {
+    // Dernière ligne restante : on vide son contenu au lieu de la supprimer
+    ['lc','ll','ld','lcr','le'].forEach(prefix => {
+      const el = document.getElementById(prefix+id);
+      if(el) el.value = '';
+    });
+    const ci = document.getElementById('lc'+id);
+    if(ci) { ci.style.borderColor=''; ci.style.color=''; ci.title=''; }
+    upTotals();
+    return;
+  }
+  const e=document.getElementById('ln-'+id); if(e)e.remove(); upTotals();
+}
 function onCI(id) { fillLib(id); }
 function fillLib(id) {
   const ci=document.getElementById('lc'+id), li=document.getElementById('ll'+id);
@@ -1515,6 +1691,97 @@ function getLines() {
   });
   return lines;
 }
+// ── ÉDITION D'UNE ÉCRITURE EXISTANTE ──
+let editingNum = null, editingIO = null, editingOrigGroup = undefined;
+
+function editEcriture(id) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — modification impossible','error'); return; }
+  const e = DB.ecritures.find(x => x.id === id);
+  if(!e) return;
+  const groupLines = DB.ecritures.filter(x => x.num === e.num);
+  if(!groupLines.length) return;
+
+  // Basculer sur l'onglet Saisie
+  showTab('saisie');
+
+  // Mémoriser le contexte d'édition
+  editingNum = e.num;
+  editingIO = e._io;
+  editingOrigGroup = e._origGroup;
+
+  // Remplir l'en-tête
+  document.getElementById('s-journal').value = e.journal || '';
+  document.getElementById('s-date').value = e.date || '';
+  const numDoc = e.numDoc || '';
+  let typedoc = numDoc, refdoc = '';
+  if(numDoc.includes('/')) {
+    const idx = numDoc.indexOf('/');
+    typedoc = numDoc.slice(0, idx);
+    refdoc = numDoc.slice(idx+1);
+  }
+  document.getElementById('s-typedoc').value = typedoc;
+  document.getElementById('s-refdoc').value = refdoc;
+  document.getElementById('s-num').value = '#'+e.num;
+  document.getElementById('s-num-journal').value = e.numJ ? e.journal+'-'+e.numJ : '';
+
+  // Remplir les lignes
+  document.getElementById('lines-body').innerHTML = '';
+  groupLines.forEach(l => {
+    const id2 = addLine(0, true); // force pour ne pas être bloqué, focusId=0 pour éviter l'autofocus
+    document.getElementById('lc'+id2).value = l.compte || '';
+    document.getElementById('ll'+id2).value = l.libelleCompte || getLib(l.compte) || '';
+    document.getElementById('ld'+id2).value = l.debit || '';
+    document.getElementById('lcr'+id2).value = l.credit || '';
+    document.getElementById('le'+id2).value = l.libelleEcriture || '';
+  });
+  upTotals();
+
+  // Bascule visuelle en mode édition
+  document.getElementById('saisie-title').textContent = 'MODIFICATION D\'ÉCRITURE';
+  document.getElementById('saisie-sub').textContent = 'Écriture #'+e.num;
+  document.getElementById('edit-banner').style.display = 'flex';
+  document.getElementById('edit-banner-num').textContent = '#'+e.num;
+  const btn = document.getElementById('save-ecriture-btn');
+  if(btn) btn.textContent = '▶ METTRE À JOUR L\'ÉCRITURE #'+e.num;
+
+  toast('Écriture #'+e.num+' chargée pour modification', 'info');
+}
+
+function resetSaisieForm() {
+  // Si on était en mode édition, on annule aussi l'édition
+  if(editingNum !== null) {
+    editingNum = null; editingIO = null; editingOrigGroup = undefined;
+    document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
+    document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
+    document.getElementById('edit-banner').style.display = 'none';
+    const btn = document.getElementById('save-ecriture-btn');
+    if(btn) btn.textContent = '▶ ENREGISTRER L\'ÉCRITURE';
+  }
+  document.getElementById('s-refdoc').value='';
+  document.getElementById('s-typedoc').value='';
+  document.getElementById('s-date').value='';
+  document.getElementById('s-journal').value='';
+  document.getElementById('lines-body').innerHTML='';
+  addLine(); addLine();
+  updateNextNum(); upTotals();
+  toast('Saisie annulée', 'info');
+}
+
+function cancelEditEcriture() {
+  editingNum = null; editingIO = null; editingOrigGroup = undefined;
+  document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
+  document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
+  document.getElementById('edit-banner').style.display = 'none';
+  const btn = document.getElementById('save-ecriture-btn');
+  if(btn) btn.textContent = '▶ ENREGISTRER L\'ÉCRITURE';
+  document.getElementById('s-refdoc').value='';
+  document.getElementById('s-typedoc').value='';
+  document.getElementById('s-date').value='';
+  document.getElementById('s-journal').value='';
+  document.getElementById('lines-body').innerHTML='';
+  addLine(); updateNextNum(); upTotals();
+}
+
 function saveEcriture() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — saisie impossible','error'); return; }
   const journal=document.getElementById('s-journal').value.trim().toUpperCase();
@@ -1540,12 +1807,39 @@ function saveEcriture() {
   const snap=JSON.parse(JSON.stringify(DB.ecritures));
   undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
   redoStack = []; updUndoRedo();
-  const io=Date.now();
+
+  const isEditing = editingNum !== null;
+  let io, origGroup;
+
+  if(isEditing) {
+    // Supprimer les anciennes lignes de cette écriture, conserver le même _io / _origGroup
+    DB.ecritures = DB.ecritures.filter(x => x.num !== editingNum);
+    io = editingIO;
+    origGroup = editingOrigGroup;
+  } else {
+    io = Date.now();
+    origGroup = undefined;
+  }
+
   lines.forEach(l=>{
-    DB.ecritures.push({id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:typedoc+(refdoc?'/'+refdoc:''),debit:l.debit,credit:l.credit});
+    const entry = {id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:typedoc+(refdoc?'/'+refdoc:''),debit:l.debit,credit:l.credit};
+    if(origGroup !== undefined) entry._origGroup = origGroup;
+    DB.ecritures.push(entry);
   });
   renum(); saveDB(); updateNavCounts();
-  toast('Écriture #'+(DB.nextGlobalNum-1)+' enregistrée','success');
+
+  if(isEditing) {
+    toast('Écriture #'+editingNum+' mise à jour','success');
+    editingNum = null; editingIO = null; editingOrigGroup = undefined;
+    document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
+    document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
+    document.getElementById('edit-banner').style.display = 'none';
+    const btn = document.getElementById('save-ecriture-btn');
+    if(btn) btn.textContent = '▶ ENREGISTRER L\'ÉCRITURE';
+  } else {
+    toast('Écriture #'+(DB.nextGlobalNum-1)+' enregistrée','success');
+  }
+
   document.getElementById('s-refdoc').value='';
   document.getElementById('s-typedoc').value='';
   document.getElementById('s-date').value='';
@@ -1726,6 +2020,8 @@ function glSort(col) {
   renderGL();
 }
 
+let glUncheckedIds = new Set(); // persiste le lettrage entre les changements de filtre
+
 function renderGL() {
   let rows=getGLF();
   const compteFilter = (document.getElementById('gl-f-compte')?.value||'').trim();
@@ -1745,14 +2041,16 @@ function renderGL() {
   if(thCheck) thCheck.style.display = isCompteMode ? 'table-cell' : 'none';
   if(soldeChip) soldeChip.style.display = isCompteMode ? 'inline-flex' : 'none';
   const checkAll = document.getElementById('gl-check-all');
-  if(checkAll) checkAll.checked = true;
+  // L'état "tout coché" reflète maintenant s'il existe des lignes décochées dans la vue actuelle
+  if(checkAll) checkAll.checked = isCompteMode ? !rows.some(e => glUncheckedIds.has(e.id)) : true;
 
   let totD=0,totC=0;
   document.getElementById('gl-body').innerHTML=rows.map((e,i)=>{
     totD+=e.debit; totC+=e.credit;
     const s=e.debit-e.credit;
+    const isChecked = !glUncheckedIds.has(e.id);
     const checkCell = isCompteMode
-      ? `<td style="width:28px;text-align:center;padding:0 4px;"><input type="checkbox" class="gl-row-check" checked onchange="glUpdateSolde()" style="width:13px;height:13px;cursor:pointer;margin:0;vertical-align:middle;"></td>`
+      ? `<td style="width:28px;text-align:center;padding:0 4px;"><input type="checkbox" class="gl-row-check" data-id="${e.id}" ${isChecked?'checked':''} onchange="glCheckChanged('${e.id}', this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;vertical-align:middle;"></td>`
       : `<td style="width:28px;display:none;"></td>`;
     return `<tr>
       ${checkCell}
@@ -1766,7 +2064,10 @@ function renderGL() {
       <td class="td-num c-debit" data-debit="${e.debit}" data-credit="${e.credit}">${fmtN(e.debit)}</td>
       <td class="td-num c-credit">${fmtN(e.credit)}</td>
       <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
-      <td style="text-align:center;padding:0 4px;"><button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button></td>
+      <td style="text-align:center;padding:0 4px;white-space:nowrap;">
+        <button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+      </td>
     </tr>`;
   }).join('');
 
@@ -1776,13 +2077,24 @@ function renderGL() {
   document.getElementById('gl-total-s').innerHTML=`<span class="${ts>0?'c-pos':ts<0?'c-neg':''}">${fmt(ts)}</span>`;
   document.getElementById('gl-count-chip').textContent=rows.length+' ligne(s)';
 
-  if(isCompteMode) glUpdateSolde();
+  if(isCompteMode) {
+    glUpdateSolde();
+    // Repositionner en haut du tableau — sinon le scroll précédent peut dépasser
+    // le nombre de lignes du nouveau filtre et donner l'impression que le tableau est vide
+    const wrap = document.querySelector('#tab-grandlivre .tbl-wrap');
+    if(wrap) wrap.scrollTop = 0;
+  }
 
   // Scroll to bottom by default (latest entries)
   if(!isCompteMode && glSortCol === 'num' && glSortAsc) {
     const wrap = document.querySelector('#tab-grandlivre .tbl-wrap');
     if(wrap) setTimeout(() => { wrap.scrollTop = wrap.scrollHeight; }, 0);
   }
+}
+function glCheckChanged(id, checked) {
+  if(checked) glUncheckedIds.delete(id);
+  else glUncheckedIds.add(id);
+  glUpdateSolde();
 }
 function glUpdateSolde() {
   const checks = document.querySelectorAll('.gl-row-check');
@@ -1805,7 +2117,11 @@ function glUpdateSolde() {
 }
 
 function glToggleAll(checked) {
-  document.querySelectorAll('.gl-row-check').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('.gl-row-check').forEach(cb => {
+    cb.checked = checked;
+    const id = cb.dataset.id;
+    if(id) { if(checked) glUncheckedIds.delete(id); else glUncheckedIds.add(id); }
+  });
   glUpdateSolde();
 }
 
@@ -1853,6 +2169,7 @@ let glAcIdx = -1;
 function resetGLFilters() {
   ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const d=document.getElementById('gl-compte-ac'); if(d) d.style.display='none';
+  glUncheckedIds.clear();
   renderGL();
 }
 
@@ -3147,41 +3464,234 @@ function getBGRows() {
 }
 
 function exportBG(fmt) {
-  const rows = getBGRows();
-  const totD = rows.reduce((s,r)=>s+r.debit,0);
-  const totC = rows.reduce((s,r)=>s+r.credit,0);
-  const totS = totD - totC;
   if(fmt === 'excel') {
-    let csv = '\uFEFF';
-    csv += 'N° Compte;Libellé;Total Débit;Total Crédit;Solde (+ débiteur)\n';
-    rows.forEach(r => {
-      const s = r.debit - r.credit;
-      csv += `${r.compte};${(r.libelle||'').replace(/;/g,',')};${fmtEraw(r.debit)};${fmtEraw(r.credit)};${fmtEraw(s)}\n`;
-    });
-    csv += `;TOTAL;${fmtEraw(totD)};${fmtEraw(totC)};${fmtEraw(totS)}\n`;
-    dlCSV(csv, `BG_${CURRENT_YEAR}.csv`);
+    exportBGExcel();
   } else {
+    showBGN1Modal('pdf');
+  }
+}
+
+function showBGN1Modal(fmt) {
+  const years = Array.from(document.getElementById('ex-year-select').options)
+    .map(o => o.value).filter(y => y !== String(CURRENT_YEAR)).sort((a,b) => b.localeCompare(a));
+  const existing = document.getElementById('bg-n1-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'bg-n1-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 28px;width:400px;font-family:var(--mono);">
+    <div style="font-size:13px;font-weight:700;color:var(--text0);margin-bottom:6px;">⎙ BALANCE GÉNÉRALE</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:16px;">Exercice : <strong style="color:var(--cyan)">${CURRENT_YEAR}</strong></div>
+    <div style="font-size:11px;color:var(--text1);margin-bottom:8px;">Exercice de comparaison N-1 :</div>
+    <select id="bg-n1-select" style="width:100%;height:32px;font-family:var(--mono);font-size:12px;margin-bottom:12px;">
+      <option value="">— Aucun —</option>
+      ${years.map(y=>`<option value="${y}">${y}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-sm" onclick="document.getElementById('bg-n1-modal').remove()">ANNULER</button>
+      <button class="btn btn-sm btn-primary" onclick="generateBG('${fmt}')">⎙ GÉNÉRER</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function generateBG(fmt) {
+  const n1Year = document.getElementById('bg-n1-select')?.value || '';
+  document.getElementById('bg-n1-modal')?.remove();
+
+  let dbN1 = null;
+  if(n1Year && window._fbLoad) {
+    toast('Chargement N-1...','info');
+    const remote = await window._fbLoad(n1Year);
+    if(remote && remote.ecritures) dbN1 = remote;
+  }
+
+  // Calculer soldes depuis écritures
+  function computeSoldes(ecritures) {
+    const sol = {};
+    ecritures.forEach(e => {
+      const cp = String(e.compte||'');
+      if(!cp) return;
+      if(!sol[cp]) sol[cp] = {lib:e.libelleCompte||'',d:0,c:0};
+      sol[cp].d += e.debit||0;
+      sol[cp].c += e.credit||0;
+    });
+    return sol;
+  }
+
+  const sol25 = computeSoldes(DB.ecritures);
+  const sol24 = dbN1 ? computeSoldes(dbN1.ecritures) : null;
+  const hasN1 = !!sol24;
+
+  // Filtre selon scope BG
+  const scope = document.getElementById('ed-bg-scope')?.value || 'all';
+  const noZero = document.getElementById('ed-bg-nonzero')?.value === '1';
+
+  function filterComptes(soldes) {
+    return Object.keys(soldes).filter(cp => {
+      if(scope === 'bilan') return ['1','2','3','4','5'].includes(cp[0]);
+      if(scope === 'resultat') return ['6','7'].includes(cp[0]);
+      return true;
+    }).sort();
+  }
+
+  // Union des comptes N et N-1
+  const allComptes = [...new Set([...filterComptes(sol25), ...(sol24?filterComptes(sol24):[])])].sort();
+
+  const ri = (v) => Math.round(v);
+  const rn = (v) => ri(v).toLocaleString('fr-FR');
+
+  // Colonnes : N° | Libellé | Solde N-1 | Débit N | Crédit N | Solde N | Variation
+  // IMPORTANT : sommer les valeurs EXACTES (non arrondies) pour que le total tombe juste à 0,
+  // l'arrondi n'est appliqué qu'à l'affichage (via rn()) sur chaque ligne ET sur les totaux.
+  let totD25exact=0, totC25exact=0, totNet24exact=0;
+  const compteData = allComptes.map(cp => {
+    const s25 = sol25[cp]||{lib:'',d:0,c:0};
+    const s24v = sol24 ? (sol24[cp]||{lib:'',d:0,c:0}) : null;
+    const d25=s25.d, c25=s25.c, net25=d25-c25;              // valeurs exactes
+    const net24 = s24v ? (s24v.d-s24v.c) : null;             // valeur exacte
+    const diff = (net24!==null) ? net25-net24 : null;
+    const lib = s25.lib || sol24?.[cp]?.lib || '';
+    totD25exact+=d25; totC25exact+=c25;
+    if(net24!==null) totNet24exact+=net24;
+    return {cp, lib, net24, d25, c25, net25, diff};
+  });
+  const totD25=totD25exact, totC25=totC25exact, totNet24=totNet24exact;
+
+  if(fmt === 'pdf') {
+    const ORANGE = '#e84b0f';
+    const bdrD = 'border-right:1px solid #ddd;';
+    const NW = 38;   // largeur colonnes numeriques
+    const CW = 40;   // largeur colonne n compte
+    const thS = `color:#fff;font-weight:700;background-color:${ORANGE};font-size:7px;letter-spacing:0;padding:3px 2px;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+    const tdN = `font-size:7px;letter-spacing:0;padding:2px;text-align:right;white-space:nowrap;overflow:hidden;`;
+
+    // colgroup impose les largeurs
+    const cols = hasN1
+      ? `<col style="width:${CW}px"><col><col style="width:${NW}px"><col style="width:${NW}px"><col style="width:${NW}px"><col style="width:${NW}px"><col style="width:${NW}px">`
+      : `<col style="width:${CW}px"><col><col style="width:${NW}px"><col style="width:${NW}px"><col style="width:${NW}px">`;
+
+    const n1Header = hasN1 ? `<th style="${thS}text-align:right">Solde<br>${n1Year}</th>` : '';
+    const varHeader = hasN1 ? `<th style="${thS}text-align:right">Var.</th>` : '';
+
+    const rowsHTML = compteData.map(({cp,lib,net24,d25,c25,net25,diff}) => {
+      const n1td = hasN1 ? `<td style="${tdN}${bdrD}color:#555">${rn(net24??0)}</td>` : '';
+      const vartd = hasN1 ? `<td style="${tdN}">${diff!==null?rn(diff):'0'}</td>` : '';
+      return `<tr>`
+        + `<td style="font-family:monospace;font-size:7px;padding:2px;white-space:nowrap">${cp}</td>`
+        + `<td style="font-size:8px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lib}</td>`
+        + n1td
+        + `<td style="${tdN}">${rn(d25)}</td>`
+        + `<td style="${tdN}">${rn(c25)}</td>`
+        + `<td style="${tdN}${bdrD}">${rn(net25)}</td>`
+        + vartd
+        + `</tr>`;
+    }).join('');
+
+    const totNet25 = totD25 - totC25;
+    const totS = `color:#fff;font-weight:700;background-color:${ORANGE};font-size:7px;letter-spacing:0;padding:3px 2px;text-align:right;white-space:nowrap;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+    const n1tot = hasN1 ? `<td style="${totS}">${rn(totNet24)}</td>` : '';
+    const vartot = hasN1 ? `<td style="${totS}">${rn(totNet25-totNet24)}</td>` : '';
+
     const html = `<div class="rpt">
-      ${rptHeader('Balance Générale', 'Soldes par compte')}
-      <table>
-        <thead><tr><th>N° Compte</th><th>Libellé</th><th class="r-num">Total Débit</th><th class="r-num">Total Crédit</th><th class="r-num">Solde</th></tr></thead>
-        <tbody>
-          ${rows.map(r => { const s=r.debit-r.credit; return `<tr>
-            <td style="font-family:monospace">${r.compte}</td><td>${r.libelle||''}</td>
-            <td class="r-num">${fmtE(r.debit)}</td><td class="r-num">${fmtE(r.credit)}</td>
-            <td class="r-num ${s>0?'r-pos':s<0?'r-neg':''}">${fmtE(s)}</td>
-          </tr>`; }).join('')}
-          <tr class="r-total"><td colspan="2">TOTAL</td>
-            <td class="r-num">${fmtEraw(totD)} €</td>
-            <td class="r-num">${fmtEraw(totC)} €</td>
-            <td class="r-num">${fmtEraw(totS)} €</td>
-          </tr>
-        </tbody>
+      ${rptHeader('Balance Générale', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR} — Montants en euros entiers`)}
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
+        <colgroup>${cols}</colgroup>
+        <thead><tr>
+          <th style="${thS}text-align:left">N° Cpt</th>
+          <th style="${thS}text-align:left">Libellé</th>
+          ${n1Header}
+          <th style="${thS}text-align:right">Débit<br>${CURRENT_YEAR}</th>
+          <th style="${thS}text-align:right">Crédit<br>${CURRENT_YEAR}</th>
+          <th style="${thS}text-align:right">Solde<br>${CURRENT_YEAR}</th>
+          ${varHeader}
+        </tr></thead>
+        <tbody>${rowsHTML}</tbody>
+        <tfoot><tr>
+          <td colspan="2" style="${totS}text-align:left">TOTAL</td>
+          ${n1tot}
+          <td style="${totS}">${rn(totD25)}</td>
+          <td style="${totS}">${rn(totC25)}</td>
+          <td style="${totS}">${rn(totNet25)}</td>
+          ${vartot}
+        </tr></tfoot>
       </table>
       ${rptFooter()}
     </div>`;
-    printDoc(html, `Balance_Générale_${CURRENT_YEAR}`);
+    printDoc('<style>@page{size:A4 portrait;margin:8mm}</style>'+html, `Balance_Générale_${CURRENT_YEAR}`);
+
+  } else {
+    // Excel
+    if(typeof XLSX === 'undefined') {
+      await new Promise((res,rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+
+    const ORANGE = 'E84B0F';
+    const hdrS = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}, alignment:{horizontal:'left'}};
+    const hdrR = {...hdrS, alignment:{horizontal:'right'}};
+    const nrm  = {font:{name:'Arial',sz:10}, alignment:{horizontal:'left'}};
+    const nrmR = {font:{name:'Arial',sz:10}, alignment:{horizontal:'right'}};
+    const gryR = {font:{name:'Arial',sz:10,color:{rgb:'777777'}}, alignment:{horizontal:'right'}};
+    const totS = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}, alignment:{horizontal:'left'}};
+    const totR = {...totS, alignment:{horizontal:'right'}};
+
+    function mkCell(v,s) { return {v:v===null||v===undefined?0:v, s:s, t:typeof v==='number'?'n':'s'}; }
+
+    const n1Label = hasN1 ? `BG ouverture 01/01/${CURRENT_YEAR} (solde ${n1Year})` : null;
+    const headers = [
+      mkCell('N° Compte',hdrS), mkCell('Libellé',hdrS),
+      ...(hasN1 ? [mkCell(n1Label,hdrR)] : []),
+      mkCell('Débit '+CURRENT_YEAR,hdrR), mkCell('Crédit '+CURRENT_YEAR,hdrR), mkCell('Solde '+CURRENT_YEAR,hdrR),
+      ...(hasN1 ? [mkCell('Variation',hdrR)] : []),
+    ];
+
+    const rows = [headers];
+    compteData.forEach(({cp,lib,net24,d25,c25,net25,diff}) => {
+      rows.push([
+        mkCell(cp,nrm), mkCell(lib,nrm),
+        ...(hasN1 ? [mkCell(net24??0, gryR)] : []),
+        mkCell(d25,nrmR), mkCell(c25,nrmR), mkCell(net25,nrmR),
+        ...(hasN1 ? [mkCell(diff??0, nrmR)] : []),
+      ]);
+    });
+
+    const totNet25=totD25-totC25;
+    rows.push([
+      mkCell('TOTAL',totS), mkCell('',totS),
+      ...(hasN1 ? [mkCell(totNet24,totR)] : []),
+      mkCell(totD25,totR), mkCell(totC25,totR), mkCell(totNet25,totR),
+      ...(hasN1 ? [mkCell(totNet25-totNet24,totR)] : []),
+    ]);
+
+    const maxC = hasN1 ? 6 : 4;
+    const ws = {};
+    rows.forEach((row,ri_) => {
+      row.forEach((cell,ci) => {
+        if(!cell) return;
+        const ref = XLSX.utils.encode_cell({r:ri_,c:ci});
+        ws[ref] = {v:cell.v, t:cell.t||'s'};
+        if(cell.s) ws[ref].s = cell.s;
+      });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:maxC}});
+    ws['!cols'] = hasN1
+      ? [{wch:12},{wch:55},{wch:20},{wch:11},{wch:11},{wch:11},{wch:11}]
+      : [{wch:12},{wch:55},{wch:11},{wch:11},{wch:11}];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'BG '+CURRENT_YEAR);
+    XLSX.writeFile(wb, 'BG_'+CURRENT_YEAR+'.xlsx', {cellStyles:true, bookType:'xlsx'});
+    toast('Export Excel BG généré','success');
   }
+}
+
+async function exportBGExcel() {
+  showBGN1Modal('excel');
 }
 
 // ══════════════════════════════════════════════
@@ -3218,67 +3728,71 @@ function getSoldesComptes(comptes) {
 // ── BILAN PCG ──
 function buildBilanPCG() {
   const s = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
-  const rnd = (v) => Math.round(v * 100) / 100;
+  // Arrondi à l'entier — les totaux sont calculés APRES arrondi pour cohérence
+  const ri = (v) => Math.round(v);
 
   // ── ACTIF IMMOBILISÉ ──
-  // Bruts (débiteurs → positifs)
-  const brut_terrain = rnd(s(['211']));
-  const brut_constructions = rnd(s(['2131','2132','2133','2134','2136','2137','2139','214']));
-  const brut_instal = rnd(s(['2135','2136','2138']));
-  const brut_autresImmo = rnd(s(['218']));
-  const brut_immoFinanciere = rnd(s(['26','27']));
-  const brut_immoCorpo = rnd(brut_terrain + brut_constructions + brut_instal + brut_autresImmo);
-  const brut_total = rnd(brut_immoCorpo + brut_immoFinanciere);
+  const brut_terrain = ri(s(['211']));
+  const brut_constructions = ri(s(['2131','2132','2133','2134','2136','2137','2139','214']));
+  const brut_instal_pure = ri(s(['2135','2136','2138']));
+  const brut_autresImmo = ri(s(['218']));
+  const brut_instal = brut_instal_pure + brut_autresImmo; // regroupés à l'affichage
+  const brut_immoEnCours = ri(s(['23']));
+  const brut_immoFinanciere = ri(s(['26','27']));
+  const brut_immoCorpo = brut_terrain + brut_constructions + brut_instal;
+  const brut_total = brut_immoCorpo + brut_immoEnCours + brut_immoFinanciere;
 
-  // Amortissements (créditeurs → soldes négatifs → on prend la valeur absolue)
-  const amort_constructions = rnd(Math.abs(s(['281300','281310','281320'])));
-  const amort_instal = rnd(Math.abs(s(['281350'])));
-  const amort_autresImmo = rnd(Math.abs(s(['281830'])));
-  const amort_immoCorpo = rnd(amort_constructions + amort_instal + amort_autresImmo);
+  const amort_constructions = ri(Math.abs(s(['281300','281310','281320'])));
+  const amort_instal = ri(Math.abs(s(['281350']))) + ri(Math.abs(s(['281830'])));
+  const amort_immoCorpo = amort_constructions + amort_instal;
   const amort_total = amort_immoCorpo;
 
-  // Nets
   const net_terrain = brut_terrain;
-  const net_constructions = rnd(brut_constructions - amort_constructions);
-  const net_instal = rnd(brut_instal - amort_instal);
-  const net_autresImmo = rnd(brut_autresImmo - amort_autresImmo);
-  const net_immoCorpo = rnd(net_terrain + net_constructions + net_instal + net_autresImmo);
+  const net_constructions = brut_constructions - amort_constructions;
+  const net_instal = brut_instal - amort_instal;
+  const net_autresImmo = 0; // inclus dans net_instal
+  const net_immoEnCours = brut_immoEnCours;
   const net_immoFinanciere = brut_immoFinanciere;
-  const net_immoTotal = rnd(net_immoCorpo + net_immoFinanciere);
+  const net_immoCorpo = net_terrain + net_constructions + net_instal;
+  const net_immoTotal = net_immoCorpo + net_immoEnCours + net_immoFinanciere;
 
   // ── ACTIF CIRCULANT ──
-  const brut_clients = rnd(s(['411','412','413','416','418']));
-  const fournisseursRaw = s(['401','404','408']); // positif si débiteur (avoir fournisseur)
-  const avanceFournisseurs = rnd(Math.max(0, fournisseursRaw)); // solde débiteur → créance actif
-  const brut_autresCreances = rnd(s(['409','44','46','47','48']) + avanceFournisseurs);
-  const brut_creances = rnd(brut_clients + brut_autresCreances);
-  const brut_banque = rnd(s(['512','514','515','516','517','518','53']));
-  const brut_circulant = rnd(brut_creances + brut_banque);
-  const net_clients = brut_clients;
-  const net_autresCreances = brut_autresCreances;
-  const net_creances = brut_creances;
-  const net_banque = brut_banque;
+  const brut_clients = ri(s(['411','412','413','416','418']));
+  const fournisseursRaw = s(['401','404','408']);
+  const avanceFournisseurs = ri(Math.max(0, fournisseursRaw));
+  const brut_autresCreances = ri(s(['409','44','46','47','48'])) + avanceFournisseurs;
+  const brut_creances = brut_clients + brut_autresCreances;
+  const brut_commandesEnCours = ri(s(['37','38']));
+  const brut_banque = ri(s(['512','514','515','516','517','518','53']));
+  const brut_circulant = brut_creances + brut_commandesEnCours + brut_banque;
   const net_circulant = brut_circulant;
 
-  const brut_total_actif = rnd(brut_total + brut_circulant);
+  const brut_total_actif = brut_total + brut_circulant;
   const amort_total_actif = amort_total;
-  const net_total_actif = rnd(net_immoTotal + net_circulant);
+  const net_total_actif = net_immoTotal + net_circulant;
 
   // ── PASSIF ──
-  const capital = rnd(-s(['101','102','103']));
-  const primesCapital = rnd(-s(['104','105']));
-  const reserves = rnd(-s(['106']));
-  const reportANouveau = rnd(-s(['110']) + (-s(['119'])));
-  const resultatNet = rnd(-s(['120','129']));
-  const totalCapitauxPropres = rnd(capital + primesCapital + reserves + reportANouveau + resultatNet);
+  const capital = ri(-s(['101','102','103']));
+  const primesCapital = ri(-s(['104','105']));
+  const reserves = ri(-s(['106']));
+  const reportANouveau = ri(-s(['110'])) + ri(-s(['119']));
+  const resultatCloture = ri(-s(['120','129']));
+  // Résultat provisoire (bilan en cours d'année, avant écriture de clôture) :
+  // calculé comme Produits (classe 7) - Charges (classe 6), utilisé uniquement
+  // si les comptes de résultat 120/129 sont encore à zéro.
+  const produitsProvisoire = ri(-s(['7']));
+  const chargesProvisoire = ri(s(['6']));
+  const resultatProvisoire = produitsProvisoire - chargesProvisoire;
+  const isResultatProvisoire = resultatCloture === 0 && resultatProvisoire !== 0;
+  const resultatNet = isResultatProvisoire ? resultatProvisoire : resultatCloture;
+  const totalCapitauxPropres = capital + primesCapital + reserves + reportANouveau + resultatNet;
 
-  const provisions_charges = rnd(-s(['15']));
+  const provisions_charges = ri(-s(['15']));
   const totalProvisions = provisions_charges;
 
-  const emprunts = rnd(-s(['164']));
-  const depots = rnd(-s(['165']));
+  const emprunts = ri(-s(['164']));
+  const depots = ri(-s(['165']));
 
-  // CC associés par associé
   const ccMap = {};
   DB.ecritures.forEach(e => {
     const cp = String(e.compte);
@@ -3288,185 +3802,530 @@ function buildBilanPCG() {
     }
   });
   const ccDetail = Object.entries(ccMap).sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([cp,v])=>({compte:cp, lib:v.lib, montant:rnd(v.solde)}));
-  const ccTotal = rnd(ccDetail.reduce((sum,cc)=>sum+cc.montant, 0));
-  const dettesFinancieres = rnd(emprunts + depots + ccTotal);
+    .map(([cp,v])=>({compte:cp, lib:v.lib, montant:ri(v.solde)}));
+  const ccTotal = ccDetail.reduce((sum,cc)=>sum+cc.montant, 0);
+  const dettesFinancieres = emprunts + depots + ccTotal;
 
-  // Fournisseurs : solde créditeur = dette passif ; solde débiteur = déjà dans actif circulant
-  const fournisseurs = rnd(Math.max(0, -fournisseursRaw)); // créditeur → passif
-  const autresDettesExploit = rnd(-s(['419','447','486','487']));
-  const dettesExploitation = rnd(fournisseurs + autresDettesExploit);
-  const totalDettes = rnd(dettesFinancieres + dettesExploitation);
-  const totalPassif = rnd(totalCapitauxPropres + totalProvisions + totalDettes);
+  const fournisseurs = ri(Math.max(0, -fournisseursRaw));
+  const autresDettesExploit = ri(-s(['419','447','486','487']));
+  const autresDettes = ri(-s(['488','489']));
+  const dettesExploitation = fournisseurs + autresDettesExploit;
+  const totalDettes = dettesFinancieres + dettesExploitation + autresDettes;
+  const totalPassif = totalCapitauxPropres + totalProvisions + totalDettes;
 
   return {
     actif: {
       immobilise: {
-        brut_terrain, brut_constructions, brut_instal, brut_autresImmo, brut_immoCorpo, brut_immoFinanciere, brut_total,
-        amort_constructions, amort_instal, amort_autresImmo, amort_immoCorpo, amort_total,
-        net_terrain, net_constructions, net_instal, net_autresImmo, net_immoCorpo, net_immoFinanciere, net_immoTotal
+        brut_terrain, brut_constructions, brut_instal, brut_immoEnCours, brut_immoFinanciere, brut_immoCorpo, brut_total,
+        amort_constructions, amort_instal, amort_immoCorpo, amort_total,
+        net_terrain, net_constructions, net_instal, net_immoEnCours, net_immoFinanciere, net_immoCorpo, net_immoTotal
       },
-      circulant: { brut_clients, brut_autresCreances, brut_creances, brut_banque, brut_circulant, net_clients, net_autresCreances, net_creances, net_banque, net_circulant },
+      circulant: { brut_clients, brut_autresCreances, brut_creances, brut_commandesEnCours, brut_banque, brut_circulant, net_circulant },
       brut_total: brut_total_actif, amort_total: amort_total_actif, net_total: net_total_actif
     },
     passif: {
-      capitauxPropres: { capital, primesCapital, reserves, reportANouveau, resultat: resultatNet, total: totalCapitauxPropres },
+      capitauxPropres: { capital, primesCapital, reserves, reportANouveau, resultat: resultatNet, isResultatProvisoire, total: totalCapitauxPropres },
       provisions: { charges: provisions_charges, total: totalProvisions },
-      dettes: { emprunts, depots, ccDetail, ccTotal, fournisseurs, autresDettesExploit, dettesFinancieres, dettesExploitation, total: totalDettes },
+      dettes: { emprunts, depots, ccDetail, ccTotal, fournisseurs, autresDettesExploit, autresDettes, dettesFinancieres, dettesExploitation, total: totalDettes },
       total: totalPassif
     }
   };
 }
 
 function renderBilanHTML(b, bn1, n1Year) {
-  const rn = (v) => v === 0 ? '' : fmtEraw(Math.round(v*100)/100);
-  const rnz = (v) => fmtEraw(Math.round(v*100)/100);
-  const neg = (v) => v < 0 ? ' style="color:#991b1b"' : '';
+  const rn = (v) => Math.round(v).toLocaleString('fr-FR');
   const hasN1 = !!bn1;
-  const varVal = (n, n1) => { if(n1===null||n1===undefined) return ''; const v=Math.round((n-n1)*100)/100; return (v>0?'+':'')+fmtEraw(v); };
-  const varCls = (n, n1) => { if(n1===null||n1===undefined) return ''; const v=n-n1; return v<0?' style="color:#991b1b"':v>0?' style="color:#166534"':''; };
-
-  const rowActif = (label, brut, amort, net, indent=0, n1net=null) => {
-    const pad = indent ? `style="padding-left:${indent*14}px"` : '';
-    const negNet = net < 0 ? ' style="color:#991b1b"' : '';
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rn(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr><td ${pad}>${label}</td><td class="r-num">${rn(brut)}</td><td class="r-num" style="color:#991b1b">${amort?rn(amort):''}</td><td class="r-num"${negNet}>${rn(net)}</td>${n1cols}</tr>`;
+  const varVal = (n, n1) => {
+    if(n1===null||n1===undefined) return '';
+    const v = Math.round(n - n1);
+    return v < 0 ? '(' + Math.abs(v).toLocaleString('fr-FR') + ')' : v.toLocaleString('fr-FR');
   };
-
-  const rowPassif = (label, net, indent=0, n1net=null) => {
-    const pad = indent ? `style="padding-left:${indent*14}px"` : '';
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr><td ${pad}>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
-  };
-
-  const subtotalActif = (label, brut, amort, net, n1net=null) => {
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr class="r-subtotal"><td>${label}</td><td class="r-num">${rnz(brut)}</td><td class="r-num" style="color:#991b1b">${amort?rnz(amort):''}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
-  };
-
-  const totalActifRow = (label, brut, amort, net, n1net=null) => {
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr class="r-total"><td>${label}</td><td class="r-num">${rnz(brut)}</td><td class="r-num">${amort?rnz(amort):''}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
-  };
-
-  const subtotalPassif = (label, net, n1net=null) => {
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr class="r-subtotal"><td>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
-  };
-
-  const totalPassifRow = (label, net, n1net=null) => {
-    const n1cols = hasN1 ? `<td class="r-num" style="color:#666">${n1net!==null?rnz(n1net):''}</td><td class="r-num"${varCls(net,n1net)}>${n1net!==null?varVal(net,n1net):''}</td>` : '';
-    return `<tr class="r-total"><td>${label}</td><td class="r-num"${neg(net)}>${rnz(net)}</td>${n1cols}</tr>`;
-  };
-
-  const n1 = bn1;
-  const colspan = hasN1 ? 6 : 4;
+  const ORANGE = '#e84b0f';
+  const ORANGE_LIGHT = '#fde8df';
+  const bdrR = 'border-right:1px solid #ccc;';
+  const colspanA = hasN1 ? 6 : 4;
   const colspanP = hasN1 ? 4 : 2;
-  const actifThExtra = hasN1 ? `<th class="r-num" style="width:72px;color:#999">${n1Year}</th><th class="r-num" style="width:55px">VAR.</th>` : '';
-  const passifThExtra = hasN1 ? `<th class="r-num" style="width:72px;color:#999">${n1Year}</th><th class="r-num" style="width:55px">VAR.</th>` : '';
+  const n1 = bn1;
 
-  return `<div class="rpt">
-    ${rptHeader('Bilan', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR}`)}
-    <div class="rpt-2col">
-      <div>
-        <div class="rpt-col-title">ACTIF</div>
-        <table><thead><tr>
-          <th>Poste</th>
-          <th class="r-num" style="width:72px">Brut</th>
-          <th class="r-num" style="width:60px">Amort.</th>
-          <th class="r-num" style="width:72px">${CURRENT_YEAR}</th>
-          ${actifThExtra}
-        </tr></thead><tbody>
-          <tr class="r-section"><td colspan="${colspan}">ACTIF IMMOBILISÉ</td></tr>
-          <tr class="r-subsection"><td colspan="${colspan}">Immobilisations corporelles</td></tr>
-          ${rowActif('Terrain', b.actif.immobilise.brut_terrain, 0, b.actif.immobilise.net_terrain, 1, n1?.actif.immobilise.net_terrain)}
-          ${rowActif('Constructions', b.actif.immobilise.brut_constructions, b.actif.immobilise.amort_constructions, b.actif.immobilise.net_constructions, 1, n1?.actif.immobilise.net_constructions)}
-          ${rowActif('Installations générales, agencements, aménagements divers', b.actif.immobilise.brut_instal+b.actif.immobilise.brut_autresImmo, b.actif.immobilise.amort_instal+b.actif.immobilise.amort_autresImmo, b.actif.immobilise.net_instal+b.actif.immobilise.net_autresImmo, 1, n1?n1.actif.immobilise.net_instal+n1.actif.immobilise.net_autresImmo:null)}
-          ${b.actif.immobilise.brut_immoFinanciere?rowActif('Immobilisations financières', b.actif.immobilise.brut_immoFinanciere, 0, b.actif.immobilise.net_immoFinanciere, 1, n1?.actif.immobilise.net_immoFinanciere):''}
-          ${subtotalActif('Total Actif Immobilisé', b.actif.immobilise.brut_total, b.actif.immobilise.amort_total, b.actif.immobilise.net_immoTotal, n1?.actif.immobilise.net_immoTotal)}
-          <tr class="r-section"><td colspan="${colspan}">ACTIF CIRCULANT</td></tr>
-          <tr class="r-subsection"><td colspan="${colspan}">Créances</td></tr>
-          ${rowActif('Clients', b.actif.circulant.brut_clients, 0, b.actif.circulant.net_clients, 1, n1?.actif.circulant.net_clients)}
-          ${b.actif.circulant.brut_autresCreances?rowActif('Autres créances', b.actif.circulant.brut_autresCreances, 0, b.actif.circulant.net_autresCreances, 1, n1?.actif.circulant.net_autresCreances):''}
-          <tr class="r-subsection"><td colspan="${colspan}">Disponibilités</td></tr>
-          ${rowActif('Banque', b.actif.circulant.brut_banque, 0, b.actif.circulant.net_banque, 1, n1?.actif.circulant.net_banque)}
-          ${subtotalActif('Total Actif Circulant', b.actif.circulant.brut_circulant, 0, b.actif.circulant.net_circulant, n1?.actif.circulant.net_circulant)}
-          ${totalActifRow('TOTAL ACTIF', b.actif.brut_total, b.actif.amort_total, b.actif.net_total, n1?.actif.net_total)}
-        </tbody></table>
-      </div>
-      <div>
-        <div class="rpt-col-title">PASSIF</div>
-        <table><thead><tr>
-          <th>Poste</th>
-          <th class="r-num" style="width:80px">${CURRENT_YEAR}</th>
-          ${passifThExtra}
-        </tr></thead><tbody>
-          <tr class="r-section"><td colspan="${colspanP}">CAPITAUX PROPRES</td></tr>
-          ${rowPassif('Capital Social', b.passif.capitauxPropres.capital, 1, n1?.passif.capitauxPropres.capital)}
-          ${rowPassif('Réserves', b.passif.capitauxPropres.reserves, 1, n1?.passif.capitauxPropres.reserves)}
-          ${rowPassif('Report à nouveau', b.passif.capitauxPropres.reportANouveau, 1, n1?.passif.capitauxPropres.reportANouveau)}
-          ${rowPassif('Résultat de l\'exercice', b.passif.capitauxPropres.resultat, 1, n1?.passif.capitauxPropres.resultat)}
-          ${subtotalPassif('Total Capitaux Propres', b.passif.capitauxPropres.total, n1?.passif.capitauxPropres.total)}
-          <tr class="r-section"><td colspan="${colspanP}">PROVISIONS</td></tr>
-          ${rowPassif('Provisions pour charges', b.passif.provisions.charges, 1, n1?.passif.provisions.charges)}
-          ${subtotalPassif('Total Provisions', b.passif.provisions.total, n1?.passif.provisions.total)}
-          <tr class="r-section"><td colspan="${colspanP}">DETTES</td></tr>
-          <tr class="r-subsection"><td colspan="${colspanP}">Dettes financières</td></tr>
-          ${rowPassif('Emprunts auprès des établissements de crédit', b.passif.dettes.emprunts, 1, n1?.passif.dettes.emprunts)}
-          ${b.passif.dettes.depots?rowPassif('Dépôts et cautionnements reçus', b.passif.dettes.depots, 1, n1?.passif.dettes.depots):''}
-          ${b.passif.dettes.ccDetail.map((cc,i)=>rowPassif(cc.lib, cc.montant, 1, n1?.passif.dettes.ccDetail[i]?.montant??null)).join('')}
-          ${b.passif.dettes.dettesExploitation?`<tr class="r-subsection"><td colspan="${colspanP}">Dettes d\'exploitation</td></tr>`:''}
-          ${b.passif.dettes.fournisseurs?rowPassif('Fournisseurs', b.passif.dettes.fournisseurs, 1, n1?.passif.dettes.fournisseurs):''}
-          ${b.passif.dettes.autresDettesExploit?rowPassif('Autres dettes', b.passif.dettes.autresDettesExploit, 1, n1?.passif.dettes.autresDettesExploit):''}
-          ${subtotalPassif('Total Dettes', b.passif.dettes.total, n1?.passif.dettes.total)}
-          ${totalPassifRow('TOTAL PASSIF', b.passif.total, n1?.passif.total)}
-        </tbody></table>
-      </div>
-    </div>
-    ${rptFooter()}
-  </div>`;
+  const n1colsA = (net, n1net) => hasN1 ? '<td class="r-num" style="' + bdrR + 'color:#555">' + (n1net!==null&&n1net!==undefined?rn(n1net):rn(0)) + '</td><td class="r-num">' + varVal(net,n1net) + '</td>' : '';
+  const n1colsAb = (net, n1net) => hasN1 ? '<td class="r-num" style="' + bdrR + 'color:#555;font-weight:700;">' + (n1net!==null&&n1net!==undefined?rn(n1net):rn(0)) + '</td><td class="r-num" style="font-weight:700;">' + varVal(net,n1net) + '</td>' : '';
+  const n1colsP = (net, n1net) => hasN1 ? '<td class="r-num" style="' + bdrR + 'color:#555">' + (n1net!==null&&n1net!==undefined?rn(n1net):rn(0)) + '</td><td class="r-num">' + varVal(net,n1net) + '</td>' : '';
+  const n1colsPb = (net, n1net) => hasN1 ? '<td class="r-num" style="' + bdrR + 'color:#555;font-weight:700;">' + (n1net!==null&&n1net!==undefined?rn(n1net):rn(0)) + '</td><td class="r-num" style="font-weight:700;">' + varVal(net,n1net) + '</td>' : '';
+  const n1colsOrange = (net, n1net) => hasN1 ? '<td class="r-num" style="color:#fff;font-weight:700;">' + rn(n1net??0) + '</td><td class="r-num" style="color:#fff;font-weight:700;">' + varVal(net,n1net) + '</td>' : '';
+
+  // Ligne normale actif
+  const rA = (label, brut, amort, net, indent, n1net) => {
+    const pad = indent ? 'padding-left:' + (indent*14) + 'px;' : '';
+    const negN = '';
+    return '<tr><td style="' + pad + 'font-size:10px;">' + label + '</td><td class="r-num" style="' + bdrR + '">' + rn(brut) + '</td><td class="r-num" style="' + bdrR + '">' + (amort?rn(amort):'') + '</td><td class="r-num" style="' + bdrR + negN + '">' + rn(net) + '</td>' + n1colsA(net, n1net) + '</tr>';
+  };
+
+  // Agrégat actif (gras, montants affichés)
+  const agA = (label, brut, amort, net, n1net) => {
+    const negN = '';
+    return '<tr><td style="font-weight:700;font-style:italic;">' + label + '</td><td class="r-num" style="' + bdrR + 'font-weight:700;">' + rn(brut) + '</td><td class="r-num" style="' + bdrR + 'font-weight:700;">' + (amort?rn(amort):'') + '</td><td class="r-num" style="' + bdrR + negN + 'font-weight:700;">' + rn(net) + '</td>' + n1colsAb(net, n1net) + '</tr>';
+  };
+
+  // Ligne normale passif
+  const rP = (label, net, indent, n1net) => {
+    const pad = indent ? 'padding-left:' + (indent*14) + 'px;' : '';
+    const negN = '';
+    return '<tr><td style="' + pad + 'font-size:10px;">' + label + '</td><td class="r-num" style="' + bdrR + negN + '">' + rn(net) + '</td>' + n1colsP(net, n1net) + '</tr>';
+  };
+
+  // Agrégat passif (gras)
+  const agP = (label, net, n1net) => {
+    const negN = '';
+    return '<tr><td style="font-weight:700;font-style:italic;">' + label + '</td><td class="r-num" style="' + bdrR + negN + 'font-weight:700;">' + rn(net) + '</td>' + n1colsPb(net, n1net) + '</tr>';
+  };
+
+  // Sous-total (ligne séparatrice simple en haut)
+  const stA = (label, brut, amort, net, n1net) => {
+    const negN = '';
+    return '<tr style="border-top:1px solid #999;"><td style="font-weight:700;">' + label + '</td><td class="r-num" style="' + bdrR + 'font-weight:700;">' + rn(brut) + '</td><td class="r-num" style="' + bdrR + 'font-weight:700;">' + (amort?rn(amort):'') + '</td><td class="r-num" style="' + bdrR + negN + 'font-weight:700;">' + rn(net) + '</td>' + n1colsAb(net, n1net) + '</tr>';
+  };
+
+  const stP = (label, net, n1net) => {
+    const negN = '';
+    return '<tr style="border-top:1px solid #999;"><td style="font-weight:700;">' + label + '</td><td class="r-num" style="' + bdrR + negN + 'font-weight:700;">' + rn(net) + '</td>' + n1colsPb(net, n1net) + '</tr>';
+  };
+
+  // Total général (fond orange)
+  const ttA = (label, brut, amort, net, n1net) => {
+    return '<tr style="background:' + ORANGE + ';"><td style="color:#fff;font-weight:700;font-size:10.5px;">' + label + '</td><td class="r-num" style="' + bdrR + 'color:#fff;font-weight:700;">' + rn(brut) + '</td><td class="r-num" style="' + bdrR + 'color:#fff;font-weight:700;">' + (amort?rn(amort):'') + '</td><td class="r-num" style="' + bdrR + 'color:#fff;font-weight:700;">' + rn(net) + '</td>' + n1colsOrange(net, n1net) + '</tr>';
+  };
+
+  const ttP = (label, net, n1net) => {
+    return '<tr style="background:' + ORANGE + ';"><td style="color:#fff;font-weight:700;font-size:10.5px;">' + label + '</td><td class="r-num" style="' + bdrR + 'color:#fff;font-weight:700;">' + rn(net) + '</td>' + n1colsOrange(net, n1net) + '</tr>';
+  };
+
+  // Section principale (orange clair)
+  const secA = (label) => '<tr style="background:' + ORANGE_LIGHT + ';"><td colspan="' + colspanA + '" style="font-weight:700;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;padding:5px 6px;color:#111;">' + label + '</td></tr>';
+  const secP = (label) => '<tr style="background:' + ORANGE_LIGHT + ';"><td colspan="' + colspanP + '" style="font-weight:700;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;padding:5px 6px;color:#111;">' + label + '</td></tr>';
+
+  const thN1A = hasN1 ? '<th class="r-num" style="width:70px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">' + n1Year + '</th><th class="r-num" style="color:#fff;font-weight:700;background-color:#e84b0f;">VARIATION</th>' : '';
+  const thN1P = hasN1 ? '<th class="r-num" style="width:80px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">' + n1Year + '</th><th class="r-num" style="color:#fff;font-weight:700;background-color:#e84b0f;">VARIATION</th>' : '';
+
+  const actifHTML = '<table style="width:100%;border-collapse:collapse;font-size:10px;">'
+    + '<thead><tr style="background:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
+    + '<th style="text-align:left;padding:5px 6px;color:#fff;font-weight:700;background-color:#e84b0f;">ACTIF</th>'
+    + '<th class="r-num" style="width:70px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">BRUT</th>'
+    + '<th class="r-num" style="width:60px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">AMORT.</th>'
+    + '<th class="r-num" style="width:70px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">' + CURRENT_YEAR + '</th>'
+    + thN1A
+    + '</tr></thead><tbody>'
+    + secA('Actif Immobilisé')
+    + agA('Immobilisations corporelles', b.actif.immobilise.brut_immoCorpo, b.actif.immobilise.amort_immoCorpo, b.actif.immobilise.net_immoCorpo, n1?.actif.immobilise.net_immoCorpo)
+    + rA('Terrain', b.actif.immobilise.brut_terrain, 0, b.actif.immobilise.net_terrain, 1, n1?.actif.immobilise.net_terrain)
+    + rA('Constructions', b.actif.immobilise.brut_constructions, b.actif.immobilise.amort_constructions, b.actif.immobilise.net_constructions, 1, n1?.actif.immobilise.net_constructions)
+    + rA('Installations générales, agencements, aménagements divers', b.actif.immobilise.brut_instal, b.actif.immobilise.amort_instal, b.actif.immobilise.net_instal, 1, n1?.actif.immobilise.net_instal)
+    + agA('Immobilisations en cours', b.actif.immobilise.brut_immoEnCours, 0, b.actif.immobilise.net_immoEnCours, n1?.actif.immobilise.net_immoEnCours)
+    + agA('Immobilisations financières', b.actif.immobilise.brut_immoFinanciere, 0, b.actif.immobilise.net_immoFinanciere, n1?.actif.immobilise.net_immoFinanciere)
+    + stA('Total Actif Immobilisé', b.actif.immobilise.brut_total, b.actif.immobilise.amort_total, b.actif.immobilise.net_immoTotal, n1?.actif.immobilise.net_immoTotal)
+    + secA('Actif Circulant')
+    + agA('Créances', b.actif.circulant.brut_creances, 0, b.actif.circulant.brut_creances, n1?.actif.circulant.brut_creances)
+    + rA('Clients', b.actif.circulant.brut_clients, 0, b.actif.circulant.brut_clients, 1, n1?.actif.circulant.brut_clients)
+    + rA('Autres créances', b.actif.circulant.brut_autresCreances, 0, b.actif.circulant.brut_autresCreances, 1, n1?.actif.circulant.brut_autresCreances)
+    + rA('Commandes en cours', b.actif.circulant.brut_commandesEnCours, 0, b.actif.circulant.brut_commandesEnCours, 0, n1?.actif.circulant.brut_commandesEnCours)
+    + agA('Disponibilités', b.actif.circulant.brut_banque, 0, b.actif.circulant.brut_banque, n1?.actif.circulant.brut_banque)
+    + rA('Banque', b.actif.circulant.brut_banque, 0, b.actif.circulant.brut_banque, 1, n1?.actif.circulant.brut_banque)
+    + stA('Total Actif Circulant', b.actif.circulant.brut_circulant, 0, b.actif.circulant.net_circulant, n1?.actif.circulant.net_circulant)
+    + ttA('TOTAL ACTIF', b.actif.brut_total, b.actif.amort_total, b.actif.net_total, n1?.actif.net_total)
+    + '</tbody></table>';
+
+  const ccRows = b.passif.dettes.ccDetail.map((cc,i) => rP(cc.lib, cc.montant, 1, n1?.passif.dettes.ccDetail[i]?.montant??null)).join('');
+
+  const passifHTML = '<table style="width:100%;border-collapse:collapse;font-size:10px;">'
+    + '<thead><tr style="background:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
+    + '<th style="text-align:left;padding:5px 6px;color:#fff;font-weight:700;background-color:#e84b0f;">PASSIF</th>'
+    + '<th class="r-num" style="width:80px;' + bdrR + 'color:#fff;font-weight:700;background-color:#e84b0f;">' + CURRENT_YEAR + '</th>'
+    + thN1P
+    + '</tr></thead><tbody>'
+    + secP('Capitaux Propres')
+    + rP('Capital Social', b.passif.capitauxPropres.capital, 1, n1?.passif.capitauxPropres.capital)
+    + rP('Primes liées au capital social', b.passif.capitauxPropres.primesCapital, 1, n1?.passif.capitauxPropres.primesCapital)
+    + rP('Réserves', b.passif.capitauxPropres.reserves, 1, n1?.passif.capitauxPropres.reserves)
+    + rP('Report à nouveau', b.passif.capitauxPropres.reportANouveau, 1, n1?.passif.capitauxPropres.reportANouveau)
+    + rP(b.passif.capitauxPropres.isResultatProvisoire ? "Résultat de l'exercice (provisoire)" : "Résultat de l'exercice", b.passif.capitauxPropres.resultat, 1, n1?.passif.capitauxPropres.resultat)
+    + stP('Total Capitaux Propres', b.passif.capitauxPropres.total, n1?.passif.capitauxPropres.total)
+    + secP('Provisions')
+    + rP('Provisions pour charges', b.passif.provisions.charges, 1, n1?.passif.provisions.charges)
+    + stP('Total Provisions', b.passif.provisions.total, n1?.passif.provisions.total)
+    + secP('Dettes')
+    + agP('Dettes financières', b.passif.dettes.dettesFinancieres, n1?.passif.dettes.dettesFinancieres)
+    + rP('Emprunts auprès des établissements de crédit', b.passif.dettes.emprunts, 1, n1?.passif.dettes.emprunts)
+    + rP('Dépôts et cautionnements reçus', b.passif.dettes.depots, 1, n1?.passif.dettes.depots)
+    + ccRows
+    + agP("Dettes d'exploitation", b.passif.dettes.dettesExploitation, n1?.passif.dettes.dettesExploitation)
+    + rP('Fournisseurs', b.passif.dettes.fournisseurs, 1, n1?.passif.dettes.fournisseurs)
+    + rP("Autres dettes d'exploitation", b.passif.dettes.autresDettesExploit, 1, n1?.passif.dettes.autresDettesExploit)
+    + rP('Autres dettes', b.passif.dettes.autresDettes, 1, n1?.passif.dettes.autresDettes)
+    + stP('Total Dettes', b.passif.dettes.total, n1?.passif.dettes.total)
+    + ttP('TOTAL PASSIF', b.passif.total, n1?.passif.total)
+    + '</tbody></table>';
+
+  return '<div class="rpt">'
+    + rptHeader('Bilan', 'Exercice du 01/01/' + CURRENT_YEAR + ' au 31/12/' + CURRENT_YEAR + ' — Montants en euros entiers')
+    + '<div style="margin-bottom:20px;">' + actifHTML + '</div>'
+    + '<div>' + passifHTML + '</div>'
+    + rptFooter()
+    + '</div>';
 }
+
 
 function exportBilan(fmt) {
-  if(fmt === 'pdf') {
-    showBilanN1Modal();
-    return;
-  }
-  const b = buildBilanPCG();
-  if(false) {
-    // pdf handled above
-  } else {
-    const rn = (v) => fmtEraw(Math.round(v*100)/100);
-    let csv = '\uFEFF';
-    csv += `BILAN — SCI DES PRÊLES — Exercice ${CURRENT_YEAR}\n\n`;
-    csv += 'ACTIF;Brut;Amort.;Net\n';
-    csv += `Terrain;${rn(b.actif.immobilise.brut_terrain)};;${rn(b.actif.immobilise.net_terrain)}\n`;
-    csv += `Constructions;${rn(b.actif.immobilise.brut_constructions)};${rn(b.actif.immobilise.amort_constructions)};${rn(b.actif.immobilise.net_constructions)}\n`;
-    csv += `Installations générales;${rn(b.actif.immobilise.brut_instal)};${rn(b.actif.immobilise.amort_instal)};${rn(b.actif.immobilise.net_instal)}\n`;
-    csv += `Autres immobilisations corporelles;${rn(b.actif.immobilise.brut_autresImmo)};${rn(b.actif.immobilise.amort_autresImmo)};${rn(b.actif.immobilise.net_autresImmo)}\n`;
-    csv += `TOTAL ACTIF IMMOBILISÉ;${rn(b.actif.immobilise.brut_total)};${rn(b.actif.immobilise.amort_total)};${rn(b.actif.immobilise.net_immoTotal)}\n`;
-    csv += `Clients;${rn(b.actif.circulant.brut_clients)};;${rn(b.actif.circulant.net_clients)}\n`;
-    csv += `Autres créances;${rn(b.actif.circulant.brut_autresCreances)};;${rn(b.actif.circulant.net_autresCreances)}\n`;
-    csv += `Banque;${rn(b.actif.circulant.brut_banque)};;${rn(b.actif.circulant.net_banque)}\n`;
-    csv += `TOTAL ACTIF CIRCULANT;${rn(b.actif.circulant.brut_circulant)};;${rn(b.actif.circulant.net_circulant)}\n`;
-    csv += `TOTAL ACTIF;${rn(b.actif.brut_total)};${rn(b.actif.amort_total)};${rn(b.actif.net_total)}\n\n`;
-    csv += 'PASSIF;Net\n';
-    csv += `Capital Social;${rn(b.passif.capitauxPropres.capital)}\n`;
-    csv += `Réserves;${rn(b.passif.capitauxPropres.reserves)}\n`;
-    csv += `Report à nouveau;${rn(b.passif.capitauxPropres.reportANouveau)}\n`;
-    csv += `Résultat de l'exercice;${rn(b.passif.capitauxPropres.resultat)}\n`;
-    csv += `TOTAL CAPITAUX PROPRES;${rn(b.passif.capitauxPropres.total)}\n`;
-    csv += `Provisions pour charges;${rn(b.passif.provisions.charges)}\n`;
-    csv += `Emprunts;${rn(b.passif.dettes.emprunts)}\n`;
-    csv += `Dépôts et cautionnements;${rn(b.passif.dettes.depots)}\n`;
-    b.passif.dettes.ccDetail.forEach(cc => { csv += `${cc.lib};${rn(cc.montant)}\n`; });
-    csv += `Fournisseurs;${rn(b.passif.dettes.fournisseurs)}\n`;
-    csv += `TOTAL DETTES;${rn(b.passif.dettes.total)}\n`;
-    csv += `TOTAL PASSIF;${rn(b.passif.total)}\n`;
-    dlCSV(csv, `Bilan_${CURRENT_YEAR}.csv`);
-  }
+  if(fmt === 'pdf') { showBilanN1Modal(); return; }
+  exportBilanExcel();
 }
 
+async function exportBilanExcel() {
+  const years = Array.from(document.getElementById('ex-year-select').options)
+    .map(o => o.value).filter(y => y !== String(CURRENT_YEAR)).sort((a,b) => b.localeCompare(a));
+  const existing = document.getElementById('bilan-excel-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'bilan-excel-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 28px;width:400px;font-family:var(--mono);">
+    <div style="font-size:13px;font-weight:700;color:var(--text0);margin-bottom:6px;">\u21e7 EXPORT EXCEL \u2014 BILAN</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:16px;">Exercice : <strong style="color:var(--cyan)">${CURRENT_YEAR}</strong></div>
+    <div style="font-size:11px;color:var(--text1);margin-bottom:8px;">Exercice de comparaison N-1 :</div>
+    <select id="bilan-excel-n1-select" style="width:100%;height:32px;font-family:var(--mono);font-size:12px;margin-bottom:12px;">
+      <option value="">\u2014 Aucun \u2014</option>
+      ${years.map(y=>`<option value="${y}">${y}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-sm" onclick="document.getElementById('bilan-excel-modal').remove()">ANNULER</button>
+      <button class="btn btn-sm btn-primary" onclick="generateBilanExcel()">\u21e7 G\u00c9N\u00c9RER EXCEL</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function generateBilanExcel() {
+  const n1Year = document.getElementById('bilan-excel-n1-select')?.value || '';
+  document.getElementById('bilan-excel-modal')?.remove();
+
+  if(typeof XLSX === 'undefined') {
+    await new Promise((res,rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  let dbN1 = null;
+  if(n1Year && window._fbLoad) {
+    toast('Chargement N-1...','info');
+    const remote = await window._fbLoad(n1Year);
+    if(remote && remote.ecritures) dbN1 = remote;
+  }
+
+  // Calculer bilan depuis ecritures
+  function computeBilan(ecritures) {
+    const sol = {};
+    ecritures.forEach(e => {
+      const cp = String(e.compte||'');
+      if(!cp) return;
+      if(!sol[cp]) sol[cp] = {lib:e.libelleCompte||'',d:0,c:0};
+      sol[cp].d += e.debit||0;
+      sol[cp].c += e.credit||0;
+    });
+    const sp = (prefixes) => {
+      let t = 0;
+      Object.keys(sol).forEach(cp => {
+        for(const p of prefixes) { if(cp.startsWith(p)) { t += sol[cp].d - sol[cp].c; break; } }
+      });
+      return t;
+    };
+    const ri = (v) => Math.round(v);
+
+    const brut_terrain = ri(sp(['211']));
+    const brut_constructions = ri(sp(['2131','2132','2133','2134','2136','2137','2139','214']));
+    const brut_instal_pure = ri(sp(['2135','2136','2138']));
+    const brut_autresImmo = ri(sp(['218']));
+    const brut_instal = brut_instal_pure + brut_autresImmo;
+    const brut_immoEnCours = ri(sp(['23']));
+    const brut_immoFinanciere = ri(sp(['26','27']));
+    const brut_immoCorpo = brut_terrain + brut_constructions + brut_instal;
+    const brut_total = brut_immoCorpo + brut_immoEnCours + brut_immoFinanciere;
+
+    const amort_constructions = ri(Math.abs(sp(['281300','281310','281320'])));
+    const amort_instal = ri(Math.abs(sp(['281350']))) + ri(Math.abs(sp(['281830'])));
+    const amort_immoCorpo = amort_constructions + amort_instal;
+    const amort_total = amort_immoCorpo;
+
+    const net_terrain = brut_terrain;
+    const net_constructions = brut_constructions - amort_constructions;
+    const net_instal = brut_instal - amort_instal;
+    const net_immoEnCours = brut_immoEnCours;
+    const net_immoFinanciere = brut_immoFinanciere;
+    const net_immoCorpo = net_terrain + net_constructions + net_instal;
+    const net_immoTotal = net_immoCorpo + net_immoEnCours + net_immoFinanciere;
+
+    const fournisseursRaw = sp(['401','404','408']);
+    const avanceFourn = ri(Math.max(0, fournisseursRaw));
+    const brut_clients = ri(sp(['411','412','413','416','418']));
+    const brut_autresCreances = ri(sp(['409','44','46','47','48'])) + avanceFourn;
+    const brut_creances = brut_clients + brut_autresCreances;
+    const brut_commandesEnCours = ri(sp(['37','38']));
+    const brut_banque = ri(sp(['512','514','515','516','517','518','53']));
+    const brut_circulant = brut_creances + brut_commandesEnCours + brut_banque;
+    const brut_total_actif = brut_total + brut_circulant;
+    const net_total_actif = net_immoTotal + brut_circulant;
+
+    const capital = ri(-sp(['101','102','103']));
+    const primesCapital = ri(-sp(['104','105']));
+    const reserves = ri(-sp(['106']));
+    const reportANouveau = ri(-sp(['110'])) + ri(-sp(['119']));
+    const resultatCloture = ri(-sp(['120','129']));
+    const produitsProvisoire = ri(-sp(['7']));
+    const chargesProvisoire = ri(sp(['6']));
+    const resultatProvisoire = produitsProvisoire - chargesProvisoire;
+    const isResultatProvisoire = resultatCloture === 0 && resultatProvisoire !== 0;
+    const resultatNet = isResultatProvisoire ? resultatProvisoire : resultatCloture;
+    const totalCP = capital + primesCapital + reserves + reportANouveau + resultatNet;
+
+    const provisions = ri(-sp(['15']));
+
+    const emprunts = ri(-sp(['164']));
+    const depots = ri(-sp(['165']));
+    const ccMap = {};
+    ecritures.forEach(e => {
+      const cp = String(e.compte||'');
+      if(cp.startsWith('455')) {
+        if(!ccMap[cp]) ccMap[cp] = {lib:e.libelleCompte||cp,s:0};
+        ccMap[cp].s += (e.credit||0)-(e.debit||0);
+      }
+    });
+    const ccDetail = Object.entries(ccMap).sort((a,b)=>a[0].localeCompare(b[0]))
+      .map(([cp,v])=>({compte:cp,lib:v.lib,montant:ri(v.s)}));
+    const ccTotal = ccDetail.reduce((s,c)=>s+c.montant,0);
+    const dettesFinancieres = emprunts + depots + ccTotal;
+    const fournisseurs = ri(Math.max(0, -fournisseursRaw));
+    const autresDettes = ri(-sp(['419','447','486','487']));
+    const autresDettesDivers = ri(-sp(['488','489']));
+    const dettesExploitation = fournisseurs + autresDettes;
+    const totalDettes = dettesFinancieres + dettesExploitation + autresDettesDivers;
+    const totalPassif = totalCP + provisions + totalDettes;
+
+    return {
+      actif: { brut_terrain, brut_constructions, brut_instal, brut_immoEnCours, brut_immoFinanciere,
+        brut_immoCorpo, brut_total,
+        amort_constructions, amort_instal, amort_immoCorpo, amort_total,
+        net_terrain, net_constructions, net_instal, net_immoEnCours, net_immoFinanciere,
+        net_immoCorpo, net_immoTotal,
+        brut_clients, brut_autresCreances, brut_creances, brut_commandesEnCours, brut_banque,
+        brut_circulant, net_total: net_total_actif, brut_total_actif },
+      passif: {
+        capital, primesCapital, reserves, reportANouveau, resultat: resultatNet, isResultatProvisoire, totalCP,
+        provisions,
+        emprunts, depots, ccDetail, ccTotal, dettesFinancieres,
+        fournisseurs, autresDettes, autresDettesDivers, dettesExploitation, totalDettes,
+        total: totalPassif },
+      _soldes: sol
+    };
+  }
+
+  const b25 = computeBilan(DB.ecritures);
+  const b24 = dbN1 ? computeBilan(dbN1.ecritures) : null;
+  const hasN1 = !!b24;
+
+  // Mapping couleurs comptes BG
+  const BG_MAPPING = [
+    {cps:['211'],                                        color:'E2EFDA', label:'Terrain'},
+    {cps:['2131','2132','2133','2134','2136','2137','2139','214'], color:'FCE4D6', label:'Constructions'},
+    {cps:['2135','2136','2138','218'],                   color:'DDEBF7', label:'Installations & autres immo'},
+    {cps:['281300','281310','281320'],                   color:'FCE4D6', label:'Amort. constructions'},
+    {cps:['281350','281830'],                            color:'DDEBF7', label:'Amort. installations'},
+    {cps:['23'],                                         color:'FFF2CC', label:'Immobilisations en cours'},
+    {cps:['26','27'],                                    color:'DAE8FC', label:'Immobilisations financières'},
+    {cps:['411','412','413','416','418'],                color:'E2EFDA', label:'Clients'},
+    {cps:['409','44','46','47','48'],                    color:'FFF2CC', label:'Autres créances'},
+    {cps:['401','404','408'],                            color:'FFF2CC', label:'Avances fournisseurs / Fournisseurs'},
+    {cps:['512','514','515','516','517','518','53'],     color:'DDEBF7', label:'Banque'},
+    {cps:['101','102','103'],                            color:'E2EFDA', label:'Capital Social'},
+    {cps:['104','105'],                                  color:'FCE4D6', label:'Primes capital'},
+    {cps:['106'],                                        color:'DAE8FC', label:'Réserves'},
+    {cps:['110','119'],                                  color:'DDEBF7', label:'Report à nouveau'},
+    {cps:['120','129'],                                  color:'FFF2CC', label:'Résultat exercice'},
+    {cps:['15'],                                         color:'E2EFDA', label:'Provisions'},
+    {cps:['164'],                                        color:'FCE4D6', label:'Emprunts'},
+    {cps:['165'],                                        color:'DDEBF7', label:'Dépôts et cautionnements'},
+    {cps:['455'],                                        color:'DAE8FC', label:'Comptes courants associés'},
+    {cps:['419','447','486','487'],                      color:'FFF2CC', label:"Dettes d'exploitation"},
+  ];
+  const cpColor={}, cpLabel={};
+  BG_MAPPING.forEach(m => m.cps.forEach(p => {cpColor[p]=m.color; cpLabel[p]=m.label;}));
+  function getCpColor(cp) {
+    for(const m of BG_MAPPING) { for(const p of m.cps) { if(cp.startsWith(p)||cp===p) return {color:m.color,label:m.label}; } }
+    return null;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ORANGE='E84B0F', OL='FDE8DF';
+
+  function mkCell(v, s) { return {v:v===null||v===undefined?'':v, s:s, t:typeof v==='number'?'n':'s'}; }
+
+  // ── ONGLET ACTIF ──
+  function bilanSheet() {
+    const hdr  = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}, alignment:{horizontal:'left'}};
+    const hdrR = {...hdr, alignment:{horizontal:'right'}};
+    const sec  = {font:{bold:true,name:'Arial',sz:10}, fill:{fgColor:{rgb:OL}}, alignment:{horizontal:'left'}};
+    const secR = {...sec, alignment:{horizontal:'right'}};
+    const agg  = {font:{bold:true,italic:true,name:'Arial',sz:10}, alignment:{horizontal:'left'}};
+    const aggR = {font:{bold:true,name:'Arial',sz:10}, alignment:{horizontal:'right'}};
+    const tot  = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}, alignment:{horizontal:'left'}};
+    const totR = {...tot, alignment:{horizontal:'right'}};
+    const stot = {font:{bold:true,name:'Arial',sz:10}, fill:{fgColor:{rgb:'F2F2F2'}}, alignment:{horizontal:'left'}};
+    const stotR= {...stot, alignment:{horizontal:'right'}};
+    const nrm  = {font:{name:'Arial',sz:10}, alignment:{horizontal:'left'}};
+    const nrmR = {font:{name:'Arial',sz:10}, alignment:{horizontal:'right'}};
+    const gry  = {font:{name:'Arial',sz:10,color:{rgb:'555555'}}, alignment:{horizontal:'right'}};
+    const varR = {font:{italic:true,name:'Arial',sz:9,color:{rgb:'888888'}}, alignment:{horizontal:'right'}};
+
+    function clr(hex) { return {fill:{fgColor:{rgb:hex}}}; }
+    function rowA(label, brut, amort, net, net24, color, type) {
+      const ls = type==='hdr'?hdr:type==='sec'?sec:type==='tot'?tot:type==='stot'?stot:type==='agg'?agg:{...nrm,...(color?clr(color):{})};
+      const bs = type==='hdr'?hdrR:type==='sec'?secR:type==='tot'?totR:type==='stot'?stotR:type==='agg'?aggR:{...nrmR,...(color?clr(color):{})};
+      const ns = {...bs};
+      const as = {...bs, font:{...bs.font, color:{rgb:'991b1b'}}};
+      const indent = (type===''||type==='detail') ? '  ' : '';
+      const r = [
+        mkCell(indent+label, ls),
+        mkCell(brut!==null?brut:'', bs),
+        mkCell(amort?amort:'', as),
+        mkCell(net!==null?net:'', ns),
+      ];
+      if(hasN1) {
+        r.push(mkCell(net24!==null&&net24!==undefined?net24:'', {...gry,...(color?clr(color):{})}) );
+        r.push(mkCell(net24!==null&&net24!==undefined&&net!==null?net-net24:null, varR));
+      }
+      return r;
+    }
+    function rowP(label, val, val24, color, type) {
+      const ls = type==='hdr'?hdr:type==='sec'?sec:type==='tot'?tot:type==='stot'?stot:type==='agg'?agg:{...nrm,...(color?clr(color):{})};
+      const vs = type==='hdr'?hdrR:type==='sec'?secR:type==='tot'?totR:type==='stot'?stotR:type==='agg'?aggR:{...nrmR,...(color?clr(color):{})};
+      const indent = (type===''||type==='detail') ? '  ' : '';
+      const r = [mkCell(indent+label,ls), mkCell(val!==null?val:'',vs)];
+      if(hasN1) {
+        r.push(mkCell(val24!==null&&val24!==undefined?val24:'', {...gry,...(color?clr(color):{})}) );
+        r.push(mkCell(val24!==null&&val24!==undefined&&val!==null?val-val24:null, varR));
+      }
+      return r;
+    }
+
+    const rows = [];
+    const p = b25, q = b24;
+
+    // En-tête ACTIF
+    rows.push(rowA('ACTIF', 'BRUT', 'AMORT.', String(CURRENT_YEAR), hasN1?n1Year:'', null, 'hdr'));
+    rows.push([]);
+    rows.push(rowA('ACTIF IMMOBILISÉ', '', '', '', null, null, 'sec'));
+    rows.push(rowA('Immobilisations corporelles', p.actif.brut_immoCorpo, p.actif.amort_immoCorpo, p.actif.net_immoCorpo, q?.actif.net_immoCorpo??null, null, 'agg'));
+    rows.push(rowA('Terrain', p.actif.brut_terrain, 0, p.actif.net_terrain, q?.actif.net_terrain??null, 'E2EFDA', 'detail'));
+    rows.push(rowA('Constructions', p.actif.brut_constructions, p.actif.amort_constructions, p.actif.net_constructions, q?.actif.net_constructions??null, 'FCE4D6', 'detail'));
+    rows.push(rowA('Installations générales, agencements', p.actif.brut_instal, p.actif.amort_instal, p.actif.net_instal, q?.actif.net_instal??null, 'DDEBF7', 'detail'));
+    rows.push(rowA('Immobilisations en cours', p.actif.brut_immoEnCours, 0, p.actif.net_immoEnCours, q?.actif.net_immoEnCours??null, 'FFF2CC', 'agg'));
+    rows.push(rowA('Immobilisations financières', p.actif.brut_immoFinanciere, 0, p.actif.net_immoFinanciere, q?.actif.net_immoFinanciere??null, 'DAE8FC', 'agg'));
+    rows.push(rowA('Total Actif Immobilisé', p.actif.brut_total, p.actif.amort_total, p.actif.net_immoTotal, q?.actif.net_immoTotal??null, null, 'stot'));
+    rows.push([]);
+    rows.push(rowA('ACTIF CIRCULANT', '', '', '', null, null, 'sec'));
+    rows.push(rowA('Créances', p.actif.brut_creances, 0, p.actif.brut_creances, q?.actif.brut_creances??null, null, 'agg'));
+    rows.push(rowA('Clients', p.actif.brut_clients, 0, p.actif.brut_clients, q?.actif.brut_clients??null, 'E2EFDA', 'detail'));
+    rows.push(rowA('Autres créances', p.actif.brut_autresCreances, 0, p.actif.brut_autresCreances, q?.actif.brut_autresCreances??null, 'FFF2CC', 'detail'));
+    rows.push(rowA('Commandes en cours', p.actif.brut_commandesEnCours, 0, p.actif.brut_commandesEnCours, q?.actif.brut_commandesEnCours??null, 'DDEBF7', 'agg'));
+    rows.push(rowA('Disponibilités', p.actif.brut_banque, 0, p.actif.brut_banque, q?.actif.brut_banque??null, null, 'agg'));
+    rows.push(rowA('Banque', p.actif.brut_banque, 0, p.actif.brut_banque, q?.actif.brut_banque??null, 'DDEBF7', 'detail'));
+    rows.push(rowA('Total Actif Circulant', p.actif.brut_circulant, 0, p.actif.brut_circulant, q?.actif.brut_circulant??null, null, 'stot'));
+    rows.push(rowA('TOTAL ACTIF', p.actif.brut_total_actif, p.actif.amort_total, p.actif.net_total, q?.actif.net_total??null, null, 'tot'));
+    rows.push([]);
+
+    // PASSIF — même feuille, séparé
+    const pColspan = hasN1 ? 4 : 2;
+    rows.push(rowP('PASSIF', String(CURRENT_YEAR), hasN1?n1Year:null, null, 'hdr'));
+    rows.push([]);
+    rows.push(rowP('CAPITAUX PROPRES', '', null, null, 'sec'));
+    rows.push(rowP('Capital Social', p.passif.capital, q?.passif.capital??null, 'E2EFDA', 'detail'));
+    rows.push(rowP('Primes liées au capital social', p.passif.primesCapital, q?.passif.primesCapital??null, 'FCE4D6', 'detail'));
+    rows.push(rowP('Réserves', p.passif.reserves, q?.passif.reserves??null, 'DAE8FC', 'detail'));
+    rows.push(rowP('Report à nouveau', p.passif.reportANouveau, q?.passif.reportANouveau??null, 'DDEBF7', 'detail'));
+    rows.push(rowP(p.passif.isResultatProvisoire ? "Résultat de l'exercice (provisoire)" : "Résultat de l'exercice", p.passif.resultat, q?.passif.resultat??null, 'FFF2CC', 'detail'));
+    rows.push(rowP('Total Capitaux Propres', p.passif.totalCP, q?.passif.totalCP??null, null, 'stot'));
+    rows.push([]);
+    rows.push(rowP('PROVISIONS', '', null, null, 'sec'));
+    rows.push(rowP('Provisions pour charges', p.passif.provisions, q?.passif.provisions??null, 'E2EFDA', 'detail'));
+    rows.push(rowP('Total Provisions', p.passif.provisions, q?.passif.provisions??null, null, 'stot'));
+    rows.push([]);
+    rows.push(rowP('DETTES', '', null, null, 'sec'));
+    rows.push(rowP('Dettes financières', p.passif.dettesFinancieres, q?.passif.dettesFinancieres??null, null, 'agg'));
+    rows.push(rowP('Emprunts auprès des établissements de crédit', p.passif.emprunts, q?.passif.emprunts??null, 'FCE4D6', 'detail'));
+    rows.push(rowP('Dépôts et cautionnements reçus', p.passif.depots, q?.passif.depots??null, 'DDEBF7', 'detail'));
+    p.passif.ccDetail.forEach((cc,i) => {
+      rows.push(rowP(cc.lib, cc.montant, q?.passif.ccDetail[i]?.montant??null, 'DAE8FC', 'detail'));
+    });
+    rows.push(rowP("Dettes d'exploitation", p.passif.dettesExploitation, q?.passif.dettesExploitation??null, null, 'agg'));
+    rows.push(rowP('Fournisseurs', p.passif.fournisseurs, q?.passif.fournisseurs??null, 'E2EFDA', 'detail'));
+    rows.push(rowP("Autres dettes d'exploitation", p.passif.autresDettes, q?.passif.autresDettes??null, 'FFF2CC', 'detail'));
+    rows.push(rowP('Autres dettes', p.passif.autresDettesDivers, q?.passif.autresDettesDivers??null, 'DDEBF7', 'detail'));
+    rows.push(rowP('Total Dettes', p.passif.totalDettes, q?.passif.totalDettes??null, null, 'stot'));
+    rows.push(rowP('TOTAL PASSIF', p.passif.total, q?.passif.total??null, null, 'tot'));
+
+    // Construire feuille
+    const ws = {};
+    const maxC = hasN1 ? 5 : 3;
+    rows.forEach((row, ri) => {
+      row.forEach((cell, ci) => {
+        if(!cell) return;
+        const ref = XLSX.utils.encode_cell({r:ri, c:ci});
+        ws[ref] = {v:cell.v, t:cell.t||'s'};
+        if(cell.s) ws[ref].s = cell.s;
+      });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:rows.length-1, c:maxC}});
+    ws['!cols'] = [{wch:48},{wch:14},{wch:12},{wch:14},{wch:14},{wch:12}];
+    return ws;
+  }
+
+  // ── ONGLET BG ──
+  function bgSheet(soldes) {
+    const hdrS = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}};
+    const hdrR = {...hdrS, alignment:{horizontal:'right'}};
+    const rows = [[
+      mkCell('N° Compte',hdrS), mkCell('Libellé',hdrS),
+      mkCell('Solde net',hdrR), mkCell('Ligne Bilan',hdrS)
+    ]];
+    const sorted = Object.keys(soldes).sort();
+    sorted.forEach(cp => {
+      const s = soldes[cp];
+      const net = Math.round((s.d-s.c)*100)/100;
+      const info = getCpColor(cp);
+      const cs = info ? {font:{name:'Arial',sz:10}, fill:{fgColor:{rgb:info.color}}} : {font:{name:'Arial',sz:10,color:{rgb:'999999'}}, fill:{fgColor:{rgb:'F2F2F2'}}};
+      const csR = {...cs, alignment:{horizontal:'right'}};
+      rows.push([mkCell(cp,cs), mkCell(s.lib,cs), mkCell(net,csR), mkCell(info?info.label:'— non mappé —',cs)]);
+    });
+    const ws = {};
+    rows.forEach((row,ri) => {
+      row.forEach((cell,ci) => {
+        if(!cell) return;
+        const ref = XLSX.utils.encode_cell({r:ri,c:ci});
+        ws[ref] = {v:cell.v, t:cell.t||'s'};
+        if(cell.s) ws[ref].s = cell.s;
+      });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:3}});
+    ws['!cols'] = [{wch:12},{wch:50},{wch:14},{wch:45}];
+    return ws;
+  }
+
+  XLSX.utils.book_append_sheet(wb, bilanSheet(), 'Bilan');
+  XLSX.utils.book_append_sheet(wb, bgSheet(b25._soldes), 'BG '+CURRENT_YEAR);
+  if(b24) XLSX.utils.book_append_sheet(wb, bgSheet(b24._soldes), 'BG '+n1Year);
+
+  XLSX.writeFile(wb, 'Bilan_'+CURRENT_YEAR+'.xlsx', {cellStyles:true, bookType:'xlsx'});
+  toast('Export Excel Bilan généré', 'success');
+}
 
 function showBilanN1Modal() {
   const years = Array.from(document.getElementById('ex-year-select').options)
@@ -3517,218 +4376,579 @@ async function generateBilanPDF() {
 
 function buildCRPCG() {
   const s = (prefixes) => getSoldesPrefixes(Array.isArray(prefixes)?prefixes:[prefixes]);
+  const ri = (v) => Math.round(v);
 
-  // PRODUITS : 7xx CRÉDITEURS → solde négatif → on inverse
-  const loyers = -s(['706001','706002','706003']);
-  const locSaisonniere = -s(['706100']);
-  const provChargesLoc = -s(['708']);
-  const subventions = -s(['74']);
-  const indemnAssurance = -s(['791']);
-  // Reprises : dans votre modèle elles apparaissent UNIQUEMENT en déduction des charges (pas en produit séparé)
-  const reprises781 = -s(['781']);
-  const reprisesFinanc786 = -s(['786']);
-  const autresProduits = -s(['75']);
-  // CA = loyers + loc saisonnière + refact charges locatives - rabais/remises
-  const rabaisRemises = s(['709']); // débiteur = déduction du CA
-  const totalCA = loyers + locSaisonniere + provChargesLoc + subventions + indemnAssurance - rabaisRemises;
-  // Total produits = CA uniquement (reprises déduites des charges, pas ajoutées aux produits)
-  const totalProduitsExploit = totalCA;
+  // ── PRODUITS (7xx créditeurs → négatifs → on inverse) ──
+  const loyersBrut = ri(-s(['706001','706002','706003']));
+  const rabaisRemises = ri(s(['709']));              // déduit des loyers
+  const loyers = loyersBrut - rabaisRemises;         // loyers nets = 18 562
+  const locSaisonniere = ri(-s(['706100']));
+  const provChargesLoc = ri(-s(['708']));            // 108
+  const subventions = ri(-s(['74']));
+  const indemnAssurance = ri(-s(['791']));
+  const totalCA = loyers + locSaisonniere + provChargesLoc + subventions + indemnAssurance; // 18 670
+  const reprises781 = ri(-s(['781']));               // déduit des charges uniquement
+  const reprisesFinanc786 = ri(-s(['786']));
+  const totalProduitsExploit = totalCA;              // reprises en déduction des charges uniquement
 
-  // CHARGES : 6xx DÉBITEURS → solde positif
+  // ── CHARGES (6xx débiteurs → positifs) ──
+
   // Achats
-  const eau = s(['60611','606110']);
-  const elec = s(['60612','606120']);
-  const matOutillage = s(['6063','6064','606300','606400']);
-  const totalAchats = s(['606']);
+  const eau = ri(s(['606110','60611']));
+  const elec = ri(s(['606120','60612']));
+  const chargesExternes = ri(s(['613120']));                 // Locations immobilières uniquement
+  const matOutillage = ri(s(['606300']) + s(['606400']));    // Fournitures petit outillage + fournitures bureau
+  const totalAchats = eau + elec + chargesExternes + matOutillage;
 
   // Services extérieurs
-  const locLogiciel = s(['613']);
-  const entretienRep = s(['615']);
-  const assurances = s(['616']);
-  const totalServExt = locLogiciel + entretienRep + assurances;
+  const locLogiciel = ri(s(['613000']));                     // Location logiciel uniquement (pas 613120)
+  const chargesLoc = ri(s(['614']));
+  const entretienRep = ri(s(['615200','61520']));            // Entretien immobilier uniquement
+  const travauxAmelio = ri(s(['615500','61550']));           // Entretien mobilier = travaux amélioration
+  const assurances = ri(s(['616']));
+  const fraisDivers = ri(s(['618']));
+  const totalServExt = locLogiciel + chargesLoc + entretienRep + travauxAmelio + assurances + fraisDivers;
 
   // Autres services extérieurs
-  const honoraires = s(['622']);
-  const fraisActes = s(['6227','622700']);
-  const annonces = s(['623']);
-  const voyages = s(['6251','625100']);
-  const receptions = s(['6257','625700']);
-  const internet = s(['6261','626100']);
-  const telephone = s(['6262','626200']);
-  const fraisPostaux = s(['6263','626300']);
-  const servicesBanc = s(['627']);
-  const assurPret = s(['6271','627100']);
-  const telesurveillance = s(['628']);
-  const totalAutresServExt = honoraires + fraisActes + annonces + voyages + receptions + internet + telephone + fraisPostaux + servicesBanc + telesurveillance;
+  const honoraires = ri(s(['622000']));              // Honoraires nets (débit - crédit)
+  const fraisActes = ri(s(['6227','622700']));
+  const annonces = ri(s(['623']));
+  const voyages = ri(s(['625100']));
+  const receptions = ri(s(['625700']));
+  const internet = ri(s(['626100']));
+  const telephone = ri(s(['626200']));
+  const fraisPostaux = ri(s(['626300']));
+  const servicesBanc = ri(s(['627']));              // 627000 + 627100 (assurance prêt) ensemble
+  const servicesDivers = ri(s(['628']));            // 628100 télésurveillance
+  const totalAutresServExt = honoraires + fraisActes + annonces + voyages + receptions + internet + telephone + fraisPostaux + servicesBanc + servicesDivers;
 
   // Impôts et taxes
-  const tf = s(['63512','635120']);
-  const teom = s(['63513','635130']);
-  const autresImpots = s(['637']);
-  const totalImpots = tf + teom + autresImpots;
+  const cfe = ri(s(['635110','63511']));
+  const tf = ri(s(['635120','63512']));
+  const crl = ri(s(['635140','63514']));
+  const teom = ri(s(['635130','63513']));
+  const autresImpots = ri(s(['637']));
+  const totalImpots = cfe + tf + crl + teom + autresImpots;
 
   // Dotations
-  const dotAmort = s(['681120']);
-  const dotProvExploit = s(['681000']);
+  const dotAmort = ri(s(['681120']));
+  const dotProvExploit = ri(s(['681000']));
   const totalDotations = dotAmort + dotProvExploit;
 
-  // Reprises déduites des charges (produits en 7xx)
-  const reprisesDeduitesCharges = reprises781;
+  // Reprises sur provisions (déduites des charges)
+  const reprisesCharges = reprises781;
 
-  const totalChargesExploit = totalAchats + totalServExt + totalAutresServExt + totalImpots + totalDotations - reprisesDeduitesCharges;
+  const totalChargesExploit = totalAchats + totalServExt + totalAutresServExt + totalImpots + totalDotations - reprisesCharges;
   const resultatExploit = totalProduitsExploit - totalChargesExploit;
 
-  // FINANCIER
+  // ── FINANCIER ──
+  const prodFinanciers = ri(-s(['762','764','766','768']));
   const reprisesFinancieres = reprisesFinanc786;
-  const interetsEmprunts = s(['6611','661100']);
-  const interetsCC = s(['6615','661500']);
-  const dotProvFinanc = s(['686']);
-  const totalChargesFinanc = interetsEmprunts + interetsCC + dotProvFinanc;
-  const resultatFinancier = reprisesFinancieres - totalChargesFinanc;
+  const totalProduitsFinanc = prodFinanciers + reprisesFinancieres;
+  const interetsEmprunts = ri(s(['661100','661500']));  // emprunts + CC associés
+  const dotProvFinanc = ri(s(['686']));
+  const totalChargesFinanc = interetsEmprunts + dotProvFinanc;
+  const resultatFinancier = totalProduitsFinanc - totalChargesFinanc;
   const resultatCourant = resultatExploit + resultatFinancier;
 
-  // EXCEPTIONNEL
-  const produitsExcept = -s(['77']);
-  const chargesExcept = s(['67']);
-  const resultatExcept = produitsExcept - chargesExcept;
-  const is = s(['695']);
+  // ── EXCEPTIONNEL ──
+  const prodCessions = ri(-s(['775']));
+  const autresProdExcept = ri(-s(['771','778']));
+  const totalProduitsExcept = prodCessions + autresProdExcept;
+  const indemnEviction = ri(s(['671']));
+  const vcnaCedes = ri(s(['675']));
+  const autresChargesExcept = ri(s(['678']));
+  const totalChargesExcept = indemnEviction + vcnaCedes + autresChargesExcept;
+  const resultatExcept = totalProduitsExcept - totalChargesExcept;
+  const is = ri(s(['695']));
   const resultatNet = resultatCourant + resultatExcept - is;
 
   return {
-    produits: { loyers, locSaisonniere, provChargesLoc, subventions, indemnAssurance, rabaisRemises, reprises781, totalCA, total: totalProduitsExploit },
+    produits: { totalCA, loyersBrut, loyers, rabaisRemises, locSaisonniere, provChargesLoc, subventions, indemnAssurance, reprises781, total: totalProduitsExploit },
     charges: {
-      achats: { eau, elec, matOutillage, total: totalAchats },
-      servExt: { locLogiciel, entretienRep, assurances, total: totalServExt },
-      autresServExt: { honoraires, fraisActes, annonces, voyages, receptions, internet, telephone, fraisPostaux, servicesBanc, telesurveillance, total: totalAutresServExt },
-      impots: { tf, teom, autresImpots, total: totalImpots },
+      achats: { eau, elec, chargesExternes, matOutillage, total: totalAchats },
+      servExt: { locLogiciel, chargesLoc, entretienRep, travauxAmelio, assurances, fraisDivers, total: totalServExt },
+      autresServExt: { honoraires, fraisActes, annonces, voyages, receptions, internet, telephone, fraisPostaux, servicesBanc, servicesDivers, total: totalAutresServExt },
+      impots: { cfe, tf, crl, teom, autresImpots, total: totalImpots },
       dotations: { amort: dotAmort, prov: dotProvExploit, total: totalDotations },
-      reprises: reprisesDeduitesCharges,
+      reprises: reprisesCharges,
       total: totalChargesExploit
     },
     resultatExploit,
-    financier: { reprises: reprisesFinancieres, interetsEmprunts, interetsCC, dotProvFinanc, totalCharges: totalChargesFinanc },
-    resultatFinancier,
-    resultatCourant,
-    exceptionnel: { produits: produitsExcept, charges: chargesExcept, total: resultatExcept },
-    is,
-    resultatNet
+    financier: { prodFinanciers, reprisesFinancieres, totalProduits: totalProduitsFinanc, interetsEmprunts, dotProvFinanc, totalCharges: totalChargesFinanc },
+    resultatFinancier, resultatCourant,
+    exceptionnel: { prodCessions, autresProdExcept, totalProduits: totalProduitsExcept, indemnEviction, vcnaCedes, autresChargesExcept, totalCharges: totalChargesExcept, total: resultatExcept },
+    is, resultatNet
   };
 }
 
+function renderCRHTML(cr, crn1, n1Year) {
+  const rn = (v) => Math.round(v).toLocaleString('fr-FR');
+  const hasN1 = !!crn1;
+  const ORANGE = '#e84b0f';
+  const ORANGE_LIGHT = '#fde8df';
+  const bdrR = 'border-right:1px solid #ccc;';
+  const colspan = hasN1 ? 4 : 2;
 
-function renderCRHTML(cr) {
-  const rn = (v) => fmtEraw(Math.round(v*100)/100);
-  const row = (label, val, indent, negate) => {
-    if(Math.abs(val) < 0.005) return '';
-    const display = negate ? -val : val;
-    const pad = indent ? `style="padding-left:${indent*12}px"` : '';
-    const cls = display < 0 ? ' class="r-neg"' : '';
-    return `<tr><td ${pad}>${label}</td><td class="r-num"${cls}>${rn(display)}</td></tr>`;
-  };
-  const rowS = (label, val, cls='r-subtotal') => {
-    const c = val < 0 ? ' r-neg' : '';
-    return `<tr class="${cls}${c}"><td>${label}</td><td class="r-num">${rn(val)}</td></tr>`;
-  };
-  const rowT = (label, val) => {
-    const bg = val >= 0 ? '#166534' : '#991b1b';
-    return `<tr class="r-total" style="background:${bg}"><td>${label}</td><td class="r-num">${rn(val)}</td></tr>`;
+  const varVal = (n, n1) => {
+    if(n1===null||n1===undefined) return '';
+    const v = Math.round(n - n1);
+    return v < 0 ? '(' + Math.abs(v).toLocaleString('fr-FR') + ')' : v.toLocaleString('fr-FR');
   };
 
-  return `<div class="rpt">
-    ${rptHeader('Compte de Résultat', `Exercice ${CURRENT_YEAR} — Montants en euros`)}
-    <table style="width:100%">
-      <thead><tr><th style="width:65%">Poste</th><th class="r-num">Exercice ${CURRENT_YEAR}</th></tr></thead>
-      <tbody>
-        <tr class="r-section"><td colspan="2">PRODUITS D'EXPLOITATION</td></tr>
-        <tr class="r-subsection"><td>Chiffre d'affaires</td><td class="r-num">${rn(cr.produits.totalCA)}</td></tr>
-        ${row('Loyers encaissés', cr.produits.loyers, 1)}
-        ${row('Locations saisonnières', cr.produits.locSaisonniere, 1)}
-        ${row('Provisions pour charges locatives', cr.produits.provChargesLoc, 1)}
-        ${row('Subventions', cr.produits.subventions, 1)}
-        ${row('Indemnités d\'assurance', cr.produits.indemnAssurance, 1)}
-        ${cr.produits.rabaisRemises ? `<tr><td style="padding-left:12px">Rabais, remises, ristournes</td><td class="r-num r-neg">-${rn(cr.produits.rabaisRemises)}</td></tr>` : ''}
-        ${cr.produits.reprises781 ? row('Reprises d\'amortissements et provisions', cr.produits.reprises781, 0) : ''}
-        ${rowS('Total Produits d\'exploitation', cr.produits.total)}
+  const n1col = (val, n1val) => hasN1
+    ? '<td class="r-num" style="' + bdrR + 'color:#555">' + (n1val!==undefined&&n1val!==null?rn(n1val):rn(0)) + '</td><td class="r-num">' + varVal(val,n1val) + '</td>'
+    : '';
+  const n1colB = (val, n1val) => hasN1
+    ? '<td class="r-num" style="' + bdrR + 'color:#555;font-weight:700;">' + (n1val!==undefined&&n1val!==null?rn(n1val):rn(0)) + '</td><td class="r-num" style="font-weight:700;">' + varVal(val,n1val) + '</td>'
+    : '';
+  const n1colOrange = (val, n1val) => hasN1
+    ? '<td class="r-num" style="color:#fff;font-weight:700;">' + rn(n1val??0) + '</td><td class="r-num" style="color:#fff;font-weight:700;">' + varVal(val,n1val) + '</td>'
+    : '';
 
-        <tr class="r-section"><td colspan="2">CHARGES D'EXPLOITATION</td></tr>
-        ${cr.charges.achats.total ? `<tr class="r-subsection"><td>Achats</td><td class="r-num">${rn(cr.charges.achats.total)}</td></tr>` : ''}
-        ${row('Eau, gaz, électricité', cr.charges.achats.eau + cr.charges.achats.elec, 1)}
-        ${row('Matériel et outillages', cr.charges.achats.matOutillage, 1)}
-        ${cr.charges.servExt.total ? `<tr class="r-subsection"><td>Services extérieurs</td><td class="r-num">${rn(cr.charges.servExt.total)}</td></tr>` : ''}
-        ${row('Abonnements logiciels', cr.charges.servExt.locLogiciel, 1)}
-        ${row('Entretien et réparations', cr.charges.servExt.entretienRep, 1)}
-        ${row('Primes d\'assurances', cr.charges.servExt.assurances, 1)}
-        ${cr.charges.autresServExt.total ? `<tr class="r-subsection"><td>Autres services extérieurs</td><td class="r-num">${rn(cr.charges.autresServExt.total)}</td></tr>` : ''}
-        ${row('Honoraires divers', cr.charges.autresServExt.honoraires, 1)}
-        ${cr.charges.autresServExt.fraisActes ? row('Frais d\'actes', cr.charges.autresServExt.fraisActes, 1) : ''}
-        ${cr.charges.autresServExt.annonces ? row('Annonces et insertions', cr.charges.autresServExt.annonces, 1) : ''}
-        ${row('Voyages et déplacements', cr.charges.autresServExt.voyages + cr.charges.autresServExt.receptions, 1)}
-        ${row('Internet et téléphone', cr.charges.autresServExt.internet + cr.charges.autresServExt.telephone, 1)}
-        ${cr.charges.autresServExt.fraisPostaux ? row('Frais postaux', cr.charges.autresServExt.fraisPostaux, 1) : ''}
-        ${row('Services bancaires', cr.charges.autresServExt.servicesBanc + cr.charges.autresServExt.telesurveillance, 1)}
-        ${cr.charges.impots.total ? `<tr class="r-subsection"><td>Impôts et taxes</td><td class="r-num">${rn(cr.charges.impots.total)}</td></tr>` : ''}
-        ${row('Taxe foncière', cr.charges.impots.tf, 1)}
-        ${row('Autres impôts, taxes (TEOM)', cr.charges.impots.teom + cr.charges.impots.autresImpots, 1)}
-        ${cr.charges.dotations.total ? `<tr class="r-subsection"><td>Dotations aux amortissements et provisions</td><td class="r-num">${rn(cr.charges.dotations.total)}</td></tr>` : ''}
-        ${row('Amortissements', cr.charges.dotations.amort, 1)}
-        ${row('Provisions pour charges', cr.charges.dotations.prov, 1)}
-        ${cr.charges.reprises ? `<tr><td>Reprises d'amortissements et provisions</td><td class="r-num r-pos">-${rn(cr.charges.reprises)}</td></tr>` : ''}
-        ${rowS('Total Charges d\'exploitation', cr.charges.total)}
-        ${rowT('RÉSULTAT D\'EXPLOITATION', cr.resultatExploit)}
+  // Ligne normale
+  const r = (label, val, indent, n1val) => {
+    const pad = indent ? 'padding-left:' + (indent*14) + 'px;' : '';
+    return '<tr><td style="' + pad + 'font-size:10px;">' + label + '</td><td class="r-num" style="' + bdrR + '">' + rn(val) + '</td>' + n1col(val, n1val) + '</tr>';
+  };
 
-        <tr class="r-section"><td colspan="2">RÉSULTAT FINANCIER</td></tr>
-        ${cr.financier.reprises ? row('Reprises aux provisions financières', cr.financier.reprises, 0) : ''}
-        ${row('Intérêts des emprunts et des dettes', cr.financier.interetsEmprunts, 0, true)}
-        ${cr.financier.interetsCC ? row('Intérêts des comptes courants d\'associés', cr.financier.interetsCC, 0, true) : ''}
-        ${cr.financier.dotProvFinanc ? row('Dotations aux provisions financières', cr.financier.dotProvFinanc, 0, true) : ''}
-        ${rowT('RÉSULTAT FINANCIER', cr.resultatFinancier)}
-        ${rowT('RÉSULTAT COURANT', cr.resultatCourant)}
+  // Agrégat (gras italique + montant)
+  const ag = (label, val, n1val) => {
+    return '<tr><td style="font-weight:700;font-style:italic;">' + label + '</td><td class="r-num" style="' + bdrR + 'font-weight:700;">' + rn(val) + '</td>' + n1colB(val, n1val) + '</tr>';
+  };
 
-        ${(cr.exceptionnel.produits || cr.exceptionnel.charges) ? `
-        <tr class="r-section"><td colspan="2">RÉSULTAT EXCEPTIONNEL</td></tr>
-        ${cr.exceptionnel.produits ? row('Produits des cessions d\'actifs', cr.exceptionnel.produits, 0) : ''}
-        ${cr.exceptionnel.charges ? row('Charges exceptionnelles', cr.exceptionnel.charges, 0, true) : ''}
-        ${rowT('RÉSULTAT EXCEPTIONNEL', cr.exceptionnel.total)}` : ''}
+  // Section orange clair
+  const sec = (label, val, n1val) => {
+    const vcol = val!==undefined ? '<td class="r-num" style="' + bdrR + 'font-weight:700;background-color:' + ORANGE_LIGHT + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' + rn(val) + '</td>' : '<td style="' + bdrR + 'background-color:' + ORANGE_LIGHT + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;"></td>';
+    const n1c = hasN1 ? '<td class="r-num" style="color:#555;font-weight:700;background-color:' + ORANGE_LIGHT + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' + (n1val!==undefined?rn(n1val):rn(0)) + '</td><td class="r-num" style="font-weight:700;background-color:' + ORANGE_LIGHT + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' + varVal(val??0,n1val) + '</td>' : '';
+    return '<tr style="background-color:' + ORANGE_LIGHT + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;"><td style="font-weight:700;font-size:10px;letter-spacing:0.05em;text-transform:uppercase;padding:5px 6px;">' + label + '</td>' + vcol + n1c + '</tr>';
+  };
 
-        ${cr.is ? `<tr><td>Impôt sur les bénéfices</td><td class="r-num r-neg">-${rn(cr.is)}</td></tr>` : ''}
-        ${rowT('RÉSULTAT DE L\'EXERCICE', cr.resultatNet)}
-      </tbody>
-    </table>
-    ${rptFooter()}
-  </div>`;
+  // Résultat intermédiaire (orange foncé)
+  const res = (label, val, n1val) => {
+    return '<tr style="background-color:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;"><td style="color:#fff;font-weight:700;font-size:10.5px;">' + label + '</td><td class="r-num" style="' + bdrR + 'color:#fff;font-weight:700;">' + rn(val) + '</td>' + n1colOrange(val, n1val) + '</tr>';
+  };
+
+  const n1 = crn1;
+  const thN1 = hasN1 ? '<th class="r-num" style="width:80px;' + bdrR + 'color:#fff;font-weight:700;background-color:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">' + n1Year + '</th><th class="r-num" style="color:#fff;font-weight:700;background-color:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">VARIATION</th>' : '';
+
+  const html = '<table style="width:100%;border-collapse:collapse;font-size:10px;">'
+    + '<thead><tr style="background-color:' + ORANGE + ';-webkit-print-color-adjust:exact;print-color-adjust:exact;">'
+    + '<th style="text-align:left;padding:5px 6px;color:#fff;font-weight:700;background-color:' + ORANGE + ';">COMPTE DE RÉSULTAT</th>'
+    + '<th class="r-num" style="width:90px;' + bdrR + 'color:#fff;font-weight:700;background-color:' + ORANGE + ';">' + CURRENT_YEAR + '</th>'
+    + thN1
+    + '</tr></thead><tbody>'
+
+    // PRODUITS D'EXPLOITATION
+    + sec("Total des produits d'exploitation", cr.produits.total, n1?.produits?.total)
+    + ag("Chiffre d'affaires", cr.produits.totalCA, n1?.produits?.totalCA)
+    + r("Loyers encaissés", cr.produits.loyers, 1, n1?.produits?.loyers)
+    + r("Locations saisonnières", cr.produits.locSaisonniere, 1, n1?.produits?.locSaisonniere)
+    + r("Provisions pour charges locatives", cr.produits.provChargesLoc, 1, n1?.produits?.provChargesLoc)
+    + r("Subventions", cr.produits.subventions, 1, n1?.produits?.subventions)
+    + r("Indemnités d'assurance", cr.produits.indemnAssurance, 1, n1?.produits?.indemnAssurance)
+    
+
+    // CHARGES D'EXPLOITATION
+    + sec("Total des charges d'exploitation", cr.charges.total, n1?.charges?.total)
+    + ag("Achats", cr.charges.achats.total, n1?.charges?.achats?.total)
+    + r("Eau, gaz, électricité", cr.charges.achats.eau + cr.charges.achats.elec, 1, (n1?.charges?.achats?.eau??0)+(n1?.charges?.achats?.elec??0))
+    + r("Charges externes", cr.charges.achats.chargesExternes, 1, n1?.charges?.achats?.chargesExternes)
+    + r("Matériel et outillages", cr.charges.achats.matOutillage, 1, n1?.charges?.achats?.matOutillage)
+    + ag("Services extérieurs", cr.charges.servExt.total, n1?.charges?.servExt?.total)
+    + r("Abonnements logiciels", cr.charges.servExt.locLogiciel, 1, n1?.charges?.servExt?.locLogiciel)
+    + r("Charges locatives et de copropriété", cr.charges.servExt.chargesLoc, 1, n1?.charges?.servExt?.chargesLoc)
+    + r("Entretien et réparations sur biens immobiliers", cr.charges.servExt.entretienRep, 1, n1?.charges?.servExt?.entretienRep)
+    + r("Travaux d'amélioration", cr.charges.servExt.travauxAmelio, 1, n1?.charges?.servExt?.travauxAmelio)
+    + r("Primes d'assurances", cr.charges.servExt.assurances, 1, n1?.charges?.servExt?.assurances)
+    + r("Frais divers", cr.charges.servExt.fraisDivers, 1, n1?.charges?.servExt?.fraisDivers)
+    + ag("Autres services extérieurs", cr.charges.autresServExt.total, n1?.charges?.autresServExt?.total)
+    + r("Honoraires divers", cr.charges.autresServExt.honoraires, 1, n1?.charges?.autresServExt?.honoraires)
+    + r("Frais d'actes et de contentieux", cr.charges.autresServExt.fraisActes, 1, n1?.charges?.autresServExt?.fraisActes)
+    + r("Annonces et insertions", cr.charges.autresServExt.annonces, 1, n1?.charges?.autresServExt?.annonces)
+    + r("Voyages et déplacements", cr.charges.autresServExt.voyages + cr.charges.autresServExt.receptions, 1, (n1?.charges?.autresServExt?.voyages??0)+(n1?.charges?.autresServExt?.receptions??0))
+    + r("Internet et téléphone", cr.charges.autresServExt.internet + cr.charges.autresServExt.telephone, 1, (n1?.charges?.autresServExt?.internet??0)+(n1?.charges?.autresServExt?.telephone??0))
+    + r("Frais postaux et de communication", cr.charges.autresServExt.fraisPostaux, 1, n1?.charges?.autresServExt?.fraisPostaux)
+    + r("Services bancaires", cr.charges.autresServExt.servicesBanc, 1, n1?.charges?.autresServExt?.servicesBanc)
+    + r("Services divers", cr.charges.autresServExt.servicesDivers, 1, n1?.charges?.autresServExt?.servicesDivers)
+    + ag("Impôts et taxes", cr.charges.impots.total, n1?.charges?.impots?.total)
+    + r("Cotisation Foncière des Entreprises", cr.charges.impots.cfe, 1, n1?.charges?.impots?.cfe)
+    + r("Taxe foncière", cr.charges.impots.tf, 1, n1?.charges?.impots?.tf)
+    + r("Contribution sur les revenus locatifs", cr.charges.impots.crl, 1, n1?.charges?.impots?.crl)
+    + r("Autres impôts, taxes et versements assimilés", cr.charges.impots.teom + cr.charges.impots.autresImpots, 1, (n1?.charges?.impots?.teom??0)+(n1?.charges?.impots?.autresImpots??0))
+    + ag("Dotations aux amortissements et aux provisions", cr.charges.dotations.total, n1?.charges?.dotations?.total)
+    + r("Amortissements", cr.charges.dotations.amort, 1, n1?.charges?.dotations?.amort)
+    + r("Provisions pour charges", cr.charges.dotations.prov, 1, n1?.charges?.dotations?.prov)
+    + ag("Reprises d'amortissements et provisions", -cr.charges.reprises, n1 ? -n1.charges?.reprises : null)
+
+    + res("RÉSULTAT D'EXPLOITATION", cr.resultatExploit, n1?.resultatExploit)
+
+    // FINANCIER
+    + sec("Total des produits financiers", cr.financier.totalProduits, n1?.financier?.totalProduits)
+    + r("Produits financiers", cr.financier.prodFinanciers, 1, n1?.financier?.prodFinanciers)
+    + r("Reprises aux provisions financières", cr.financier.reprisesFinancieres, 1, n1?.financier?.reprisesFinancieres)
+    + sec("Total des charges financières", cr.financier.totalCharges, n1?.financier?.totalCharges)
+    + r("Intérêts des emprunts et dettes", cr.financier.interetsEmprunts, 1, n1?.financier?.interetsEmprunts)
+    + r("Dotations aux provisions financières", cr.financier.dotProvFinanc, 1, n1?.financier?.dotProvFinanc)
+    + res("RÉSULTAT FINANCIER", cr.resultatFinancier, n1?.resultatFinancier)
+    + res("RÉSULTAT COURANT", cr.resultatCourant, n1?.resultatCourant)
+
+    // EXCEPTIONNEL
+    + sec("Total des produits exceptionnels", cr.exceptionnel.totalProduits, n1?.exceptionnel?.totalProduits)
+    + r("Produits des cessions d'éléments d'actifs", cr.exceptionnel.prodCessions, 1, n1?.exceptionnel?.prodCessions)
+    + r("Autres produits exceptionnels", cr.exceptionnel.autresProdExcept, 1, n1?.exceptionnel?.autresProdExcept)
+    + sec("Total des charges exceptionnelles", cr.exceptionnel.totalCharges, n1?.exceptionnel?.totalCharges)
+    + r("Indemnité d'éviction", cr.exceptionnel.indemnEviction, 1, n1?.exceptionnel?.indemnEviction)
+    + r("Valeur comptable des actifs cédés", cr.exceptionnel.vcnaCedes, 1, n1?.exceptionnel?.vcnaCedes)
+    + r("Autres charges exceptionnelles", cr.exceptionnel.autresChargesExcept, 1, n1?.exceptionnel?.autresChargesExcept)
+    + res("RÉSULTAT EXCEPTIONNEL", cr.exceptionnel.total, n1?.exceptionnel?.total)
+
+    + r("Impôt sur les bénéfices", cr.is, 0, n1?.is)
+    + res("RÉSULTAT DE L'EXERCICE", cr.resultatNet, n1?.resultatNet)
+    + '</tbody></table>';
+
+  return '<div class="rpt">'
+    + rptHeader('Compte de Résultat', 'Exercice du 01/01/' + CURRENT_YEAR + ' au 31/12/' + CURRENT_YEAR + ' — Montants en euros entiers')
+    + html
+    + rptFooter()
+    + '</div>';
 }
+
 
 function exportCR(fmt) {
-  const cr = buildCRPCG();
-  if(fmt === 'pdf') {
-    printDoc(renderCRHTML(cr), `CR_${CURRENT_YEAR}`);
-  } else {
-    const rn = (v) => fmtEraw(Math.round(v*100)/100);
-    let csv = '\uFEFF';
-    csv += `COMPTE DE RÉSULTAT — SCI DES PRÊLES — Exercice ${CURRENT_YEAR}\n\n`;
-    csv += `Loyers encaissés;${rn(cr.produits.loyers)}\n`;
-    csv += `Locations saisonnières;${rn(cr.produits.locSaisonniere)}\n`;
-    csv += `Provisions charges locatives;${rn(cr.produits.provChargesLoc)}\n`;
-    csv += `Reprises d'amort. et provisions;${rn(cr.produits.reprises781)}\n`;
-    csv += `TOTAL PRODUITS D'EXPLOITATION;${rn(cr.produits.total)}\n\n`;
-    csv += `Achats;${rn(cr.charges.achats.total)}\n`;
-    csv += `Services extérieurs;${rn(cr.charges.servExt.total)}\n`;
-    csv += `Autres services extérieurs;${rn(cr.charges.autresServExt.total)}\n`;
-    csv += `Impôts et taxes;${rn(cr.charges.impots.total)}\n`;
-    csv += `Dotations;${rn(cr.charges.dotations.total)}\n`;
-    csv += `Reprises déduites;-${rn(cr.charges.reprises)}\n`;
-    csv += `TOTAL CHARGES D'EXPLOITATION;${rn(cr.charges.total)}\n\n`;
-    csv += `RÉSULTAT D'EXPLOITATION;${rn(cr.resultatExploit)}\n\n`;
-    csv += `Reprises financières;${rn(cr.financier.reprises)}\n`;
-    csv += `Intérêts des emprunts;-${rn(cr.financier.interetsEmprunts)}\n`;
-    csv += `Intérêts des comptes courants;-${rn(cr.financier.interetsCC)}\n`;
-    csv += `RÉSULTAT FINANCIER;${rn(cr.resultatFinancier)}\n\n`;
-    csv += `RÉSULTAT COURANT;${rn(cr.resultatCourant)}\n`;
-    csv += `RÉSULTAT EXCEPTIONNEL;${rn(cr.exceptionnel.total)}\n`;
-    csv += `Impôt sur les bénéfices;-${rn(cr.is)}\n`;
-    csv += `RÉSULTAT DE L'EXERCICE;${rn(cr.resultatNet)}\n`;
-    dlCSV(csv, `CR_${CURRENT_YEAR}.csv`);
+  if(fmt === 'pdf') { showCRN1Modal(); return; }
+  exportCRExcel();
+}
+
+async function exportCRExcel() {
+  const years = Array.from(document.getElementById('ex-year-select').options)
+    .map(o => o.value).filter(y => y !== String(CURRENT_YEAR)).sort((a,b) => b.localeCompare(a));
+  const existing = document.getElementById('cr-excel-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cr-excel-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 28px;width:400px;font-family:var(--mono);">
+    <div style="font-size:13px;font-weight:700;color:var(--text0);margin-bottom:6px;">⬇ EXPORT EXCEL — COMPTE DE RÉSULTAT</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:16px;">Exercice : <strong style="color:var(--cyan)">${CURRENT_YEAR}</strong></div>
+    <div style="font-size:11px;color:var(--text1);margin-bottom:8px;">Exercice de comparaison N-1 :</div>
+    <select id="cr-excel-n1-select" style="width:100%;height:32px;font-family:var(--mono);font-size:12px;margin-bottom:12px;">
+      <option value="">— Aucun —</option>
+      ${years.map(y=>`<option value="${y}">${y}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="btn btn-sm" onclick="document.getElementById('cr-excel-modal').remove()">ANNULER</button>
+      <button class="btn btn-sm btn-primary" onclick="generateCRExcelData()">⬇ GÉNÉRER EXCEL</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function generateCRExcelData() {
+  const n1Year = document.getElementById('cr-excel-n1-select')?.value || '';
+  document.getElementById('cr-excel-modal')?.remove();
+
+  // Charger SheetJS
+  if(typeof XLSX === 'undefined') {
+    await new Promise((res,rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
   }
+
+  // Charger données N-1 si besoin
+  let dbN1 = null;
+  if(n1Year && window._fbLoad) {
+    toast('Chargement N-1...','info');
+    const remote = await window._fbLoad(n1Year);
+    if(remote && remote.ecritures) dbN1 = remote;
+  }
+
+  // Calculer CR depuis les écritures (même logique que buildCRPCG)
+  function computeCR(ecritures) {
+    const sol = {};
+    ecritures.forEach(e => {
+      const cp = String(e.compte||'');
+      if(!cp) return;
+      if(!sol[cp]) sol[cp] = {lib:e.libelleCompte||'',d:0,c:0};
+      sol[cp].d += e.debit||0;
+      sol[cp].c += e.credit||0;
+    });
+    const n = (cps, sign=1) => Math.round(cps.reduce((s,cp)=>s+((sol[cp]?.d||0)-(sol[cp]?.c||0)),0)*sign);
+
+    const loyers_brut = n(['706001','706002','706003'],-1);
+    const rabais      = n(['709600'],1);
+    const loyers      = loyers_brut - rabais;
+    const loc_sais    = n(['706100'],-1);
+    const prov_charg  = n(['708100'],-1);
+    const totalCA     = loyers + loc_sais + prov_charg;
+    const reprises781 = n(['781000'],-1);
+
+    const eau_elec    = n(['606110','606120'],1);
+    const charg_ext   = n(['613120'],1);
+    const mat_out     = n(['606300','606400'],1);
+    const totalAchats = eau_elec + charg_ext + mat_out;
+
+    const abo_log     = n(['613000'],1);
+    const entretien   = n(['615200'],1);
+    const travaux     = n(['615500'],1);
+    const assurances  = n(['616380','616381'],1);
+    const totalServ   = abo_log + entretien + travaux + assurances;
+
+    const honoraires  = n(['622000'],1);
+    const frais_actes = n(['622700'],1);
+    const annonces    = n(['623100'],1);
+    const voyages     = n(['625100','625700'],1);
+    const internet    = n(['626100','626200'],1);
+    const frais_post  = n(['626300'],1);
+    const serv_banc   = n(['627000','627100'],1);
+    const serv_div    = n(['628100'],1);
+    const totalAutres = honoraires+frais_actes+annonces+voyages+internet+frais_post+serv_banc+serv_div;
+
+    const tf          = n(['635120'],1);
+    const teom        = n(['635130'],1);
+    const totalImpots = tf + teom;
+
+    const dot_amort   = n(['681120'],1);
+    const dot_prov    = n(['681000'],1);
+    const totalDot    = dot_amort + dot_prov;
+
+    const totalCharges = totalAchats + totalServ + totalAutres + totalImpots + totalDot - reprises781;
+    const resExploit  = totalCA - totalCharges;
+
+    const interets    = n(['661100','661500'],1);
+    const dot_fin     = n(['686000'],1);
+    const repr_fin    = n(['786000'],-1);
+    const resFin      = repr_fin - interets - dot_fin;
+    const resCourant  = resExploit + resFin;
+
+    return {
+      totalCA, loyers, loc_sais, prov_charg, reprises781,
+      totalCharges, totalAchats, eau_elec, charg_ext, mat_out,
+      totalServ, abo_log, entretien, travaux, assurances,
+      totalAutres, honoraires, frais_actes, annonces, voyages, internet, frais_post, serv_banc, serv_div,
+      totalImpots, tf, teom, totalDot, dot_amort, dot_prov,
+      resExploit, interets, dot_fin, repr_fin, resFin, resCourant, resNet: resCourant,
+      _soldes: sol
+    };
+  }
+
+  const cr25 = computeCR(DB.ecritures);
+  const cr24 = dbN1 ? computeCR(dbN1.ecritures) : null;
+  const hasN1 = !!cr24;
+
+  // Mapping couleurs comptes
+  const MAPPING = [
+    {cps:['706001','706002','706003','709600'], color:'E2EFDA', label:'Loyers encaissés'},
+    {cps:['706100'],   color:'FCE4D6', label:'Locations saisonnières'},
+    {cps:['708100'],   color:'DDEBF7', label:'Provisions charges locatives'},
+    {cps:['781000'],   color:'FFF2CC', label:'Reprises amortissements'},
+    {cps:['606110','606120'], color:'DAE8FC', label:'Eau, gaz, électricité'},
+    {cps:['613120'],   color:'E2EFDA', label:'Charges externes'},
+    {cps:['606300','606400'], color:'FFF2CC', label:'Matériel et outillages'},
+    {cps:['613000'],   color:'DDEBF7', label:'Abonnements logiciels'},
+    {cps:['615200'],   color:'FCE4D6', label:'Entretien et réparations'},
+    {cps:['615500'],   color:'E2EFDA', label:"Travaux d'amélioration"},
+    {cps:['616380','616381'], color:'DAE8FC', label:"Primes d'assurances"},
+    {cps:['622000'],   color:'DDEBF7', label:'Honoraires divers'},
+    {cps:['622700'],   color:'FFF2CC', label:"Frais d'actes"},
+    {cps:['623100'],   color:'FCE4D6', label:'Annonces et insertions'},
+    {cps:['625100','625700'], color:'E2EFDA', label:'Voyages et déplacements'},
+    {cps:['626100','626200'], color:'DAE8FC', label:'Internet et téléphone'},
+    {cps:['626300'],   color:'DDEBF7', label:'Frais postaux'},
+    {cps:['627000','627100'], color:'FFF2CC', label:'Services bancaires'},
+    {cps:['628100'],   color:'FCE4D6', label:'Services divers'},
+    {cps:['635120'],   color:'E2EFDA', label:'Taxe foncière'},
+    {cps:['635130'],   color:'DAE8FC', label:'Autres impôts (TEOM)'},
+    {cps:['681120'],   color:'DDEBF7', label:'Amortissements'},
+    {cps:['681000'],   color:'FFF2CC', label:'Provisions pour charges'},
+    {cps:['661100','661500'], color:'FCE4D6', label:'Intérêts des emprunts'},
+    {cps:['686000'],   color:'E2EFDA', label:'Dotations prov. financières'},
+    {cps:['786000'],   color:'DAE8FC', label:'Reprises financières'},
+  ];
+  const cpColor={}, cpLabel={};
+  MAPPING.forEach(m => m.cps.forEach(cp => {cpColor[cp]=m.color; cpLabel[cp]=m.label;}));
+
+  const wb = XLSX.utils.book_new();
+  const ORANGE='E84B0F', OL='FDE8DF';
+
+  // ── Onglet CR ──
+  function mkCell(v, style) { return {v: v===null||v===undefined?'':v, s: style, t: typeof v==='number'?'n':'s'}; }
+
+  function crSheet() {
+    const rows = [];
+    const hdr  = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}};
+    const hdrR = {...hdr, alignment:{horizontal:'right'}};
+    const sec  = {font:{bold:true,name:'Arial',sz:10}, fill:{fgColor:{rgb:OL}}, alignment:{horizontal:'left'}};
+    const secR = {...sec, alignment:{horizontal:'right'}};
+    const agg  = {font:{bold:true,italic:true,name:'Arial',sz:10}};
+    const aggR = {font:{bold:true,name:'Arial',sz:10}, alignment:{horizontal:'right'}};
+    const res  = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}};
+    const resR = {...res, alignment:{horizontal:'right'}};
+    const nrm  = {font:{name:'Arial',sz:10}};
+    const nrmR = {font:{name:'Arial',sz:10}, alignment:{horizontal:'right'}};
+    const gry  = {font:{name:'Arial',sz:10,color:{rgb:'555555'}}, alignment:{horizontal:'right'}};
+    const varR = {font:{italic:true,name:'Arial',sz:9,color:{rgb:'888888'}}, alignment:{horizontal:'right'}};
+
+    function colStyle(hex) { return {fill:{fgColor:{rgb:hex}}}; }
+    function row(label, v25, v24, color, type) {
+      const ls = type==='hdr'?hdr:type==='sec'?sec:type==='res'?res:type==='agg'?agg:{...nrm,...(color?colStyle(color):{})};
+      const vs = type==='hdr'?hdrR:type==='sec'?secR:type==='res'?resR:type==='agg'?aggR:{...nrmR,...(color?colStyle(color):{})};
+      const indent = (type===''||type==='detail') ? '  ' : '';
+      const r = [mkCell(indent+label,ls), mkCell(v25,vs)];
+      if(hasN1) {
+        r.push(mkCell(v24!==null?v24:'', {...gry,...(color?colStyle(color):{})}) );
+        r.push(mkCell(v24!==null&&v25!==null?v25-v24:null, varR));
+      }
+      return r;
+    }
+
+    const p4 = hasN1 ? 4 : 2;
+    rows.push(row('COMPTE DE RÉSULTAT', String(CURRENT_YEAR), n1Year||'', null, 'hdr'));
+    rows.push([]);
+    rows.push(row("TOTAL DES PRODUITS D'EXPLOITATION", cr25.totalCA, cr24?.totalCA??null, null, 'sec'));
+    rows.push(row("Chiffre d'affaires", cr25.totalCA, cr24?.totalCA??null, null, 'agg'));
+    rows.push(row("Loyers encaissés", cr25.loyers, cr24?.loyers??null, 'E2EFDA', 'detail'));
+    rows.push(row("Locations saisonnières", cr25.loc_sais, cr24?.loc_sais??null, 'FCE4D6', 'detail'));
+    rows.push(row("Provisions pour charges locatives", cr25.prov_charg, cr24?.prov_charg??null, 'DDEBF7', 'detail'));
+    rows.push([]);
+    rows.push(row("TOTAL DES CHARGES D'EXPLOITATION", cr25.totalCharges, cr24?.totalCharges??null, null, 'sec'));
+    rows.push(row("Achats", cr25.totalAchats, cr24?.totalAchats??null, null, 'agg'));
+    rows.push(row("Eau, gaz, électricité", cr25.eau_elec, cr24?.eau_elec??null, 'DAE8FC', 'detail'));
+    rows.push(row("Charges externes", cr25.charg_ext, cr24?.charg_ext??null, 'E2EFDA', 'detail'));
+    rows.push(row("Matériel et outillages", cr25.mat_out, cr24?.mat_out??null, 'FFF2CC', 'detail'));
+    rows.push(row("Services extérieurs", cr25.totalServ, cr24?.totalServ??null, null, 'agg'));
+    rows.push(row("Abonnements logiciels", cr25.abo_log, cr24?.abo_log??null, 'DDEBF7', 'detail'));
+    rows.push(row("Entretien et réparations", cr25.entretien, cr24?.entretien??null, 'FCE4D6', 'detail'));
+    rows.push(row("Travaux d'amélioration", cr25.travaux, cr24?.travaux??null, 'E2EFDA', 'detail'));
+    rows.push(row("Primes d'assurances", cr25.assurances, cr24?.assurances??null, 'DAE8FC', 'detail'));
+    rows.push(row("Autres services extérieurs", cr25.totalAutres, cr24?.totalAutres??null, null, 'agg'));
+    rows.push(row("Honoraires divers", cr25.honoraires, cr24?.honoraires??null, 'DDEBF7', 'detail'));
+    rows.push(row("Frais d'actes", cr25.frais_actes, cr24?.frais_actes??null, 'FFF2CC', 'detail'));
+    rows.push(row("Annonces et insertions", cr25.annonces, cr24?.annonces??null, 'FCE4D6', 'detail'));
+    rows.push(row("Voyages et déplacements", cr25.voyages, cr24?.voyages??null, 'E2EFDA', 'detail'));
+    rows.push(row("Internet et téléphone", cr25.internet, cr24?.internet??null, 'DAE8FC', 'detail'));
+    rows.push(row("Frais postaux", cr25.frais_post, cr24?.frais_post??null, 'DDEBF7', 'detail'));
+    rows.push(row("Services bancaires", cr25.serv_banc, cr24?.serv_banc??null, 'FFF2CC', 'detail'));
+    rows.push(row("Services divers", cr25.serv_div, cr24?.serv_div??null, 'FCE4D6', 'detail'));
+    rows.push(row("Impôts et taxes", cr25.totalImpots, cr24?.totalImpots??null, null, 'agg'));
+    rows.push(row("Taxe foncière", cr25.tf, cr24?.tf??null, 'E2EFDA', 'detail'));
+    rows.push(row("Autres impôts (TEOM)", cr25.teom, cr24?.teom??null, 'DAE8FC', 'detail'));
+    rows.push(row("Dotations aux amortissements et provisions", cr25.totalDot, cr24?.totalDot??null, null, 'agg'));
+    rows.push(row("Amortissements", cr25.dot_amort, cr24?.dot_amort??null, 'DDEBF7', 'detail'));
+    rows.push(row("Provisions pour charges", cr25.dot_prov, cr24?.dot_prov??null, 'FFF2CC', 'detail'));
+    rows.push(row("Reprises d'amortissements (déduit)", -cr25.reprises781, cr24?-cr24.reprises781:null, 'FCE4D6', 'detail'));
+    rows.push([]);
+    rows.push(row("RÉSULTAT D'EXPLOITATION", cr25.resExploit, cr24?.resExploit??null, null, 'res'));
+    rows.push([]);
+    rows.push(row("RÉSULTAT FINANCIER", cr25.resFin, cr24?.resFin??null, null, 'sec'));
+    rows.push(row("Intérêts des emprunts et dettes", -cr25.interets, cr24?-cr24.interets:null, 'FCE4D6', 'detail'));
+    rows.push(row("Dotations provisions financières", -cr25.dot_fin, cr24?-cr24.dot_fin:null, 'E2EFDA', 'detail'));
+    rows.push(row("Reprises financières", cr25.repr_fin, cr24?.repr_fin??null, 'DAE8FC', 'detail'));
+    rows.push([]);
+    rows.push(row("RÉSULTAT COURANT", cr25.resCourant, cr24?.resCourant??null, null, 'res'));
+    rows.push([]);
+    rows.push(row("RÉSULTAT DE L'EXERCICE", cr25.resNet, cr24?.resNet??null, null, 'res'));
+
+    // Construire la feuille manuellement
+    const ws = {};
+    let maxC = hasN1 ? 3 : 1;
+    rows.forEach((row, ri) => {
+      row.forEach((cell, ci) => {
+        if(!cell) return;
+        const ref = XLSX.utils.encode_cell({r:ri, c:ci});
+        ws[ref] = {v: cell.v, t: cell.t||'s'};
+        if(cell.s) ws[ref].s = cell.s;
+      });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:rows.length-1, c:maxC}});
+    ws['!cols'] = [{wch:50},{wch:14},{wch:14},{wch:12}];
+    return ws;
+  }
+
+  // ── Onglet BG ──
+  function bgSheet(soldes, yr) {
+    const hdr = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}};
+    const hdrR = {...hdr, alignment:{horizontal:'right'}};
+    const rows = [
+      [mkCell('N° Compte',hdr), mkCell('Libellé',hdr), mkCell('Solde net',hdrR), mkCell('Ligne CR',hdr)]
+    ];
+    const sorted = Object.keys(soldes).filter(cp=>cp[0]==='6'||cp[0]==='7').sort();
+    sorted.forEach(cp => {
+      const s = soldes[cp];
+      const net = Math.round((s.d-s.c)*100)/100;
+      const color = cpColor[cp];
+      const label = cpLabel[cp]||'— non mappé —';
+      const cs = color ? {font:{name:'Arial',sz:10},fill:{fgColor:{rgb:color}}} : {font:{name:'Arial',sz:10,color:{rgb:'999999'}},fill:{fgColor:{rgb:'F2F2F2'}}};
+      const csR = {...cs, alignment:{horizontal:'right'}};
+      rows.push([mkCell(cp,cs), mkCell(s.lib,cs), mkCell(net,csR), mkCell(label,cs)]);
+    });
+    const ws = {};
+    rows.forEach((row,ri) => {
+      row.forEach((cell,ci) => {
+        if(!cell) return;
+        const ref = XLSX.utils.encode_cell({r:ri,c:ci});
+        ws[ref] = {v:cell.v, t:cell.t||'s'};
+        if(cell.s) ws[ref].s = cell.s;
+      });
+    });
+    ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0},e:{r:rows.length-1,c:3}});
+    ws['!cols'] = [{wch:12},{wch:50},{wch:14},{wch:45}];
+    return ws;
+  }
+
+  XLSX.utils.book_append_sheet(wb, crSheet(), 'CR');
+  XLSX.utils.book_append_sheet(wb, bgSheet(cr25._soldes, CURRENT_YEAR), 'BG '+CURRENT_YEAR);
+  if(cr24) XLSX.utils.book_append_sheet(wb, bgSheet(cr24._soldes, n1Year), 'BG '+n1Year);
+
+  XLSX.writeFile(wb, 'CR_'+CURRENT_YEAR+'.xlsx', {cellStyles:true, bookType:'xlsx'});
+  toast('Export Excel généré', 'success');
+}
+
+function showCRN1Modal() {
+  const years = Array.from(document.getElementById('ex-year-select').options)
+    .map(o => o.value).filter(y => y !== String(CURRENT_YEAR)).sort((a,b) => b.localeCompare(a));
+  const existing = document.getElementById('cr-n1-modal');
+  if(existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'cr-n1-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 28px;width:380px;font-family:var(--mono);">
+    <div style="font-size:13px;font-weight:700;color:var(--text0);margin-bottom:6px;">⎙ COMPTE DE RÉSULTAT</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:16px;">Exercice : <strong style="color:var(--cyan)">${CURRENT_YEAR}</strong></div>
+    <div style="font-size:11px;color:var(--text1);margin-bottom:8px;">Exercice de comparaison N-1 :</div>
+    <select id="cr-n1-select" style="width:100%;height:32px;font-family:var(--mono);font-size:12px;margin-bottom:6px;">
+      <option value="">— Aucun —</option>
+      ${years.map(y=>`<option value="${y}">${y}</option>`).join('')}
+    </select>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px;">
+      <button class="btn btn-sm" onclick="document.getElementById('cr-n1-modal').remove()">ANNULER</button>
+      <button class="btn btn-sm btn-primary" onclick="generateCRPDF()">⎙ GÉNÉRER PDF</button>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+}
+
+async function generateCRPDF() {
+  const n1Year = document.getElementById('cr-n1-select')?.value || '';
+  document.getElementById('cr-n1-modal')?.remove();
+  const cr = buildCRPCG();
+  let crn1 = null;
+  if(n1Year && window._fbLoad) {
+    const remote = await window._fbLoad(n1Year);
+    if(remote && remote.ecritures) {
+      const savedDB = JSON.parse(JSON.stringify(DB));
+      const savedYear = CURRENT_YEAR;
+      Object.assign(DB, remote);
+      CURRENT_YEAR = n1Year;
+      crn1 = buildCRPCG();
+      Object.assign(DB, savedDB);
+      CURRENT_YEAR = savedYear;
+    }
+  }
+  printDoc(renderCRHTML(cr, crn1, n1Year), `CR_${CURRENT_YEAR}`);
 }
 
 // ── PRINT / DOWNLOAD HELPERS ──
@@ -3812,7 +5032,211 @@ async function boot() {
   startLiveSync();
   checkMonthlyExport();
 }
-// Wait for Firebase module to signal ready, or boot after 3s timeout
+// ══════════════════════════════════════════════
+// MODULE IMMOBILISATIONS
+// ══════════════════════════════════════════════
+function ensureImmoArray() { if(!Array.isArray(DB.immobilisations)) DB.immobilisations = []; return DB.immobilisations; }
+
+// Calcule le tableau d'amortissement linéaire avec prorata temporis (jours réels / jours dans l'année)
+function computeAmortSchedule(immo) {
+  const valeurBrute = parseFloat(immo.valeurBrute) || 0;
+  const duree = parseInt(immo.dureeAnnees) || 1;
+  const dateAchat = immo.dateAchat;
+  if(!dateAchat || !valeurBrute || !duree) return [];
+
+  const dAchat = new Date(dateAchat + 'T00:00:00');
+  const anneeAchat = dAchat.getFullYear();
+  const isLeap = (y) => (y%4===0 && y%100!==0) || y%400===0;
+  const joursDansAnnee = (y) => isLeap(y) ? 366 : 365;
+
+  const finAnnee = new Date(anneeAchat, 11, 31);
+  // Nombre de jours entre la date d'achat (incluse) et le 31/12 inclus
+  const msParJour = 86400000;
+  const joursRestants = Math.round((finAnnee - dAchat) / msParJour) + 1;
+  const prorata1 = Math.min(1, joursRestants / joursDansAnnee(anneeAchat));
+
+  const montantAnnuel = valeurBrute / duree;
+  const schedule = [];
+  let cumul = 0;
+
+  // Année 1 (prorata)
+  let montant1 = Math.round(montantAnnuel * prorata1 * 100) / 100;
+  if(montant1 > valeurBrute) montant1 = valeurBrute;
+  cumul += montant1;
+  schedule.push({annee: anneeAchat, base: valeurBrute, prorata: prorata1, dotation: montant1, cumul, vnc: Math.round((valeurBrute-cumul)*100)/100});
+
+  // Années pleines suivantes
+  let anneeCourante = anneeAchat + 1;
+  const epsilon = 0.01;
+  while(cumul < valeurBrute - epsilon) {
+    const restant = valeurBrute - cumul;
+    let montant = Math.round(montantAnnuel * 100) / 100;
+    let prorata = 1;
+    if(montant >= restant - epsilon) {
+      // Dernière année (partielle ou pas)
+      montant = Math.round(restant * 100) / 100;
+      prorata = montantAnnuel > 0 ? Math.round((montant/montantAnnuel)*1000)/1000 : 1;
+    }
+    cumul = Math.round((cumul + montant) * 100) / 100;
+    schedule.push({annee: anneeCourante, base: valeurBrute, prorata, dotation: montant, cumul, vnc: Math.round((valeurBrute-cumul)*100)/100});
+    anneeCourante++;
+    if(schedule.length > 100) break; // garde-fou
+  }
+
+  return schedule;
+}
+
+function renderImmos() {
+  const list = ensureImmoArray();
+  const body = document.getElementById('immos-body');
+  const empty = document.getElementById('immos-empty');
+  if(!body) return;
+
+  if(!list.length) {
+    body.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    document.querySelector('#immos-list-wrap table').style.display = 'none';
+    updateNavCounts();
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+  document.querySelector('#immos-list-wrap table').style.display = '';
+
+  const rn = (v) => fmt(v);
+
+  body.innerHTML = list.slice().sort((a,b) => (a.dateAchat||'').localeCompare(b.dateAchat||'')).map(immo => {
+    const schedule = computeAmortSchedule(immo);
+    const yearNow = String(CURRENT_YEAR);
+    // Cumul amorti jusqu'à l'exercice courant inclus
+    const cumulActuel = schedule.filter(s => s.annee <= parseInt(yearNow)).reduce((max,s) => s.cumul, 0);
+    const vncActuelle = Math.round((parseFloat(immo.valeurBrute) - cumulActuel) * 100) / 100;
+    return `<tr>
+      <td style="font-size:11px;">${immo.libelle||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${immo.compteImmo||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;">${fmtDateGL(immo.dateAchat)}</td>
+      <td class="td-num" style="font-size:11px;">${rn(immo.valeurBrute)}</td>
+      <td style="font-size:11px;text-align:center;">${immo.dureeAnnees} ans</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteDotation||''}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteAmort||''}</td>
+      <td class="td-num" style="font-size:11px;color:var(--amber);">${rn(cumulActuel)}</td>
+      <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        <button class="btn btn-sm btn-icon" onclick="viewImmoSchedule('${immo.id}')" title="Tableau d'amortissement" style="padding:1px 5px;font-size:10px;">📊</button>
+        <button class="btn btn-sm btn-icon" onclick="openImmoModal('${immo.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteImmo('${immo.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  updateNavCounts();
+}
+
+function openImmoModal(editId) {
+  document.getElementById('immo-edit-id').value = editId || '';
+  if(editId) {
+    const immo = ensureImmoArray().find(i => i.id === editId);
+    if(!immo) return;
+    document.getElementById('immo-modal-title').textContent = '🏛 MODIFIER L\'IMMOBILISATION';
+    document.getElementById('immo-libelle').value = immo.libelle || '';
+    document.getElementById('immo-compte-immo').value = immo.compteImmo || '';
+    document.getElementById('immo-date-achat').value = immo.dateAchat || '';
+    document.getElementById('immo-valeur-brute').value = immo.valeurBrute || '';
+    document.getElementById('immo-duree').value = immo.dureeAnnees || '';
+    document.getElementById('immo-compte-dotation').value = immo.compteDotation || '';
+    document.getElementById('immo-compte-amort').value = immo.compteAmort || '';
+    document.getElementById('immo-notes').value = immo.notes || '';
+  } else {
+    document.getElementById('immo-modal-title').textContent = '🏛 NOUVELLE IMMOBILISATION';
+    ['immo-libelle','immo-compte-immo','immo-date-achat','immo-valeur-brute','immo-duree','immo-compte-dotation','immo-compte-amort','immo-notes'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+  }
+  document.getElementById('immo-modal').style.display = 'flex';
+}
+
+function closeImmoModal() {
+  document.getElementById('immo-modal').style.display = 'none';
+}
+
+function saveImmo() {
+  const editId = document.getElementById('immo-edit-id').value;
+  const libelle = document.getElementById('immo-libelle').value.trim();
+  const compteImmo = document.getElementById('immo-compte-immo').value.trim();
+  const dateAchat = document.getElementById('immo-date-achat').value;
+  const valeurBrute = parseFloat(document.getElementById('immo-valeur-brute').value) || 0;
+  const dureeAnnees = parseInt(document.getElementById('immo-duree').value) || 0;
+  const compteDotation = document.getElementById('immo-compte-dotation').value.trim();
+  const compteAmort = document.getElementById('immo-compte-amort').value.trim();
+  const notes = document.getElementById('immo-notes').value.trim();
+
+  if(!libelle) { toast('Le libellé est requis','error'); return; }
+  if(!compteImmo || compteImmo.length !== 6) { toast('Compte d\'immobilisation invalide (6 chiffres)','error'); return; }
+  if(!dateAchat) { toast('La date d\'acquisition est requise','error'); return; }
+  if(!valeurBrute || valeurBrute <= 0) { toast('La valeur brute doit être positive','error'); return; }
+  if(!dureeAnnees || dureeAnnees <= 0) { toast('La durée d\'amortissement doit être positive','error'); return; }
+  if(!compteDotation || compteDotation.length !== 6) { toast('Compte de dotation invalide (6 chiffres)','error'); return; }
+  if(!compteAmort || compteAmort.length !== 6) { toast('Compte d\'amortissement invalide (6 chiffres)','error'); return; }
+
+  const list = ensureImmoArray();
+  if(editId) {
+    const immo = list.find(i => i.id === editId);
+    if(immo) {
+      Object.assign(immo, {libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes});
+    }
+    toast('Immobilisation modifiée','success');
+  } else {
+    list.push({id: crypto.randomUUID(), libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes});
+    toast('Immobilisation ajoutée','success');
+  }
+
+  saveDB();
+  closeImmoModal();
+  renderImmos();
+}
+
+let immoDeleteTargetId = null;
+function askDeleteImmo(id) {
+  const immo = ensureImmoArray().find(i => i.id === id);
+  if(!immo) return;
+  immoDeleteTargetId = id;
+  document.getElementById('immo-delete-msg').innerHTML = `Supprimer l'immobilisation <strong style="color:var(--cyan)">${immo.libelle}</strong> ?<br>Cette action ne supprime pas les écritures déjà passées, seulement la fiche de suivi.`;
+  document.getElementById('immo-delete-modal').style.display = 'flex';
+}
+function closeImmoDeleteModal() {
+  document.getElementById('immo-delete-modal').style.display = 'none';
+  immoDeleteTargetId = null;
+}
+function confirmDeleteImmo() {
+  if(!immoDeleteTargetId) return;
+  const list = ensureImmoArray();
+  DB.immobilisations = list.filter(i => i.id !== immoDeleteTargetId);
+  saveDB();
+  closeImmoDeleteModal();
+  renderImmos();
+  toast('Immobilisation supprimée','warn');
+}
+
+function viewImmoSchedule(id) {
+  const immo = ensureImmoArray().find(i => i.id === id);
+  if(!immo) return;
+  const schedule = computeAmortSchedule(immo);
+  document.getElementById('immo-schedule-title').textContent = '📊 ' + immo.libelle;
+  document.getElementById('immo-schedule-info').innerHTML = `Compte : <strong style="color:var(--cyan)">${immo.compteImmo}</strong> · Acquis le <strong>${fmtDateGL(immo.dateAchat)}</strong> · Valeur brute <strong>${fmt(immo.valeurBrute)} €</strong> · Durée <strong>${immo.dureeAnnees} ans</strong>`;
+  document.getElementById('immo-schedule-body').innerHTML = schedule.map(s => `<tr>
+    <td style="font-family:var(--mono);">${s.annee}</td>
+    <td class="td-num">${fmt(s.base)}</td>
+    <td class="td-num">${(s.prorata*100).toFixed(1)}%</td>
+    <td class="td-num" style="color:var(--amber);">${fmt(s.dotation)}</td>
+    <td class="td-num">${fmt(s.cumul)}</td>
+    <td class="td-num" style="font-weight:600;">${fmt(s.vnc)}</td>
+  </tr>`).join('');
+  document.getElementById('immo-schedule-modal').style.display = 'flex';
+}
+function closeImmoScheduleModal() {
+  document.getElementById('immo-schedule-modal').style.display = 'none';
+}
+
+
 let booted = false;
 document.addEventListener('firebase-ready', () => { if(!booted){ booted=true; boot(); } });
 document.addEventListener('DOMContentLoaded', () => {
