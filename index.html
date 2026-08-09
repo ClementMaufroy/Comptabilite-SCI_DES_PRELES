@@ -566,6 +566,21 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <span class="ni-icon">🏛</span> Immobilisations
       <span class="ni-count" id="nc-immos">0</span>
     </div>
+    <div class="nav-item" onclick="showTab('locataires')" id="nav-locataires">
+      <span class="ni-icon">🔑</span> Gestion locative
+      <span class="ni-count" id="nc-locataires">0</span>
+    </div>
+    <div class="nav-item" onclick="showTab('echeanciers')" id="nav-echeanciers">
+      <span class="ni-icon">🔁</span> Échéanciers
+      <span class="ni-count" id="nc-echeanciers">0</span>
+    </div>
+    <div class="nav-item" onclick="showTab('emprunts')" id="nav-emprunts">
+      <span class="ni-icon">🏦</span> Emprunts
+      <span class="ni-count" id="nc-emprunts">0</span>
+    </div>
+    <div class="nav-item" onclick="showTab('inventaire')" id="nav-inventaire">
+      <span class="ni-icon">🧮</span> Écritures d'inventaire
+    </div>
     <div class="nav-version">Designed and developed by Clément Maufroy</div>
   </nav>
 
@@ -887,6 +902,16 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           </div>
         </div>
 
+        <!-- Registre des immobilisations -->
+        <div class="card">
+          <div class="card-title">Registre des Immobilisations</div>
+          <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Détail des immobilisations regroupées par compte, avec dates et prix d'acquisition, taux et dotations d'amortissement, valeur résiduelle.</p>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-success" onclick="exportRegistreImmo('excel')">⬇ EXCEL</button>
+            <button class="btn btn-primary" onclick="exportRegistreImmo('pdf')">⎙ PDF</button>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -928,30 +953,135 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="page-sub">Suivi des immobilisations et calcul des amortissements linéaires</div>
         </div>
         <div class="page-actions">
+          <button class="btn btn-sm" onclick="openDotationModal()">⚙ COMPTABILISER LES DOTATIONS</button>
           <button class="btn btn-sm btn-primary" onclick="openImmoModal()">+ AJOUTER UNE IMMOBILISATION</button>
         </div>
       </div>
       <div id="immos-list-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Libellé</th>
-              <th style="width:80px">Compte Immo</th>
-              <th style="width:90px">Date acquisition</th>
-              <th class="td-num" style="width:100px">Valeur brute</th>
-              <th style="width:70px">Durée</th>
-              <th style="width:85px">Compte Dotation</th>
-              <th style="width:85px">Compte Amort.</th>
-              <th class="td-num" style="width:100px">Amort. cumulés</th>
-              <th class="td-num" style="width:100px">VNC actuelle</th>
-              <th style="width:90px"></th>
-            </tr>
-          </thead>
-          <tbody id="immos-body"></tbody>
-        </table>
+        <div id="immos-groups"></div>
         <div id="immos-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
           Aucune immobilisation enregistrée. Cliquez sur "+ AJOUTER UNE IMMOBILISATION" pour commencer.
         </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ GESTION LOCATIVE ══════════════ -->
+    <div class="tab-content" id="tab-locataires">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">GESTION LOCATIVE</div>
+          <div class="page-sub">Fiches locataires, appels de loyer et quittances</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="openMailModal()">✉ ENVOYER PAR MAIL</button>
+          <button class="btn btn-sm btn-primary" onclick="openLocataireModal()">+ AJOUTER UN LOCATAIRE</button>
+        </div>
+      </div>
+      <div id="locataires-list-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:60px">N° Client</th>
+              <th>Adresse de location</th>
+              <th>Locataire(s)</th>
+              <th class="td-num" style="width:75px">Loyer</th>
+              <th class="td-num" style="width:75px">Provision</th>
+              <th class="td-num" style="width:85px">Solde actuel</th>
+              <th style="width:150px"></th>
+            </tr>
+          </thead>
+          <tbody id="locataires-body"></tbody>
+        </table>
+        <div id="locataires-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+          Aucun locataire enregistré. Cliquez sur "+ AJOUTER UN LOCATAIRE" pour commencer.
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ ÉCHÉANCIERS ══════════════ -->
+    <div class="tab-content" id="tab-echeanciers">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">ÉCHÉANCIERS</div>
+          <div class="page-sub">Écritures récurrentes comptabilisées automatiquement</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="comptabiliserToutesEcheancesDuMois()">⚙ COMPTABILISER LE MOIS EN COURS (TOUS)</button>
+          <button class="btn btn-sm btn-primary" onclick="openEcheancierModal()">+ AJOUTER UN ÉCHÉANCIER</button>
+        </div>
+      </div>
+      <div id="echeanciers-expiration-banner"></div>
+      <div id="echeanciers-groups"></div>
+      <div id="echeanciers-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+        Aucun échéancier enregistré. Cliquez sur "+ AJOUTER UN ÉCHÉANCIER" pour commencer.
+      </div>
+    </div>
+
+    <!-- ══════════════ EMPRUNTS ══════════════ -->
+    <div class="tab-content" id="tab-emprunts">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">EMPRUNTS</div>
+          <div class="page-sub">Suivi des emprunts et comptabilisation des échéances mensuelles</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="downloadEmpruntTemplate()">⬇ MODÈLE EXCEL</button>
+          <button class="btn btn-sm btn-primary" onclick="openEmpruntModal()">+ AJOUTER UN EMPRUNT</button>
+        </div>
+      </div>
+      <input type="file" id="emprunt-import-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleEmpruntImport(event)">
+      <table style="table-layout:fixed;width:100%;">
+        <colgroup>
+          <col style="width:120px">
+          <col style="width:46px">
+          <col style="width:46px">
+          <col style="width:46px">
+          <col style="width:62px">
+          <col style="width:62px">
+          <col>
+          <col style="width:150px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th style="overflow:hidden;">Libellé / Banque</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Emprunt</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Intérêts</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Crédit</th>
+            <th class="td-num" style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Restant dû</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Tableau</th>
+            <th>Suivi mensuel (clic = comptabiliser)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="emprunts-body"></tbody>
+      </table>
+      <div id="emprunts-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+        Aucun emprunt enregistré. Cliquez sur "+ AJOUTER UN EMPRUNT" pour commencer.
+      </div>
+    </div>
+
+    <!-- ══════════════ ÉCRITURES D'INVENTAIRE ══════════════ -->
+    <div class="tab-content" id="tab-inventaire">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">ÉCRITURES D'INVENTAIRE</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Intérêts des comptes courants d'associés</div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Calcule les intérêts dus sur chaque compte courant d'associé (455), au prorata des mouvements et du nombre de jours, selon le taux renseigné pour chacun.</p>
+        <div id="cc-interets-taux-list" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn" onclick="editerTableauCCInterets()">📄 ÉDITER LE TABLEAU DE CALCUL</button>
+          <button class="btn btn-primary" onclick="openCCInteretsConfirmModal()">✓ COMPTABILISER LES INTÉRÊTS</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Constatation du résultat de l'exercice</div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Comptabilise le résultat de l'exercice (bénéfice ou perte) en une écriture unique, sans toucher aux comptes de charges et de produits.</p>
+        <button class="btn btn-primary" onclick="openInventaireModal()">🧮 CONSTATER LE RÉSULTAT DE L'EXERCICE</button>
       </div>
     </div>
 
@@ -1002,6 +1132,14 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <input type="text" id="immo-libelle" placeholder="Ex : Toiture 16 Concorde Hénin-Beaumont">
       </div>
     </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="immo-non-amortissable" onchange="toggleImmoAmortFields()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+          Terrain / immobilisation non amortissable
+        </label>
+      </div>
+    </div>
     <div class="form-row c2 mb8">
       <div class="form-field">
         <label>Compte d'immobilisation *</label>
@@ -1017,17 +1155,17 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <label>Valeur brute (€) *</label>
         <input type="number" step="0.01" min="0" id="immo-valeur-brute" style="font-family:var(--mono);">
       </div>
-      <div class="form-field">
+      <div class="form-field" id="immo-field-duree">
         <label>Durée d'amortissement (années) *</label>
         <input type="number" step="1" min="1" id="immo-duree" style="font-family:var(--mono);">
       </div>
     </div>
-    <div class="form-row c2 mb8">
-      <div class="form-field">
+    <div class="form-row c2 mb8" id="immo-row-comptes-amort">
+      <div class="form-field" id="immo-field-dotation">
         <label>Compte de dotation aux amortissements *</label>
         <input type="text" id="immo-compte-dotation" placeholder="681120" maxlength="6" style="font-family:var(--mono);">
       </div>
-      <div class="form-field">
+      <div class="form-field" id="immo-field-amort">
         <label>Compte d'amortissement (28x) *</label>
         <input type="text" id="immo-compte-amort" placeholder="281300" maxlength="6" style="font-family:var(--mono);">
       </div>
@@ -1069,6 +1207,37 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
   </div>
 </div>
 
+<!-- DOTATIONS AMORTISSEMENT MODAL -->
+<div id="immo-dotation-modal" class="modal-overlay">
+  <div class="modal" style="width:640px;max-height:80vh;overflow-y:auto;">
+    <div class="modal-title">⚙ COMPTABILISER LES DOTATIONS AUX AMORTISSEMENTS</div>
+    <p style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+      Une écriture distincte sera passée par immobilisation, dans le journal <strong>OD</strong>, en date du <strong id="immo-dotation-date"></strong>.
+      Débit du compte de dotation, crédit du compte d'amortissement.
+    </p>
+    <table style="font-size:11px;">
+      <thead>
+        <tr>
+          <th style="width:24px;"></th>
+          <th>Immobilisation</th>
+          <th style="width:80px;">Dotation</th>
+          <th style="width:80px;">Amort.</th>
+          <th class="td-num" style="width:90px;">Montant</th>
+          <th style="width:110px;">Statut</th>
+        </tr>
+      </thead>
+      <tbody id="immo-dotation-body"></tbody>
+    </table>
+    <div id="immo-dotation-empty" style="display:none;text-align:center;padding:20px;color:var(--text2);font-size:12px;">
+      Aucune dotation à comptabiliser pour cet exercice.
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" id="immo-dotation-confirm-btn" onclick="confirmDotationEcritures()">✓ COMPTABILISER</button>
+      <button class="btn ml-auto" onclick="closeDotationModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
 <!-- IMMOBILISATION DELETE CONFIRM MODAL -->
 <div id="immo-delete-modal" class="modal-overlay">
   <div class="modal" style="width:440px;">
@@ -1077,6 +1246,526 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="flex gap8">
       <button class="btn btn-danger" onclick="confirmDeleteImmo()">SUPPRIMER</button>
       <button class="btn ml-auto" onclick="closeImmoDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LOCATAIRE ADD/EDIT MODAL ══════════════ -->
+<div id="loc-modal" class="modal-overlay">
+  <div class="modal" style="width:620px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="loc-modal-title">🔑 NOUVEAU LOCATAIRE</div>
+    <input type="hidden" id="loc-edit-id">
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>N° Client *</label>
+        <input type="text" id="loc-numclient" placeholder="25003" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Solde initial à la création (€)</label>
+        <input type="number" step="0.01" id="loc-solde-initial" value="0" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Adresse de location (ligne 1) *</label>
+        <input type="text" id="loc-adresse1" placeholder="16 rue de la Concorde">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Adresse de location (ligne 2 — CP / Ville) *</label>
+        <input type="text" id="loc-adresse2" placeholder="62110 Hénin-Beaumont">
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);">LOCATAIRE PRINCIPAL</div>
+    <div class="form-row c3 mb8">
+      <div class="form-field">
+        <label>Civilité</label>
+        <select id="loc-civ1"><option value="Madame">Madame</option><option value="Monsieur">Monsieur</option></select>
+      </div>
+      <div class="form-field">
+        <label>Nom *</label>
+        <input type="text" id="loc-nom1" placeholder="DELBOIS">
+      </div>
+      <div class="form-field">
+        <label>Prénom *</label>
+        <input type="text" id="loc-prenom1" placeholder="Bella">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Adresse e-mail du locataire (pour l'envoi des documents)</label>
+        <input type="email" id="loc-email" placeholder="locataire@exemple.fr">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="loc-has-second" onchange="toggleSecondOccupant()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+          Ajouter un second locataire
+        </label>
+      </div>
+    </div>
+    <div id="loc-second-block" style="display:none;">
+      <div style="border-top:1px solid var(--line2);margin:6px 0 10px;padding-top:10px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);">SECOND LOCATAIRE</div>
+      <div class="form-row c3 mb8">
+        <div class="form-field">
+          <label>Civilité</label>
+          <select id="loc-civ2"><option value="Madame">Madame</option><option value="Monsieur">Monsieur</option></select>
+        </div>
+        <div class="form-field">
+          <label>Nom</label>
+          <input type="text" id="loc-nom2" placeholder="VANDAMME">
+        </div>
+        <div class="form-field">
+          <label>Prénom</label>
+          <input type="text" id="loc-prenom2" placeholder="Christopher">
+        </div>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);">MONTANTS ET COMPTES COMPTABLES</div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Montant du loyer (€) *</label>
+        <input type="number" step="0.01" id="loc-loyer" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Montant provision pour charges (€) *</label>
+        <input type="number" step="0.01" id="loc-provision" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Libellé de la provision</label>
+        <input type="text" id="loc-provision-label" value="Provision TEOM" placeholder="Provision TEOM">
+      </div>
+    </div>
+    <div class="form-row c3 mb8">
+      <div class="form-field">
+        <label>Compte CA (loyers) *</label>
+        <input type="text" id="loc-compte-ca" placeholder="706001" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte provision charges *</label>
+        <input type="text" id="loc-compte-provision" placeholder="708100" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte client (411) *</label>
+        <input type="text" id="loc-compte-client" placeholder="411001" maxlength="6" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:11px;">
+        <input type="checkbox" id="loc-has-impaye" onchange="toggleImpayeSection()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+        Ce locataire a des impayés déjà existants à intégrer
+      </label>
+    </div>
+    <div id="loc-impaye-section" style="display:none;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius);padding:12px;margin-bottom:8px;">
+      <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">Renseignez un montant impayé par mois concerné. Ces montants alimenteront le suivi des impayés du locataire, repris automatiquement lors des prochains appels de loyer.</div>
+      <div id="loc-impaye-rows"></div>
+      <button class="btn btn-sm" onclick="addImpayeRow()" type="button" style="margin-top:6px;">+ AJOUTER UN MOIS IMPAYÉ</button>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="saveLocataire()">✓ ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closeLocataireModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ LOCATAIRE DELETE MODAL ══════════════ -->
+<div id="loc-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UN LOCATAIRE</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;" id="loc-delete-msg"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteLocataire()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closeLocataireDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ APPEL DE LOYER WIZARD ══════════════ -->
+<div id="appel-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="appel-modal-title">📄 CRÉER UN APPEL DE LOYER</div>
+    <input type="hidden" id="appel-loc-id">
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Mois de l'appel *</label>
+        <input type="month" id="appel-mois" onchange="onAppelMoisChange()">
+      </div>
+    </div>
+    <div id="appel-impayes-block" style="display:none;margin-bottom:12px;"></div>
+    <div id="appel-prev-block" style="display:none;background:rgba(245,208,96,0.08);border:1px solid rgba(245,208,96,0.3);border-radius:var(--radius);padding:12px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;">SITUATION DU MOIS PRÉCÉDENT (<span id="appel-prev-mois-label"></span>)</div>
+      <div class="form-row mb8">
+        <div class="form-field">
+          <label>Échéance du mois précédent (€)</label>
+          <input type="number" step="0.01" id="appel-prev-echeance" style="font-family:var(--mono);">
+        </div>
+      </div>
+      <div class="form-row c2 mb8">
+        <div class="form-field">
+          <label>Montant payé par le locataire (€)</label>
+          <input type="number" step="0.01" id="appel-prev-paye" style="font-family:var(--mono);">
+        </div>
+        <div class="form-field">
+          <label>Date du paiement du locataire</label>
+          <input type="date" id="appel-prev-date-paiement">
+        </div>
+      </div>
+      <div class="form-row mb8">
+        <div class="form-field" style="grid-column:1/-1;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+            <input type="checkbox" id="appel-prev-apl-check" onchange="toggleAppelPrevApl()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+            Un paiement APL a-t-il été reçu pour le mois précédent ?
+          </label>
+        </div>
+      </div>
+      <div id="appel-prev-apl-fields" style="display:none;">
+        <div class="form-row c2 mb8">
+          <div class="form-field">
+            <label>Montant payé par l'APL (€)</label>
+            <input type="number" step="0.01" id="appel-prev-apl-montant" style="font-family:var(--mono);">
+          </div>
+          <div class="form-field">
+            <label>Date du paiement APL</label>
+            <input type="date" id="appel-prev-apl-date">
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Loyer (€)</label>
+        <input type="number" step="0.01" id="appel-loyer" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label id="appel-provision-label-txt">Provision (€)</label>
+        <input type="number" step="0.01" id="appel-provision" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>APL à déduire pour ce mois (€)</label>
+        <input type="number" step="0.01" id="appel-apl" value="0" style="font-family:var(--mono);" oninput="updateAppelEcheance()">
+      </div>
+      <div class="form-field">
+        <label>Montant de l'échéance / part à charge (€)</label>
+        <input type="number" step="0.01" id="appel-echeance-display" readonly style="font-family:var(--mono);background:var(--bg2);">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Commentaire libre (ajouté au texte de l'appel)</label>
+        <textarea id="appel-commentaire" rows="3" placeholder="Optionnel..."></textarea>
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="generateAppelLoyer()">📄 GÉNÉRER L'APPEL DE LOYER</button>
+      <button class="btn ml-auto" onclick="closeAppelModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ QUITTANCE WIZARD ══════════════ -->
+<div id="quittance-modal" class="modal-overlay">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title" id="quittance-modal-title">🧾 CRÉER UNE QUITTANCE DE LOYER</div>
+    <input type="hidden" id="quittance-loc-id">
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Mois concerné par la quittance *</label>
+        <input type="month" id="quittance-mois" onchange="onQuittanceMoisChange()">
+      </div>
+    </div>
+    <div id="quittance-preview" style="font-size:11px;color:var(--text2);margin-bottom:8px;"></div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" id="quittance-generate-btn" onclick="generateQuittance()" disabled>🧾 GÉNÉRER LA QUITTANCE</button>
+      <button class="btn ml-auto" onclick="closeQuittanceModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CONFIRMATION IMPAYÉ ══════════════ -->
+<div id="impaye-confirm-modal" class="modal-overlay">
+  <div class="modal" style="width:460px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> ÉCART CONSTATÉ</div>
+    <p id="impaye-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:16px;line-height:1.6;"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="resolveImpayeChoice(true)">OUI, CONSTATER UN IMPAYÉ</button>
+      <button class="btn ml-auto" onclick="resolveImpayeChoice(false)">NON</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ENVOI PAR MAIL ══════════════ -->
+<div id="mail-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">✉ ENVOYER LES DOCUMENTS PAR MAIL</div>
+    <div id="mail-docs-list" style="font-size:11px;color:var(--text2);margin-bottom:12px;"></div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Destinataire *</label>
+        <input type="email" id="mail-to" placeholder="locataire@exemple.fr">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Objet</label>
+        <input type="text" id="mail-subject">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Message</label>
+        <textarea id="mail-body" rows="8"></textarea>
+      </div>
+    </div>
+    <div class="alert alert-warn mb8" style="font-size:10px;">Un e-mail ne peut pas joindre automatiquement les fichiers. Cliquer sur ENVOYER ouvrira chaque document dans un nouvel onglet (à enregistrer en PDF via Ctrl+P) puis votre messagerie avec le message pré-rempli — il vous restera à glisser les PDF enregistrés dans l'e-mail.</div>
+    <div class="flex gap8" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="confirmSendMail()">✉ ENVOYER</button>
+      <button class="btn ml-auto" onclick="closeMailModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ÉCHÉANCIER ADD/EDIT MODAL ══════════════ -->
+<div id="echeancier-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-title" id="echeancier-modal-title">🔁 NOUVEL ÉCHÉANCIER</div>
+    <input type="hidden" id="ech-edit-id">
+    <div class="form-row c2 mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Libellé *</label>
+        <input type="text" id="ech-libelle" placeholder="Assurance PNO — 16 rue de la Concorde">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Catégorie *</label>
+        <input type="text" id="ech-categorie" placeholder="Assurances PNO" list="ech-categorie-list">
+        <datalist id="ech-categorie-list"></datalist>
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Montant mensuel (€) *</label>
+        <input type="number" step="0.01" id="ech-montant" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Type de pièce</label>
+        <select id="ech-type-piece" onchange="toggleEcheancierNomPieceLock()" style="font-family:var(--mono);"></select>
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Nom de pièce</label>
+        <input type="text" id="ech-nom-piece" placeholder="Référence libre de la pièce justificative" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="ech-num-auto" onchange="toggleEcheancierNumAuto()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+          Numérotation automatique (reprend le dernier numéro utilisé dans le Grand Livre, +1 à chaque comptabilisation)
+        </label>
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Compte à débiter *</label>
+        <input type="text" id="ech-compte-debit" placeholder="616380" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte à créditer *</label>
+        <input type="text" id="ech-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="ech-credit-double" onchange="toggleEcheancierCreditDouble()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+          Répartir le crédit sur 2 comptes (50/50)
+        </label>
+      </div>
+    </div>
+    <div class="form-row mb8" id="ech-credit2-field" style="display:none;">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>2ᵉ compte à créditer (50%)</label>
+        <input type="text" id="ech-compte-credit2" placeholder="455110" maxlength="6" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Période début (date exacte) *</label>
+        <input type="date" id="ech-periode-debut">
+      </div>
+      <div class="form-field">
+        <label>Période fin (optionnel — laisser vide si sans fin)</label>
+        <input type="date" id="ech-periode-fin">
+      </div>
+    </div>
+    <div style="font-size:9px;color:var(--text2);margin:-4px 0 10px;">Le jour du mois de la date de début sera utilisé chaque mois pour la date de l'écriture (ajusté si le mois est plus court).</div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Suffixe ajouté au libellé</label>
+        <select id="ech-suffixe-type" onchange="toggleEcheancierSuffixe()">
+          <option value="aucun">Aucun</option>
+          <option value="mois">Mois en cours (ex: Mars 2026)</option>
+          <option value="personnalise">Texte personnalisé</option>
+        </select>
+      </div>
+      <div class="form-field" id="ech-suffixe-perso-field" style="display:none;">
+        <label>Texte du suffixe</label>
+        <input type="text" id="ech-suffixe-perso" placeholder="Clément Maufroy">
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="saveEcheancier()">✓ ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closeEcheancierModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ÉCHÉANCIER DÉTAIL MENSUEL ══════════════ -->
+<div id="echeancier-detail-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:82vh;overflow-y:auto;">
+    <div class="modal-title" id="echeancier-detail-title">📋 DÉTAIL DE L'ÉCHÉANCIER</div>
+    <table style="font-size:11px;">
+      <thead><tr><th>Mois</th><th style="width:90px">Date écriture</th><th class="td-num" style="width:80px">Montant</th><th style="width:110px">Statut</th><th style="width:90px"></th></tr></thead>
+      <tbody id="echeancier-detail-body"></tbody>
+    </table>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn ml-auto" onclick="closeEcheancierDetailModal()">FERMER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ÉCHÉANCIER DELETE MODAL ══════════════ -->
+<div id="echeancier-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UN ÉCHÉANCIER</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;" id="echeancier-delete-msg"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteEcheancier()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closeEcheancierDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ EMPRUNT ADD/EDIT MODAL ══════════════ -->
+<div id="emprunt-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-title" id="emprunt-modal-title">🏦 NOUVEL EMPRUNT</div>
+    <input type="hidden" id="emp-edit-id">
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Libellé *</label>
+        <input type="text" id="emp-libelle" placeholder="Emprunt travaux 16 Concorde">
+      </div>
+      <div class="form-field">
+        <label>Banque</label>
+        <input type="text" id="emp-banque" placeholder="Crédit Agricole">
+      </div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Date de départ</label>
+        <input type="date" id="emp-date-debut">
+      </div>
+      <div class="form-field">
+        <label>Montant initial emprunté (€)</label>
+        <input type="number" step="0.01" id="emp-montant-initial" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="form-row c3 mb8">
+      <div class="form-field">
+        <label>Compte d'emprunt (164) *</label>
+        <input type="text" id="emp-compte-emprunt" placeholder="164000" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte d'intérêts (661) *</label>
+        <input type="text" id="emp-compte-interets" placeholder="661100" maxlength="6" style="font-family:var(--mono);">
+      </div>
+      <div class="form-field">
+        <label>Compte à créditer *</label>
+        <input type="text" id="emp-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);">
+      </div>
+    </div>
+    <div class="alert alert-warn mb8" style="font-size:10px;">Le tableau d'amortissement doit être importé séparément après création via le bouton "IMPORTER" sur la ligne de l'emprunt (téléchargez d'abord le modèle Excel à remplir).</div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="saveEmprunt()">✓ ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closeEmpruntModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ EMPRUNT DELETE MODAL ══════════════ -->
+<div id="emprunt-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UN EMPRUNT</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;" id="emprunt-delete-msg"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteEmprunt()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closeEmpruntDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MARQUER MOIS DÉJÀ COMPTABILISÉS (SANS ÉCRITURE) ══════════════ -->
+<div id="emprunt-marquer-modal" class="modal-overlay">
+  <div class="modal" style="width:480px;">
+    <div class="modal-title" id="emprunt-marquer-title">⚙ MARQUER DES MOIS COMME DÉJÀ COMPTABILISÉS</div>
+    <p style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+      Utile si ces mensualités ont déjà été comptabilisées avant l'utilisation de ce module — aucune écriture ne sera passée, seul le suivi sera mis à jour.
+    </p>
+    <input type="hidden" id="emp-marquer-id">
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Marquer comme fait jusqu'au mois de (inclus) *</label>
+        <input type="month" id="emp-marquer-mois">
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="confirmMarquerEmpruntFait()">✓ MARQUER</button>
+      <button class="btn ml-auto" onclick="closeEmpruntMarquerModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CONSTATATION DU RÉSULTAT ══════════════ -->
+<div id="inventaire-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title" id="inventaire-modal-title">🧮 CONSTATATION DU RÉSULTAT DE L'EXERCICE</div>
+    <div id="inventaire-body"></div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" id="inventaire-confirm-btn" onclick="confirmerConstatationResultat()">✓ VALIDER ET COMPTABILISER</button>
+      <button class="btn ml-auto" onclick="closeInventaireModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CC ASSOCIÉS — CONFIRMATION COMPTABILISATION ══════════════ -->
+<div id="cc-interets-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+    <div class="modal-title">✓ COMPTABILISER LES INTÉRÊTS DE COMPTES COURANTS</div>
+    <div id="cc-interets-body"></div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="confirmerComptabiliserCCInterets()">✓ VALIDER ET COMPTABILISER</button>
+      <button class="btn ml-auto" onclick="closeCCInteretsConfirmModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ CONFIRMATION DÉCOMPTABILISATION (échéanciers / emprunts) ══════════════ -->
+<div id="decompta-confirm-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title"><span style="color:var(--amber);">⚠</span> ANNULER LA COMPTABILISATION</div>
+    <p style="font-size:12px;color:var(--text1);margin-bottom:12px;" id="decompta-confirm-msg"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDecompta()">OUI, ANNULER L'ÉCRITURE</button>
+      <button class="btn ml-auto" onclick="closeDecomptaConfirmModal()">NON</button>
     </div>
   </div>
 </div>
@@ -1185,6 +1874,7 @@ function doLogin() {
     sessionStorage.setItem('sci_auth', '1');
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
+    checkEcheanciersExpirationAuBoot();
   } else {
     document.getElementById('login-err').textContent = 'Mot de passe incorrect';
     document.getElementById('login-pw').value = '';
@@ -1265,6 +1955,10 @@ let DB = {
   rappelsAnnuel: {},
   rappelsAnnuelList: [],
   immobilisations: [],
+  locataires: [],
+  echeanciers: [],
+  emprunts: [],
+  ccInterets: {},
   nextGlobalNum: 1,
   journalNums: {VE:1,HA:1,IMMO:1,OD:1,TRESO:1},
 };
@@ -1316,6 +2010,9 @@ async function loadDB() {
     if(remote) {
       Object.assign(DB, remote);
       if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
+      if(!Array.isArray(DB.locataires)) DB.locataires = [];
+      if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
+      if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
       // Sync _isTest flag to localStorage cache
       if(DB._isTest !== undefined) {
         localStorage.setItem('ledger_test_flag_' + String(CURRENT_YEAR), DB._isTest ? '1' : '0');
@@ -1326,6 +2023,9 @@ async function loadDB() {
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { const r = localStorage.getItem(lsKey); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
   if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
+  if(!Array.isArray(DB.locataires)) DB.locataires = [];
+  if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
+  if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
 }
 async function loadDBAndRenum() {
   await loadDB();
@@ -1341,7 +2041,7 @@ function startLiveSync() {
       Object.assign(DB, remote);
       renum(); updateNavCounts();
       const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel};
+      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire};
       if(active && renders[active]) renders[active]();
     }
   });
@@ -1366,7 +2066,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -1377,6 +2077,12 @@ function updateNavCounts() {
   document.getElementById('nc-tb').textContent = DB.tbData.length;
   const ncImmos = document.getElementById('nc-immos');
   if(ncImmos) ncImmos.textContent = (DB.immobilisations||[]).length;
+  const ncLoc = document.getElementById('nc-locataires');
+  if(ncLoc) ncLoc.textContent = (DB.locataires||[]).length;
+  const ncEch = document.getElementById('nc-echeanciers');
+  if(ncEch) ncEch.textContent = (DB.echeanciers||[]).length;
+  const ncEmp = document.getElementById('nc-emprunts');
+  if(ncEmp) ncEmp.textContent = (DB.emprunts||[]).length;
 }
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
@@ -1976,6 +2682,10 @@ function getGLF() {
 }
 function fmtDateGL(d) {
   if(!d) return '';
+  // Robustesse : certaines écritures peuvent avoir une date stockée en objet Date ou en nombre
+  // (ex : import Excel mal converti) — on la normalise systématiquement en chaîne avant de la traiter.
+  if(d instanceof Date) { d = d.toISOString().slice(0,10); }
+  else if(typeof d !== 'string') { d = String(d); }
   const MONTHS = {'janv':'01','févr':'02','mars':'03','avr':'04','mai':'05','juin':'06',
                   'juil':'07','août':'08','sept':'09','oct':'10','nov':'11','déc':'12'};
   // YYYY-MM-DD → DD/MM/AA
@@ -4952,7 +5662,8 @@ async function generateCRPDF() {
 }
 
 // ── PRINT / DOWNLOAD HELPERS ──
-function printDoc(html, title) {
+function printDoc(html, title, autoprint) {
+  if(autoprint === undefined) autoprint = true;
   const win = window.open('', '_blank', 'width=900,height=700');
   if(!win) { toast('Autorisez les popups pour imprimer', 'error'); return; }
   win.document.write(`<!DOCTYPE html><html><head>
@@ -4984,7 +5695,7 @@ function printDoc(html, title) {
     </style>
   </head><body>${html}</body></html>`);
   win.document.close();
-  setTimeout(() => { win.print(); }, 400);
+  if(autoprint) setTimeout(() => { win.print(); }, 400);
 }
 
 function dlCSV(csv, filename) {
@@ -4996,6 +5707,2087 @@ function dlCSV(csv, filename) {
   toast('Export téléchargé : ' + filename, 'success');
 }
 
+
+// ══════════════════════════════════════════════
+// MODULE GESTION LOCATIVE
+// ══════════════════════════════════════════════
+function ensureLocatairesArray() { if(!Array.isArray(DB.locataires)) DB.locataires = []; return DB.locataires; }
+function lowerFirst(s) { if(!s) return s; return s.charAt(0).toLowerCase() + s.slice(1); }
+
+const MOIS_LABELS = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function moisLabelFromYYYYMM(yyyymm) {
+  if(!yyyymm) return '';
+  const [y,m] = yyyymm.split('-').map(Number);
+  return MOIS_LABELS[m-1] + ' ' + y;
+}
+function moisPrecedent(yyyymm) {
+  if(!yyyymm) return '';
+  let [y,m] = yyyymm.split('-').map(Number);
+  m--; if(m<1){m=12;y--;}
+  return y+'-'+String(m).padStart(2,'0');
+}
+function moisSuivant(yyyymm) {
+  let [y,m] = yyyymm.split('-').map(Number);
+  m++; if(m>12){m=1;y++;}
+  return y+'-'+String(m).padStart(2,'0');
+}
+function dernierJourMois(yyyymm) {
+  const [y,m] = yyyymm.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+function fmtDateFr(d) {
+  if(!(d instanceof Date)) d = new Date(d);
+  return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+}
+
+// Solde du compte client = somme des mouvements de l'historique (appel:+, quittance:-) + solde initial
+// Le solde affiché est TOUJOURS le solde réel du compte client (411) dans le Grand Livre —
+// c'est la seule source fiable, indépendante de l'historique des documents (qui peut être archivé).
+function computeSoldeLocataire(loc) {
+  if(!loc.compteClient) return 0;
+  let solde = 0;
+  DB.ecritures.forEach(e => {
+    if(String(e.compte) === String(loc.compteClient)) solde += (e.debit||0) - (e.credit||0);
+  });
+  return Math.round(solde*100)/100;
+}
+
+function renderLocataires() {
+  const list = ensureLocatairesArray();
+  const body = document.getElementById('locataires-body');
+  const empty = document.getElementById('locataires-empty');
+  if(!body) return;
+
+  if(!list.length) {
+    body.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    document.querySelector('#locataires-list-wrap table').style.display = 'none';
+    updateNavCounts();
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+  document.querySelector('#locataires-list-wrap table').style.display = '';
+
+  // Rattrapage : certains documents générés avant l'ajout des identifiants n'en ont pas — sans id, les boutons ne peuvent pas les cibler
+  let needsSave = false;
+  list.forEach(loc => {
+    (loc.historique||[]).forEach(h => { if(!h.id) { h.id = crypto.randomUUID(); needsSave = true; } });
+    if(!Array.isArray(loc.impayes)) { loc.impayes = []; needsSave = true; }
+  });
+  if(needsSave) saveDB();
+
+  body.innerHTML = list.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
+    const solde = computeSoldeLocataire(loc);
+    const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
+    const mainRow = `<tr>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
+      <td style="font-size:11px;">${loc.adresse1||''}<br><span style="color:var(--text2);font-size:9px;">${loc.adresse2||''}</span></td>
+      <td style="font-size:11px;">${noms}</td>
+      <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
+      <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
+      <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
+      <td style="text-align:center;white-space:nowrap;">
+        <button class="btn btn-sm btn-icon" onclick="openAppelModal('${loc.id}')" title="Appel de loyer" style="padding:1px 5px;font-size:10px;">📄</button>
+        <button class="btn btn-sm btn-icon" onclick="openQuittanceModal('${loc.id}')" title="Quittance" style="padding:1px 5px;font-size:10px;">🧾</button>
+        <button class="btn btn-sm btn-icon" onclick="openLocataireModal('${loc.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteLocataire('${loc.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+      </td>
+    </tr>`;
+
+    const historique = (loc.historique||[]).slice().sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
+    let docsHtml = '';
+    if(historique.length) {
+      docsHtml = historique.map(h => {
+        const isAppel = h.type === 'appel';
+        const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
+        const montant = isAppel ? h.echeance : h.montantPaye;
+        const statut = isAppel
+          ? (h.comptabilise
+              ? `<span style="color:var(--green);font-size:9px;">✓ comptabilisée</span>`
+              : `<span style="color:var(--amber);font-size:9px;">à comptabiliser</span>`)
+          : `<span style="color:var(--text2);font-size:9px;">document seul</span>`;
+        const compteBtn = (isAppel && !h.comptabilise) ? `<button class="btn btn-sm" onclick="comptabiliserHistoriqueEntry('${loc.id}','${h.id}')" style="padding:1px 8px;font-size:9px;">COMPTABILISER</button>` : '';
+        const checkboxHtml = h.docHtml
+          ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
+          : `<span style="width:13px;display:inline-block;"></span>`;
+        const labelHtml = h.docHtml
+          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}</span>`
+          : `<span style="flex:1;">${label}</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line1);font-size:10px;">
+          ${checkboxHtml}
+          ${labelHtml}
+          <span style="color:var(--text2);width:70px;text-align:right;">${fmt(montant)} €</span>
+          <span style="width:100px;">${statut}</span>
+          ${compteBtn}
+          <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
+        </div>`;
+      }).join('');
+    } else {
+      docsHtml = `<div style="padding:8px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
+    }
+
+    const openImp = (loc.impayes||[]).filter(im => im.montantRestant > 0.01).sort((a,b)=>a.mois.localeCompare(b.mois));
+    const impayesHtml = openImp.length
+      ? `<div style="background:rgba(255,107,107,0.1);padding:6px 8px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line1);display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
+          <span>⚠ Impayés en cours :</span>
+          ${openImp.map(im => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.15);border-radius:3px;padding:2px 6px;">
+            ${moisLabelFromYYYYMM(im.mois)} (${fmt(im.montantRestant)}€)
+            <span onclick="askDeleteImpaye('${loc.id}','${im.id}')" title="Supprimer cet impayé" style="cursor:pointer;font-weight:700;color:var(--red);">✕</span>
+          </span>`).join('')}
+        </div>`
+      : '';
+
+    const subRow = `<tr><td colspan="7" style="padding:0 0 10px 0;background:var(--bg1);">
+      <div style="margin:0 8px;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
+        ${impayesHtml}
+        ${docsHtml}
+      </div>
+    </td></tr>`;
+
+    return mainRow + subRow;
+  }).join('');
+
+  updateNavCounts();
+}
+
+function toggleSecondOccupant() {
+  const has = document.getElementById('loc-has-second').checked;
+  document.getElementById('loc-second-block').style.display = has ? 'block' : 'none';
+}
+
+function toggleImpayeSection() {
+  const has = document.getElementById('loc-has-impaye').checked;
+  document.getElementById('loc-impaye-section').style.display = has ? 'block' : 'none';
+  if(has && document.getElementById('loc-impaye-rows').children.length === 0) addImpayeRow();
+}
+
+function addImpayeRow(mois, montant) {
+  const container = document.getElementById('loc-impaye-rows');
+  const rowId = 'impayerow-' + crypto.randomUUID();
+  const row = document.createElement('div');
+  row.id = rowId;
+  row.style.cssText = 'display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
+  row.innerHTML = `
+    <div class="form-field" style="flex:1;margin-bottom:0;">
+      <label style="font-size:10px;">Mois concerné</label>
+      <input type="month" class="impaye-row-mois" value="${mois||''}">
+    </div>
+    <div class="form-field" style="flex:1;margin-bottom:0;">
+      <label style="font-size:10px;">Montant impayé (€)</label>
+      <input type="number" step="0.01" class="impaye-row-montant" value="${montant||''}" style="font-family:var(--mono);">
+    </div>
+    <button class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()" type="button" style="padding:6px 10px;">✕</button>
+  `;
+  container.appendChild(row);
+}
+
+function openLocataireModal(editId) {
+  document.getElementById('loc-edit-id').value = editId || '';
+  if(editId) {
+    const loc = ensureLocatairesArray().find(l => l.id === editId);
+    if(!loc) return;
+    document.getElementById('loc-modal-title').textContent = '🔑 MODIFIER LE LOCATAIRE';
+    document.getElementById('loc-numclient').value = loc.numClient||'';
+    document.getElementById('loc-solde-initial').value = loc.soldeInitial||0;
+    document.getElementById('loc-adresse1').value = loc.adresse1||'';
+    document.getElementById('loc-adresse2').value = loc.adresse2||'';
+    document.getElementById('loc-email').value = loc.email||'';
+    document.getElementById('loc-civ1').value = loc.civ1||'Madame';
+    document.getElementById('loc-nom1').value = loc.nom1||'';
+    document.getElementById('loc-prenom1').value = loc.prenom1||'';
+    const hasSecond = !!(loc.nom2);
+    document.getElementById('loc-has-second').checked = hasSecond;
+    document.getElementById('loc-civ2').value = loc.civ2||'Madame';
+    document.getElementById('loc-nom2').value = loc.nom2||'';
+    document.getElementById('loc-prenom2').value = loc.prenom2||'';
+    document.getElementById('loc-loyer').value = loc.loyer||'';
+    document.getElementById('loc-provision').value = loc.provision||'';
+    document.getElementById('loc-provision-label').value = loc.provisionLabel||'Provision TEOM';
+    document.getElementById('loc-compte-ca').value = loc.compteCA||'';
+    document.getElementById('loc-compte-provision').value = loc.compteProvision||'';
+    document.getElementById('loc-compte-client').value = loc.compteClient||'';
+    toggleSecondOccupant();
+    document.getElementById('loc-has-impaye').checked = false;
+    document.getElementById('loc-impaye-rows').innerHTML = '';
+    toggleImpayeSection();
+  } else {
+    document.getElementById('loc-modal-title').textContent = '🔑 NOUVEAU LOCATAIRE';
+    ['loc-numclient','loc-adresse1','loc-adresse2','loc-email','loc-nom1','loc-prenom1','loc-nom2','loc-prenom2','loc-loyer','loc-provision','loc-compte-ca','loc-compte-provision','loc-compte-client'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+    document.getElementById('loc-solde-initial').value = 0;
+    document.getElementById('loc-civ1').value = 'Madame';
+    document.getElementById('loc-civ2').value = 'Madame';
+    document.getElementById('loc-provision-label').value = 'Provision TEOM';
+    document.getElementById('loc-has-second').checked = false;
+    toggleSecondOccupant();
+    document.getElementById('loc-has-impaye').checked = false;
+    document.getElementById('loc-impaye-rows').innerHTML = '';
+    toggleImpayeSection();
+  }
+  document.getElementById('loc-modal').style.display = 'flex';
+}
+function closeLocataireModal() { document.getElementById('loc-modal').style.display = 'none'; }
+
+function saveLocataire() {
+  const editId = document.getElementById('loc-edit-id').value;
+  const numClient = document.getElementById('loc-numclient').value.trim();
+  const soldeInitial = parseFloat(document.getElementById('loc-solde-initial').value) || 0;
+  const adresse1 = document.getElementById('loc-adresse1').value.trim();
+  const adresse2 = document.getElementById('loc-adresse2').value.trim();
+  const email = document.getElementById('loc-email').value.trim();
+  const civ1 = document.getElementById('loc-civ1').value;
+  const nom1 = document.getElementById('loc-nom1').value.trim();
+  const prenom1 = document.getElementById('loc-prenom1').value.trim();
+  const hasSecond = document.getElementById('loc-has-second').checked;
+  const civ2 = hasSecond ? document.getElementById('loc-civ2').value : '';
+  const nom2 = hasSecond ? document.getElementById('loc-nom2').value.trim() : '';
+  const prenom2 = hasSecond ? document.getElementById('loc-prenom2').value.trim() : '';
+  const loyer = parseFloat(document.getElementById('loc-loyer').value) || 0;
+  const provision = parseFloat(document.getElementById('loc-provision').value) || 0;
+  const provisionLabel = document.getElementById('loc-provision-label').value.trim() || 'Provision';
+  const compteCA = document.getElementById('loc-compte-ca').value.trim();
+  const compteProvision = document.getElementById('loc-compte-provision').value.trim();
+  const compteClient = document.getElementById('loc-compte-client').value.trim();
+
+  // Collecte des impayés existants renseignés dans le formulaire
+  const hasImpaye = document.getElementById('loc-has-impaye').checked;
+  const impayesNouveaux = [];
+  if(hasImpaye) {
+    document.querySelectorAll('#loc-impaye-rows > div').forEach(row => {
+      const mois = row.querySelector('.impaye-row-mois')?.value;
+      const montant = parseFloat(row.querySelector('.impaye-row-montant')?.value) || 0;
+      if(mois && montant > 0) {
+        impayesNouveaux.push({id:crypto.randomUUID(), mois, montantInitial:montant, montantRestant:montant, dateConstat:new Date().toISOString().slice(0,10), mouvements:[]});
+      }
+    });
+  }
+
+  if(!numClient) { toast('Le N° client est requis','error'); return; }
+  if(!adresse1) { toast("L'adresse de location est requise",'error'); return; }
+  if(!nom1) { toast('Le nom du locataire principal est requis','error'); return; }
+  if(!loyer || loyer<=0) { toast('Le montant du loyer doit être positif','error'); return; }
+  if(!compteCA || compteCA.length!==6) { toast('Compte CA invalide (6 chiffres)','error'); return; }
+  if(!compteProvision || compteProvision.length!==6) { toast('Compte provision invalide (6 chiffres)','error'); return; }
+  if(!compteClient || compteClient.length!==6) { toast('Compte client invalide (6 chiffres)','error'); return; }
+
+  const list = ensureLocatairesArray();
+  if(editId) {
+    const loc = list.find(l => l.id === editId);
+    if(loc) {
+      Object.assign(loc, {numClient, soldeInitial, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient});
+      if(impayesNouveaux.length) { loc.impayes = loc.impayes || []; loc.impayes.push(...impayesNouveaux); }
+    }
+    toast('Locataire modifié','success');
+  } else {
+    list.push({id:crypto.randomUUID(), numClient, soldeInitial, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient, historique:[], impayes: impayesNouveaux});
+    toast('Locataire ajouté','success');
+  }
+  saveDB();
+  closeLocataireModal();
+  renderLocataires();
+}
+
+let locDeleteTargetId = null;
+function askDeleteLocataire(id) {
+  const loc = ensureLocatairesArray().find(l => l.id === id);
+  if(!loc) return;
+  locDeleteTargetId = id;
+  document.getElementById('loc-delete-msg').innerHTML = `Supprimer la fiche de <strong style="color:var(--cyan)">${loc.prenom1} ${loc.nom1}</strong> (${loc.adresse1}) ?<br>Les écritures déjà passées ne seront pas supprimées.`;
+  document.getElementById('loc-delete-modal').style.display = 'flex';
+}
+function closeLocataireDeleteModal() {
+  document.getElementById('loc-delete-modal').style.display = 'none';
+  locDeleteTargetId = null;
+  archiveTarget = null;
+  document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '<span style="color:var(--red);">⚠</span> SUPPRIMER UN LOCATAIRE';
+  const btn = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
+  btn.textContent = 'SUPPRIMER';
+  btn.setAttribute('onclick', 'confirmDeleteLocataire()');
+}
+function confirmDeleteLocataire() {
+  if(!locDeleteTargetId) return;
+  DB.locataires = ensureLocatairesArray().filter(l => l.id !== locDeleteTargetId);
+  saveDB();
+  closeLocataireDeleteModal();
+  renderLocataires();
+  toast('Locataire supprimé','warn');
+}
+
+// ── En-tête commun aux documents locatifs (appel + quittance) ──
+function renderLocDocHeader(loc, dateEmission) {
+  const occ2 = loc.nom2 ? `<br>${loc.civ2} ${loc.prenom2} ${loc.nom2},` : '';
+  return `
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+    <div>
+      <img src="${LOGO_SRC}" style="width:90px;height:auto;">
+      <div style="font-size:10px;color:#555;margin-top:6px;">scidespreles@outlook.fr<br>06.75.89.47.41</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-weight:700;color:#e84b0f;font-size:11px;">N° CLIENT :</div>
+      <div style="font-weight:700;color:#e84b0f;font-size:13px;">${loc.numClient}</div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
+    <div style="font-size:11px;">
+      <div style="font-weight:700;color:#e84b0f;">Adresse de location :</div>
+      <div style="font-weight:700;">${loc.adresse1}<br>${loc.adresse2}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;text-align:left;">
+      ${loc.civ1} ${loc.prenom1} ${loc.nom1},${occ2}<br>${loc.adresse1}<br>${loc.adresse2}
+    </div>
+  </div>
+  <div style="text-align:right;font-size:11px;font-weight:700;margin-bottom:16px;">Le ${fmtDateFr(dateEmission)}</div>`;
+}
+
+function renderLocDocFooter(infoHtml) {
+  return `
+  <div style="border:1px solid #e84b0f;border-radius:4px;padding:14px 16px;margin-top:16px;font-size:11px;line-height:1.6;">
+    <div style="font-weight:700;text-decoration:underline;font-style:italic;margin-bottom:8px;">Informations</div>
+    ${infoHtml}
+    <div style="margin-top:10px;font-weight:700;color:#e84b0f;">Les gérants – SCI DES PRÊLES</div>
+    <div>M.MAUFROY</div>
+    <div>M.CAMUS</div>
+  </div>`;
+}
+
+function docTableRow(label, montant, bold, colorHex) {
+  const colorStyle = colorHex ? `color:${colorHex};` : '';
+  return `<tr><td style="padding:5px 8px;border:1px solid #ccc;${bold?'font-weight:700;':''}${colorStyle}">${label}</td><td style="padding:5px 8px;border:1px solid #ccc;text-align:right;${bold?'font-weight:700;':''}${colorStyle}">${fmt(montant)}€</td></tr>`;
+}
+
+// ══════════════════════════════════════════════
+// APPEL DE LOYER
+// ══════════════════════════════════════════════
+function openAppelModal(locId) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  document.getElementById('appel-loc-id').value = locId;
+  document.getElementById('appel-modal-title').textContent = '📄 APPEL DE LOYER — ' + loc.prenom1 + ' ' + loc.nom1;
+  document.getElementById('appel-mois').value = '';
+  document.getElementById('appel-loyer').value = loc.loyer;
+  document.getElementById('appel-provision').value = loc.provision;
+  document.getElementById('appel-provision-label-txt').textContent = (loc.provisionLabel||'Provision') + ' (€)';
+  document.getElementById('appel-apl').value = 0;
+  document.getElementById('appel-commentaire').value = '';
+  document.getElementById('appel-prev-block').style.display = 'none';
+  updateAppelEcheance();
+  document.getElementById('appel-modal').style.display = 'flex';
+}
+function closeAppelModal() { document.getElementById('appel-modal').style.display = 'none'; }
+
+function updateAppelEcheance() {
+  const loyer = parseFloat(document.getElementById('appel-loyer').value) || 0;
+  const provision = parseFloat(document.getElementById('appel-provision').value) || 0;
+  const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
+  const echeance = Math.round((loyer + provision - apl) * 100) / 100;
+  document.getElementById('appel-echeance-display').value = echeance;
+}
+
+function toggleAppelPrevApl() {
+  const checked = document.getElementById('appel-prev-apl-check').checked;
+  document.getElementById('appel-prev-apl-fields').style.display = checked ? 'block' : 'none';
+  if(!checked) {
+    document.getElementById('appel-prev-apl-montant').value = '';
+    document.getElementById('appel-prev-apl-date').value = '';
+  }
+}
+
+// Impayés antérieurs (mois < moisPrec) encore ouverts pour ce locataire
+function getOpenImpayesAvant(loc, moisPrec) {
+  return (loc.impayes||[]).filter(im => im.montantRestant > 0.01 && im.mois < moisPrec).sort((a,b)=>a.mois.localeCompare(b.mois));
+}
+
+function onAppelMoisChange() {
+  const locId = document.getElementById('appel-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  const mois = document.getElementById('appel-mois').value;
+  if(!loc || !mois) return;
+  const moisPrec = moisPrecedent(mois);
+  const prevAppel = (loc.historique||[]).slice().reverse().find(h => h.type==='appel' && h.mois===moisPrec);
+
+  // ── Impayés antérieurs à traiter ──
+  const openImpayes = getOpenImpayesAvant(loc, moisPrec);
+  const impayesBlock = document.getElementById('appel-impayes-block');
+  if(openImpayes.length) {
+    impayesBlock.style.display = 'block';
+    impayesBlock.innerHTML = `<div style="background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius);padding:12px;">
+      <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">IMPAYÉS ANTÉRIEURS EN COURS</div>
+      ${openImpayes.map(im => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;">
+          <span style="flex:1;">Impayé de ${moisLabelFromYYYYMM(im.mois)} — solde restant <strong>${fmt(im.montantRestant)}€</strong></span>
+        </div>
+        <div class="form-row c2 mb8">
+          <div class="form-field">
+            <label>Mouvement reçu ce mois (€)</label>
+            <input type="number" step="0.01" class="impaye-mvt-montant" data-impaye-id="${im.id}" value="0" style="font-family:var(--mono);">
+          </div>
+          <div class="form-field">
+            <label>Date du mouvement</label>
+            <input type="date" class="impaye-mvt-date" data-impaye-id="${im.id}">
+          </div>
+        </div>
+      `).join('')}
+    </div>`;
+  } else {
+    impayesBlock.style.display = 'none';
+    impayesBlock.innerHTML = '';
+  }
+
+  document.getElementById('appel-prev-block').style.display = 'block';
+  document.getElementById('appel-prev-mois-label').textContent = moisLabelFromYYYYMM(moisPrec);
+  const prevEcheance = prevAppel ? (prevAppel.totalDu ?? prevAppel.echeance) : 0;
+  document.getElementById('appel-prev-echeance').value = prevEcheance;
+  document.getElementById('appel-prev-paye').value = prevEcheance;
+  document.getElementById('appel-prev-date-paiement').value = '';
+  document.getElementById('appel-prev-apl-check').checked = false;
+  document.getElementById('appel-prev-apl-montant').value = '';
+  document.getElementById('appel-prev-apl-date').value = '';
+  toggleAppelPrevApl();
+
+  // Pré-remplir loyer/provision avec les valeurs du dernier appel s'il existe, sinon fiche
+  document.getElementById('appel-loyer').value = loc.loyer;
+  document.getElementById('appel-provision').value = loc.provision;
+  updateAppelEcheance();
+}
+
+let _pendingAppel = null;
+
+function generateAppelLoyer() {
+  const locId = document.getElementById('appel-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const mois = document.getElementById('appel-mois').value;
+  if(!mois) { toast('Choisissez le mois de l\'appel','error'); return; }
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+
+  const loyer = parseFloat(document.getElementById('appel-loyer').value) || 0;
+  const provision = parseFloat(document.getElementById('appel-provision').value) || 0;
+  const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
+  const echeance = Math.round((loyer + provision - apl) * 100) / 100;
+  const commentaire = document.getElementById('appel-commentaire').value.trim();
+
+  const prevEcheance = parseFloat(document.getElementById('appel-prev-echeance').value) || 0;
+  const prevPaye = parseFloat(document.getElementById('appel-prev-paye').value) || 0;
+  const prevDatePaiement = document.getElementById('appel-prev-date-paiement').value;
+  const hasApl = document.getElementById('appel-prev-apl-check').checked;
+  const prevAplMontant = hasApl ? (parseFloat(document.getElementById('appel-prev-apl-montant').value) || 0) : 0;
+  const prevAplDate = hasApl ? document.getElementById('appel-prev-apl-date').value : '';
+  const moisPrec = moisPrecedent(mois);
+
+  // Mouvements sur les impayés antérieurs
+  const mvtInputs = Array.from(document.querySelectorAll('.impaye-mvt-montant'));
+  const mouvementsImpayes = mvtInputs.map(inp => {
+    const impayeId = inp.dataset.impayeId;
+    const im = (loc.impayes||[]).find(x => x.id === impayeId);
+    return {
+      impayeId,
+      montant: parseFloat(inp.value) || 0,
+      date: document.querySelector(`.impaye-mvt-date[data-impaye-id="${impayeId}"]`)?.value || '',
+      mois: im ? im.mois : null
+    };
+  });
+
+  const totalRecuPrec = Math.round((prevPaye + prevAplMontant) * 100) / 100;
+  const ecart = Math.round((prevEcheance - totalRecuPrec) * 100) / 100;
+
+  const state = {loc, mois, loyer, provision, apl, echeance, commentaire, prevEcheance, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, moisPrec, mouvementsImpayes, ecart};
+
+  if(ecart > 0.01) {
+    _pendingAppel = state;
+    document.getElementById('impaye-confirm-msg').innerHTML = `Un écart de <strong style="color:var(--red);">${fmt(ecart)}€</strong> a été détecté entre l'échéance de ${moisLabelFromYYYYMM(moisPrec)} (${fmt(prevEcheance)}€) et le total reçu (locataire + APL = ${fmt(totalRecuPrec)}€).<br><br>Souhaitez-vous constater un impayé pour ce montant ?`;
+    document.getElementById('impaye-confirm-modal').style.display = 'flex';
+    return;
+  }
+
+  finishAppelGeneration(state, false);
+}
+
+function resolveImpayeChoice(constate) {
+  document.getElementById('impaye-confirm-modal').style.display = 'none';
+  if(!_pendingAppel) return;
+  finishAppelGeneration(_pendingAppel, constate);
+  _pendingAppel = null;
+}
+
+function finishAppelGeneration(state, constaterImpaye) {
+  const {loc, mois, loyer, provision, apl, echeance, commentaire, prevEcheance, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, moisPrec, mouvementsImpayes, ecart} = state;
+  const RED = '#c0392b';
+
+  // Capturer les impayés antérieurs (mois < moisPrec) AVANT application des mouvements de ce tour
+  loc.impayes = loc.impayes || [];
+  const impayesAvantSnap = getOpenImpayesAvant(loc, moisPrec).map(im => ({id: im.id, mois: im.mois, montantAvant: im.montantRestant}));
+
+  // Appliquer les mouvements
+  mouvementsImpayes.forEach(mvt => {
+    if(mvt.montant <= 0) return;
+    const im = loc.impayes.find(x => x.id === mvt.impayeId);
+    if(!im) return;
+    im.montantRestant = Math.round((im.montantRestant - mvt.montant) * 100) / 100;
+    if(im.montantRestant < 0) im.montantRestant = 0;
+    im.mouvements = im.mouvements || [];
+    im.mouvements.push({date: mvt.date, montant: mvt.montant});
+  });
+
+  // Constater un nouvel impayé pour le mois précédent si accepté
+  let nouvelImpayeId = null;
+  if(constaterImpaye && ecart > 0.01) {
+    nouvelImpayeId = crypto.randomUUID();
+    loc.impayes.push({id: nouvelImpayeId, mois: moisPrec, montantInitial: ecart, montantRestant: ecart, dateConstat: new Date().toISOString().slice(0,10), mouvements:[]});
+  }
+
+  const totalLoyerProvision = Math.round((loyer + provision) * 100) / 100; // montant complet, avant déduction APL
+  const partACharge = echeance; // loyer+provision-apl : ce qui est facturé au locataire
+
+  const soldePrec = Math.round((prevEcheance - (prevPaye+prevAplMontant))*100)/100;
+  const soldeCour = totalLoyerProvision; // part à charge + APL à recevoir = montant complet
+  const impayesRestants = getOpenImpayesAvant(loc, moisPrec).reduce((s,im)=>s+im.montantRestant, 0);
+  const totalSolde = Math.round((impayesRestants + soldePrec + soldeCour) * 100) / 100;
+
+  const dateEmission = new Date();
+  const dd = dernierJourMois(mois);
+  const [yy,mm] = mois.split('-');
+  const periodeDebut = '01/'+mm+'/'+yy;
+  const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
+
+  // Date APL du mois en cours : le 5 du mois suivant
+  const moisApl = moisSuivant(mois);
+  const [yyApl, mmApl] = moisApl.split('-');
+  const dateApl = '05/'+mmApl+'/'+yyApl;
+
+  // ── Impayés encore ouverts après ce tour (inclut l'éventuel nouvel impayé du mois précédent) ──
+  const openImpayesApres = (loc.impayes||[]).filter(im => im.montantRestant > 0.01 && im.mois < mois);
+
+  // ── TABLEAU 1 : MONTANT DE L'ÉCHÉANCE (facturation au locataire) ──
+  let tableRows = docTableRow('Loyer', loyer, false);
+  tableRows += docTableRow(loc.provisionLabel||'Provision', provision, false);
+  if(apl > 0) tableRows += docTableRow(`APL à recevoir le ${dateApl}`, -apl, false);
+  openImpayesApres.forEach(im => {
+    tableRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(im.mois)}`, im.montantRestant, false, RED);
+  });
+  const montantAppelTotal = Math.round((partACharge + openImpayesApres.reduce((s,im)=>s+im.montantRestant,0)) * 100) / 100;
+
+  // ── TABLEAU 2 : SITUATION ──
+  let situationRows = '';
+
+  // Lignes des impayés antérieurs (avant moisPrec) — même structure à 3 lignes que le mois précédent :
+  // montant dû initialement / paiement reçu / solde résultant
+  impayesAvantSnap.forEach(snap => {
+    const mvt = mouvementsImpayes.find(m => m.impayeId === snap.id && m.montant > 0);
+    const imActuel = loc.impayes.find(x => x.id === snap.id);
+    const resteApres = imActuel ? imActuel.montantRestant : snap.montantAvant;
+    if(mvt) {
+      situationRows += docTableRow(`Impayé sur loyer de ${moisLabelFromYYYYMM(snap.mois)}`, snap.montantAvant, false);
+      situationRows += docTableRow(`Votre paiement du ${fmtDateFr(mvt.date)}`, -mvt.montant, false);
+      situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(snap.mois)}`, resteApres, true, resteApres>0.01 ? RED : null);
+    } else {
+      situationRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(snap.mois)} — solde restant`, snap.montantAvant, true, RED);
+    }
+    situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
+  });
+
+  situationRows += docTableRow(`Loyer + ${lowerFirst(loc.provisionLabel||'Provision')} ${moisLabelFromYYYYMM(moisPrec)}`, prevEcheance, false);
+  situationRows += prevDatePaiement ? docTableRow(`Votre paiement du ${fmtDateFr(prevDatePaiement)}`, -prevPaye, false) : docTableRow('Votre paiement', -prevPaye, false);
+  if(hasApl && prevAplMontant > 0) situationRows += docTableRow(`Paiement APL du ${prevAplDate?fmtDateFr(prevAplDate):''}`, -prevAplMontant, false);
+  if(constaterImpaye && ecart > 0.01) {
+    situationRows += docTableRow(`Impayé constaté sur ${moisLabelFromYYYYMM(moisPrec)}`, ecart, true, RED);
+  } else {
+    situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, true);
+  }
+  situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
+  situationRows += docTableRow(`Loyer + ${lowerFirst(loc.provisionLabel||'Provision')} ${moisLabelFromYYYYMM(mois)}`, totalLoyerProvision, false);
+  if(apl > 0) situationRows += docTableRow(`APL à recevoir le ${dateApl}`, apl, false);
+  situationRows += docTableRow('Votre paiement', 0, false);
+  situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true);
+
+  const defaultInfo = `<p>Bonjour,<br>Veuillez trouver votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+    <p style="font-weight:700;text-decoration:underline;">Le paiement total attendu pour ce début de mois de ${MOIS_LABELS[parseInt(mm)-1]} s'élève à ${fmt(montantAppelTotal)}€.</p>
+    ${commentaire ? '<p>'+commentaire.replace(/\n/g,'<br>')+'</p>' : ''}
+    <p>N'hésitez pas à nous envoyer un message pour toute question.<br>Bien cordialement</p>`;
+
+  const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
+    ${renderLocDocHeader(loc, dateEmission)}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        APPEL DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}<br><span style="font-weight:400;font-style:italic;font-size:10px;">Période du ${periodeDebut} au ${periodeFin}</span>
+      </td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
+      ${tableRows}
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(montantAppelTotal)}€</td></tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#fde8df;color:#111;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">VOTRE SITUATION AU ${fmtDateFr(dateEmission)}</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
+      ${situationRows}
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SOLDE A NOTRE CREDIT</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalSolde)}€</td></tr>
+    </table>
+    ${renderLocDocFooter(defaultInfo)}
+  </div>`;
+
+  // Enregistrer dans l'historique — pas de comptabilisation automatique
+  loc.historique = loc.historique || [];
+  loc.historique.push({id:crypto.randomUUID(), type:'appel', mois, moisPrec, dateEmission: dateEmission.toISOString().slice(0,10), loyer, provision, apl, echeance:partACharge, totalDu: totalLoyerProvision, commentaire, comptabilise:false, docHtml: html, docTitle: `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, impayeId: nouvelImpayeId, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, mouvementsImpayes});
+  saveDB(); updateNavCounts();
+  closeAppelModal();
+  printDoc(html, `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, false);
+  toast(constaterImpaye ? 'Appel de loyer généré — impayé constaté' : 'Appel de loyer généré — pensez à le comptabiliser depuis la fiche', 'success');
+  renderLocataires();
+}
+
+
+// ══════════════════════════════════════════════
+// QUITTANCE DE LOYER
+// ══════════════════════════════════════════════
+function openQuittanceModal(locId) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  document.getElementById('quittance-loc-id').value = locId;
+  document.getElementById('quittance-modal-title').textContent = '🧾 QUITTANCE — ' + loc.prenom1 + ' ' + loc.nom1;
+  document.getElementById('quittance-mois').value = '';
+  document.getElementById('quittance-preview').innerHTML = '';
+  document.getElementById('quittance-generate-btn').disabled = true;
+  document.getElementById('quittance-modal').style.display = 'flex';
+}
+function closeQuittanceModal() { document.getElementById('quittance-modal').style.display = 'none'; }
+
+// Cherche l'appel de loyer dont le "mois précédent" correspond au mois quittancé :
+// c'est là que le paiement du locataire (et éventuellement l'APL) pour ce mois a été renseigné.
+function findPaiementPourMois(loc, mois) {
+  const appelSuivant = (loc.historique||[]).slice().reverse().find(h => h.type==='appel' && h.moisPrec===mois);
+  if(!appelSuivant) return null;
+  return {
+    montantPaye: appelSuivant.prevPaye || 0,
+    datePaiement: appelSuivant.prevDatePaiement || '',
+    hasApl: !!appelSuivant.hasApl,
+    aplMontant: appelSuivant.prevAplMontant || 0,
+    aplDate: appelSuivant.prevAplDate || ''
+  };
+}
+
+function onQuittanceMoisChange() {
+  const locId = document.getElementById('quittance-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  const mois = document.getElementById('quittance-mois').value;
+  const preview = document.getElementById('quittance-preview');
+  const btn = document.getElementById('quittance-generate-btn');
+  if(!loc || !mois) { preview.innerHTML=''; btn.disabled=true; return; }
+
+  const paiement = findPaiementPourMois(loc, mois);
+  if(!paiement || (paiement.montantPaye<=0 && paiement.aplMontant<=0)) {
+    preview.innerHTML = `<div style="color:var(--red);">Aucun paiement enregistré pour ${moisLabelFromYYYYMM(mois)}. Indiquez-le d'abord via l'appel de loyer du mois suivant (section "Situation du mois précédent").</div>`;
+    btn.disabled = true;
+    return;
+  }
+  let lines = [];
+  if(paiement.montantPaye > 0) lines.push(`Locataire : ${fmt(paiement.montantPaye)}€ le ${paiement.datePaiement?fmtDateFr(paiement.datePaiement):'?'}`);
+  if(paiement.hasApl && paiement.aplMontant > 0) lines.push(`APL : ${fmt(paiement.aplMontant)}€ le ${paiement.aplDate?fmtDateFr(paiement.aplDate):'?'}`);
+  preview.innerHTML = `<div style="background:rgba(68,232,122,0.08);border:1px solid rgba(68,232,122,0.3);border-radius:var(--radius);padding:10px;">
+    <div style="font-weight:700;color:var(--green);margin-bottom:4px;">Paiement retrouvé pour ${moisLabelFromYYYYMM(mois)} :</div>
+    ${lines.map(l=>`<div>${l}</div>`).join('')}
+  </div>`;
+  btn.disabled = false;
+}
+
+function generateQuittance() {
+  const locId = document.getElementById('quittance-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const mois = document.getElementById('quittance-mois').value;
+  if(!mois) { toast('Choisissez le mois concerné','error'); return; }
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+
+  const paiement = findPaiementPourMois(loc, mois);
+  if(!paiement || (paiement.montantPaye<=0 && paiement.aplMontant<=0)) { toast('Aucun paiement connu pour ce mois','error'); return; }
+
+  const {montantPaye, datePaiement, hasApl, aplMontant, aplDate} = paiement;
+  const totalRecu = Math.round((montantPaye + aplMontant) * 100) / 100;
+
+  const appel = (loc.historique||[]).slice().reverse().find(h => h.type==='appel' && h.mois===mois);
+  const loyer = appel ? appel.loyer : loc.loyer;
+  const provision = appel ? appel.provision : loc.provision;
+
+  const [yy,mm] = mois.split('-');
+  const dd = dernierJourMois(mois);
+  const periodeDebut = '01/'+mm+'/'+yy;
+  const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
+
+  const tableRows = docTableRow('Loyer', loyer, false) + docTableRow(loc.provisionLabel||'Provision', provision, false);
+
+  const paiementDetail = (hasApl && aplMontant > 0)
+    ? `<p>Nous confirmons avoir reçu <strong>${fmt(montantPaye)}€</strong> de votre part le ${datePaiement?fmtDateFr(datePaiement):''}, et <strong>${fmt(aplMontant)}€</strong> au titre de l'APL le ${fmtDateFr(aplDate)}, soit un total de ${fmt(totalRecu)}€.</p>`
+    : `<p>Nous confirmons avoir reçu le paiement du loyer et de la ${lowerFirst(loc.provisionLabel||'Provision')} pour un montant total de ${fmt(montantPaye)}€, le ${datePaiement?fmtDateFr(datePaiement):''}.</p>`;
+
+  const infoHtml = `<p>Bonjour,</p>
+    <p>Veuillez trouver votre quittance pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+    ${paiementDetail}
+    <p>N'hésitez pas à nous envoyer un message pour toute question.</p>
+    <p>Bien cordialement</p>`;
+
+  const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
+    ${renderLocDocHeader(loc, datePaiement || new Date())}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        QUITTANCE DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}<br><span style="font-weight:400;font-style:italic;font-size:10px;">Période du ${periodeDebut} au ${periodeFin}</span>
+      </td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
+      ${tableRows}
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalRecu)}€</td></tr>
+    </table>
+    ${renderLocDocFooter(infoHtml)}
+  </div>`;
+
+  loc.historique = loc.historique || [];
+  loc.historique.push({id:crypto.randomUUID(), type:'quittance', mois, dateEmission: new Date().toISOString().slice(0,10), datePaiement, montantPaye, hasApl, aplDate, aplMontant, docHtml: html, docTitle: `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`});
+
+  saveDB(); updateNavCounts();
+  closeQuittanceModal();
+  printDoc(html, `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, false);
+  toast('Quittance générée à partir des paiements déjà enregistrés','success');
+  renderLocataires();
+}
+
+// ── Réouverture d'un document déjà généré, sans déclencher l'impression ──
+// ══════════════════════════════════════════════
+// ENVOI PAR MAIL
+// ══════════════════════════════════════════════
+function openMailModal() {
+  const checks = Array.from(document.querySelectorAll('.doc-mail-check:checked'));
+  if(!checks.length) { toast('Cochez au moins un document à envoyer','error'); return; }
+
+  const locIds = [...new Set(checks.map(cb => cb.dataset.locId))];
+  if(locIds.length > 1) { toast('Sélectionnez des documents pour un seul locataire à la fois','error'); return; }
+
+  const loc = ensureLocatairesArray().find(l => l.id === locIds[0]);
+  if(!loc) return;
+
+  const entries = checks.map(cb => (loc.historique||[]).find(h => h.id === cb.dataset.entryId)).filter(Boolean);
+  window._mailPending = {locId: loc.id, entryIds: entries.map(e => e.id)};
+
+  document.getElementById('mail-to').value = loc.email || '';
+  const labels = entries.map(e => e.type==='appel' ? `Appel de loyer — ${moisLabelFromYYYYMM(e.mois)}` : `Quittance — ${moisLabelFromYYYYMM(e.mois)}`);
+  document.getElementById('mail-docs-list').innerHTML = `<strong>Documents sélectionnés (${entries.length}) :</strong><br>${labels.join('<br>')}`;
+  document.getElementById('mail-subject').value = `SCI DES PRÊLES — ${labels.length===1?labels[0]:'Documents locatifs'} — ${loc.adresse1}`;
+  document.getElementById('mail-body').value = `Bonjour,\n\nVeuillez trouver ci-joint ${entries.length>1?'les documents suivants':'le document suivant'} :\n${labels.map(l=>'- '+l).join('\n')}\n\nBien cordialement,\nLes gérants — SCI DES PRÊLES`;
+
+  if(!loc.email) toast('Aucune adresse e-mail enregistrée pour ce locataire — pensez à la renseigner dans sa fiche','warn');
+  document.getElementById('mail-modal').style.display = 'flex';
+}
+function closeMailModal() { document.getElementById('mail-modal').style.display = 'none'; window._mailPending = null; }
+
+function confirmSendMail() {
+  const to = document.getElementById('mail-to').value.trim();
+  const subject = document.getElementById('mail-subject').value.trim();
+  const body = document.getElementById('mail-body').value;
+  if(!to) { toast('Adresse e-mail du destinataire requise','error'); return; }
+  if(!window._mailPending) return;
+
+  const loc = ensureLocatairesArray().find(l => l.id === window._mailPending.locId);
+  if(loc) {
+    // Ouvrir chaque document sélectionné dans un nouvel onglet pour permettre l'enregistrement en PDF
+    window._mailPending.entryIds.forEach(id => {
+      const entry = (loc.historique||[]).find(h => h.id === id);
+      if(entry && entry.docHtml) printDoc(entry.docHtml, entry.docTitle || 'Document', false);
+    });
+  }
+
+  const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailtoUrl;
+
+  closeMailModal();
+  toast('Documents ouverts et messagerie lancée — joignez les PDF enregistrés à l\'e-mail','success');
+}
+
+function viewHistoriqueDoc(locId, entryId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const entry = (loc.historique||[]).find(h => h.id === entryId);
+  if(!entry || !entry.docHtml) { toast('Document non disponible — générez-le à nouveau','error'); return; }
+  printDoc(entry.docHtml, entry.docTitle || 'Document', false);
+}
+
+// ── Comptabilisation manuelle depuis la liste des documents ──
+function comptabiliserHistoriqueEntry(locId, entryId) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const entry = (loc.historique||[]).find(h => h.id === entryId);
+  if(!entry || entry.comptabilise) return;
+
+  if(entry.type === 'appel') {
+    const dateEcr = entry.mois + '-01';
+    const [ay, am] = entry.mois.split('-');
+    const numDocCA = `QUIT/${am}`;
+    const libelleCA = `Loyer ${moisLabelFromYYYYMM(entry.mois)} - ${loc.adresse1}`;
+
+    // ── Constatation du CA : une seule écriture par mois, indépendante des paiements/impayés ──
+    // Débit 411 pour la mensualité totale (loyer + provision) / Crédit CA (loyer) / Crédit provision
+    const ioCA = Date.now();
+    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteClient, libelleCompte:getLib(loc.compteClient)||'Client', libelleEcriture:libelleCA, numDoc:numDocCA, debit:entry.totalDu, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteCA, libelleCompte:getLib(loc.compteCA)||'Loyers', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.loyer});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteProvision, libelleCompte:getLib(loc.compteProvision)||'Provision', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.provision});
+
+    const postPaiement = (montant, date, libelle, numDoc) => {
+      if(!montant || montant <= 0.01) return;
+      const io = Date.now() + Math.floor(Math.random()*1000);
+      const d = date || dateEcr;
+      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'TRESO', date:d, compte:'512000', libelleCompte:getLib('512000')||'Banque', libelleEcriture:libelle, numDoc:numDoc||'', debit:montant, credit:0});
+      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'TRESO', date:d, compte:loc.compteClient, libelleCompte:getLib(loc.compteClient)||'Client', libelleEcriture:libelle, numDoc:numDoc||'', debit:0, credit:montant});
+    };
+
+    // ── Paiement APL (mois précédent) : numéro de pièce CAF/MM/AA, toujours une écriture séparée ──
+    if(entry.hasApl && entry.prevAplMontant > 0.01 && entry.moisPrec) {
+      const [py, pm] = entry.moisPrec.split('-');
+      const numDocCaf = `CAF/${pm}/${py.slice(-2)}`;
+      postPaiement(entry.prevAplMontant, entry.prevAplDate, `Paiement APL ${moisLabelFromYYYYMM(entry.moisPrec)} - ${loc.adresse1}`, numDocCaf);
+    }
+
+    // ── Paiements du locataire : regroupés par date de paiement (mois précédent + mouvements sur impayés antérieurs) ──
+    // Si plusieurs mois sont réglés à la même date, une seule écriture est passée avec un libellé listant les mois concernés.
+    const sourcesLocataire = [];
+    if(entry.prevPaye > 0.01 && entry.moisPrec) sourcesLocataire.push({mois: entry.moisPrec, montant: entry.prevPaye, date: entry.prevDatePaiement});
+    (entry.mouvementsImpayes||[]).forEach(mvt => {
+      if(mvt.montant > 0.01 && mvt.mois) sourcesLocataire.push({mois: mvt.mois, montant: mvt.montant, date: mvt.date});
+    });
+
+    const groupesParDate = {};
+    sourcesLocataire.forEach(s => {
+      const key = s.date || dateEcr;
+      if(!groupesParDate[key]) groupesParDate[key] = [];
+      groupesParDate[key].push(s);
+    });
+    Object.keys(groupesParDate).forEach(date => {
+      const grp = groupesParDate[date];
+      const total = Math.round(grp.reduce((s,x)=>s+x.montant,0) * 100) / 100;
+      const moisLabels = [...new Set(grp.map(s => moisLabelFromYYYYMM(s.mois)))].join(' + ');
+      const [dy, dm] = date.split('-');
+      const numDocBanque = `RBANQUE/${dm}/${dy.slice(-2)}`;
+      postPaiement(total, date, `Règlement loyer ${moisLabels} - ${loc.adresse1}`, numDocBanque);
+    });
+  }
+  // Les quittances ne génèrent plus d'écriture : la comptabilisation est intégralement gérée via l'appel de loyer.
+
+  entry.comptabilise = true;
+  renum(); saveDB(); updateNavCounts();
+  toast('Écriture(s) comptabilisée(s)','success');
+  renderLocataires();
+}
+
+// ── Archivage : retire le document de la liste en préservant le solde via soldeInitial ──
+let archiveTarget = null;
+// ── Suppression directe d'un impayé (utile pour corriger une erreur de saisie ou un test) ──
+let impayeDeleteTarget = null;
+function askDeleteImpaye(locId, impayeId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const im = (loc.impayes||[]).find(x => x.id === impayeId);
+  if(!im) return;
+  impayeDeleteTarget = {locId, impayeId};
+  document.getElementById('loc-delete-msg').innerHTML = `Supprimer l'impayé de <strong style="color:var(--cyan)">${moisLabelFromYYYYMM(im.mois)}</strong> (${fmt(im.montantRestant)}€) ?<br>Cette action est irréversible et ne modifie aucune écriture comptable déjà passée.`;
+  document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '<span style="color:var(--red);">⚠</span> SUPPRIMER UN IMPAYÉ';
+  const btn = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
+  btn.textContent = 'SUPPRIMER';
+  btn.setAttribute('onclick', 'confirmDeleteImpaye()');
+  document.getElementById('loc-delete-modal').style.display = 'flex';
+}
+function confirmDeleteImpaye() {
+  if(!impayeDeleteTarget) return;
+  const loc = ensureLocatairesArray().find(l => l.id === impayeDeleteTarget.locId);
+  if(loc) loc.impayes = (loc.impayes||[]).filter(x => x.id !== impayeDeleteTarget.impayeId);
+  saveDB();
+  closeLocataireDeleteModal();
+  impayeDeleteTarget = null;
+  toast('Impayé supprimé','warn');
+  renderLocataires();
+}
+
+function askArchiveHistoriqueEntry(locId, entryId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const entry = (loc.historique||[]).find(h => h.id === entryId);
+  if(!entry) return;
+  archiveTarget = {locId, entryId};
+  const label = entry.type==='appel' ? `Appel de loyer ${moisLabelFromYYYYMM(entry.mois)}` : `Quittance ${moisLabelFromYYYYMM(entry.mois)}`;
+  document.getElementById('loc-delete-msg').innerHTML = `Archiver <strong style="color:var(--cyan)">${label}</strong> ?<br>Le document sera retiré de la liste (le solde du locataire reste inchangé).`;
+  document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '📦 ARCHIVER LE DOCUMENT';
+  const btn = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
+  btn.textContent = 'ARCHIVER';
+  btn.setAttribute('onclick', 'confirmArchiveHistoriqueEntry()');
+  document.getElementById('loc-delete-modal').style.display = 'flex';
+}
+function confirmArchiveHistoriqueEntry() {
+  if(!archiveTarget) return;
+  const loc = ensureLocatairesArray().find(l => l.id === archiveTarget.locId);
+  if(!loc) { closeLocataireDeleteModal(); return; }
+  const idx = (loc.historique||[]).findIndex(h => h.id === archiveTarget.entryId);
+  if(idx === -1) { closeLocataireDeleteModal(); return; }
+  const entry = loc.historique[idx];
+  // Compenser l'effet du document sur le solde en l'intégrant au solde initial de la fiche
+  if(entry.type === 'appel') loc.soldeInitial = Math.round(((loc.soldeInitial||0) + entry.echeance)*100)/100;
+  else if(entry.type === 'quittance') loc.soldeInitial = Math.round(((loc.soldeInitial||0) - entry.montantPaye)*100)/100;
+  loc.historique.splice(idx, 1);
+  saveDB();
+  closeLocataireDeleteModal();
+  archiveTarget = null;
+  document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '<span style="color:var(--red);">⚠</span> SUPPRIMER UN LOCATAIRE';
+  const btn2 = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
+  btn2.textContent = 'SUPPRIMER';
+  btn2.setAttribute('onclick', 'confirmDeleteLocataire()');
+  toast('Document archivé','success');
+  renderLocataires();
+}
+
+// ══════════════════════════════════════════════
+// MODULE ÉCHÉANCIERS
+// ══════════════════════════════════════════════
+function ensureEcheanciersArray() { if(!Array.isArray(DB.echeanciers)) DB.echeanciers = []; return DB.echeanciers; }
+
+// Liste des mois YYYY-MM entre début et fin inclus (basé sur les dates complètes)
+function computeMoisRange(debutDate, finDate) {
+  const mois = [];
+  let cur = debutDate.slice(0,7);
+  const finMois = finDate.slice(0,7);
+  let guard = 0;
+  while(cur <= finMois && guard < 240) {
+    mois.push(cur);
+    cur = moisSuivant(cur);
+    guard++;
+  }
+  return mois;
+}
+
+function moisActuelYYYYMM() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+
+// Un échéancier sans date de fin est considéré actif jusqu'à aujourd'hui pour tous les calculs d'affichage
+function effectiveFin(ech) {
+  return ech.periodeFin || new Date().toISOString().slice(0,10);
+}
+
+function jourEcheanceFor(ech) {
+  return parseInt((ech.periodeDebut||'').split('-')[2]) || 1;
+}
+
+// Construit la date exacte de l'écriture pour un mois donné, en respectant le jour du mois
+// défini par la date de début (ajusté si le mois est plus court, ex : le 31 en février → 28/29).
+function dateEcheancePourMois(ech, moisYYYYMM) {
+  const [y,m] = moisYYYYMM.split('-').map(Number);
+  const jour = jourEcheanceFor(ech);
+  const lastDay = new Date(y, m, 0).getDate();
+  const d = Math.min(jour, lastDay);
+  return moisYYYYMM + '-' + String(d).padStart(2,'0');
+}
+
+function buildLibelleEcheance(ech, mois) {
+  let base = ech.libelle;
+  if(ech.suffixeType === 'mois') base += ' - ' + moisLabelFromYYYYMM(mois);
+  else if(ech.suffixeType === 'personnalise' && ech.suffixePerso) base += ' - ' + ech.suffixePerso;
+  return base;
+}
+
+function toggleEcheancierNomPieceLock() {
+  const type = document.getElementById('ech-type-piece').value;
+  const nomInput = document.getElementById('ech-nom-piece');
+  const numAutoChecked = document.getElementById('ech-num-auto').checked;
+  if(numAutoChecked) return; // la numérotation auto gère déjà le verrouillage
+  if(type === 'RBANQUE') {
+    nomInput.value = '';
+    nomInput.disabled = true;
+    nomInput.placeholder = 'Généré automatiquement (MM/AA du mois comptabilisé)';
+  } else {
+    nomInput.disabled = false;
+    nomInput.placeholder = 'Référence libre de la pièce justificative';
+  }
+}
+
+function toggleEcheancierNumAuto() {
+  const checked = document.getElementById('ech-num-auto').checked;
+  const nomInput = document.getElementById('ech-nom-piece');
+  if(checked) {
+    nomInput.value = '';
+    nomInput.disabled = true;
+    nomInput.placeholder = 'Généré automatiquement (numéro suivant du Grand Livre)';
+  } else {
+    toggleEcheancierNomPieceLock();
+  }
+}
+
+function toggleEcheancierCreditDouble() {
+  const checked = document.getElementById('ech-credit-double').checked;
+  document.getElementById('ech-credit2-field').style.display = checked ? 'block' : 'none';
+  if(!checked) document.getElementById('ech-compte-credit2').value = '';
+}
+
+function toggleEcheancierSuffixe() {
+  const type = document.getElementById('ech-suffixe-type').value;
+  document.getElementById('ech-suffixe-perso-field').style.display = type === 'personnalise' ? 'block' : 'none';
+}
+
+// ── Alerte d'expiration au chargement ──
+function checkEcheanciersExpiration() {
+  const list = ensureEcheanciersArray();
+  const today = new Date().toISOString().slice(0,10);
+  const in30 = new Date(); in30.setDate(in30.getDate()+30);
+  const in30str = in30.toISOString().slice(0,10);
+  const expires = list.filter(e => e.periodeFin && e.periodeFin < today);
+  const bientot = list.filter(e => e.periodeFin && e.periodeFin >= today && e.periodeFin <= in30str);
+  const banner = document.getElementById('echeanciers-expiration-banner');
+  if(banner) {
+    if(!expires.length && !bientot.length) { banner.innerHTML = ''; }
+    else {
+      banner.innerHTML = `<div style="background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius);padding:10px 14px;margin-bottom:16px;font-size:11px;">
+        ${expires.length ? `<div style="color:var(--red);font-weight:700;margin-bottom:4px;">⚠ Expiré(s) : ${expires.map(e=>e.libelle).join(', ')}</div>` : ''}
+        ${bientot.length ? `<div style="color:var(--amber);">⏳ Expire(nt) dans moins de 30 jours : ${bientot.map(e=>e.libelle+' ('+fmtDateFr(e.periodeFin)+')').join(', ')}</div>` : ''}
+      </div>`;
+    }
+  }
+  return {expires, bientot};
+}
+
+// Alerte globale affichée une fois à l'ouverture de l'outil (indépendante de l'onglet actif)
+function checkEcheanciersExpirationAuBoot() {
+  const {expires, bientot} = (() => {
+    const list = ensureEcheanciersArray();
+    const today = new Date().toISOString().slice(0,10);
+    const in30 = new Date(); in30.setDate(in30.getDate()+30);
+    const in30str = in30.toISOString().slice(0,10);
+    return {
+      expires: list.filter(e => e.periodeFin && e.periodeFin < today),
+      bientot: list.filter(e => e.periodeFin && e.periodeFin >= today && e.periodeFin <= in30str)
+    };
+  })();
+  if(!expires.length && !bientot.length) return;
+  const existing = document.getElementById('global-echeancier-alert');
+  if(existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'global-echeancier-alert';
+  div.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;background:#2a1a1a;border:1px solid rgba(255,107,107,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;max-width:600px;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div>
+      <div style="font-weight:700;color:var(--red);margin-bottom:4px;">⚠ Échéanciers à vérifier</div>
+      ${expires.length ? `<div>Expiré(s) : ${expires.map(e=>e.libelle).join(', ')}</div>` : ''}
+      ${bientot.length ? `<div>Expire(nt) bientôt : ${bientot.map(e=>e.libelle+' ('+fmtDateFr(e.periodeFin)+')').join(', ')}</div>` : ''}
+    </div>
+    <span onclick="document.getElementById('global-echeancier-alert').remove()" style="cursor:pointer;font-weight:700;color:var(--text2);">✕</span>
+  </div>`;
+  document.body.appendChild(div);
+}
+
+// ── Aperçu du mois ──
+// Bande visuelle : un point par mois de la période, coloré selon le statut — visible d'un coup d'œil
+function moisStripHtml(ech) {
+  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+  const done = ech.moisComptabilises || [];
+  const moisActuel = moisActuelYYYYMM();
+  return `<div style="display:flex;flex-wrap:wrap;gap:3px;max-width:280px;">` + allMois.map(m => {
+    const isDone = done.includes(m);
+    const isFuture = m > moisActuel;
+    const lettre = MOIS_LABELS[parseInt(m.split('-')[1],10)-1].charAt(0).toUpperCase();
+    let bg, fg, title, onclickAttr = '', cursor = 'default';
+    if(isDone) { bg = 'var(--green)'; fg = '#0a2e1a'; title = moisLabelFromYYYYMM(m) + ' — comptabilisée (cliquer pour annuler)'; onclickAttr = ` onclick="askDecomptabiliserEcheancierMois('${ech.id}','${m}')"`; cursor = 'pointer'; }
+    else if(isFuture) { bg = 'var(--line2)'; fg = 'var(--text2)'; title = moisLabelFromYYYYMM(m) + ' — à venir'; }
+    else { bg = 'var(--amber)'; fg = '#332200'; title = moisLabelFromYYYYMM(m) + ' — cliquer pour comptabiliser'; onclickAttr = ` onclick="comptabiliserEcheancierMoisIndividuel('${ech.id}','${m}')"`; cursor = 'pointer'; }
+    return `<span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:3px;background:${bg};color:${fg};font-size:9px;font-weight:700;font-family:var(--mono);cursor:${cursor};">${lettre}</span>`;
+  }).join('') + `</div>`;
+}
+
+function renderEcheanciers() {
+  const list = ensureEcheanciersArray();
+  const groupsWrap = document.getElementById('echeanciers-groups');
+  const empty = document.getElementById('echeanciers-empty');
+  if(!groupsWrap) return;
+
+  checkEcheanciersExpiration();
+
+  if(!list.length) {
+    groupsWrap.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    updateNavCounts();
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+
+  const today = new Date().toISOString().slice(0,10);
+  const in30 = new Date(); in30.setDate(in30.getDate()+30);
+  const in30str = in30.toISOString().slice(0,10);
+
+  const groups = {};
+  list.forEach(ech => {
+    const cat = ech.categorie || 'Sans catégorie';
+    if(!groups[cat]) groups[cat] = [];
+    groups[cat].push(ech);
+  });
+  const sortedCats = Object.keys(groups).sort();
+
+  groupsWrap.innerHTML = sortedCats.map(cat => {
+    const items = groups[cat].slice().sort((a,b) => (a.libelle||'').localeCompare(b.libelle||''));
+    const rowsHtml = items.map(ech => {
+      const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+      const done = ech.moisComptabilises || [];
+      const nbDone = allMois.filter(m => done.includes(m)).length;
+      const moisEnRetard = allMois.filter(m => m <= moisActuelYYYYMM() && !done.includes(m));
+      const perExpire = !ech.periodeFin ? '' : (ech.periodeFin < today ? ' style="color:var(--red);"' : ech.periodeFin <= in30str ? ' style="color:var(--amber);"' : '');
+      const periodeTxt = ech.periodeFin ? `${fmtDateFr(ech.periodeDebut)} → ${fmtDateFr(ech.periodeFin)}` : `${fmtDateFr(ech.periodeDebut)} → sans fin`;
+      const moisActuel = moisActuelYYYYMM();
+      const moisActuelActif = moisActuel >= ech.periodeDebut.slice(0,7) && moisActuel <= effectiveFin(ech).slice(0,7);
+      const moisActuelFait = done.includes(moisActuel);
+      const peutComptabiliser = moisActuelActif && !moisActuelFait;
+      const btnMoisCourant = peutComptabiliser
+        ? `<button class="btn btn-sm btn-icon" onclick="comptabiliserEcheancierMoisIndividuel('${ech.id}','${moisActuel}')" title="Comptabiliser ${moisLabelFromYYYYMM(moisActuel)}" style="padding:1px 5px;font-size:10px;color:var(--green);">✓</button>`
+        : `<button class="btn btn-sm btn-icon" disabled title="${moisActuelFait?'Mois en cours déjà comptabilisé':'Pas d\u2019échéance ce mois-ci'}" style="padding:1px 5px;font-size:10px;opacity:0.3;cursor:default;">✓</button>`;
+      const retardBtn = moisEnRetard.length
+        ? `<button class="btn btn-sm" onclick="comptabiliserEcheancierRetard('${ech.id}')" title="Comptabiliser tous les mois en retard en un clic" style="padding:1px 6px;font-size:9px;">TOUT (${moisEnRetard.length})</button>`
+        : '';
+      return `<tr>
+        <td style="font-size:11px;">${ech.libelle||''}</td>
+        <td class="td-num" style="font-size:11px;">${fmt(ech.montant)}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${ech.compteDebit}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${ech.compteCredit}</td>
+        <td style="font-family:var(--mono);font-size:9px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${[ech.typePiece,ech.nomPiece].filter(Boolean).join(' · ')}">${[ech.typePiece,ech.nomPiece].filter(Boolean).join(' · ')}</td>
+        <td style="font-size:10px;white-space:nowrap;"${perExpire}>${periodeTxt}</td>
+        <td>${moisStripHtml(ech)}</td>
+        <td style="text-align:center;white-space:nowrap;">
+          ${retardBtn}
+          ${btnMoisCourant}
+          <button class="btn btn-sm btn-icon" onclick="openEcheancierModal('${ech.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteEcheancier('${ech.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:22px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:var(--cyan);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--line2);">
+        ${cat.toUpperCase()}
+      </div>
+      <table style="table-layout:fixed;width:100%;">
+        <colgroup>
+          <col>
+          <col style="width:75px">
+          <col style="width:65px">
+          <col style="width:65px">
+          <col style="width:120px">
+          <col style="width:150px">
+          <col style="width:270px">
+          <col>
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Libellé</th>
+            <th class="td-num">Montant</th>
+            <th>Débit</th>
+            <th>Crédit</th>
+            <th>Pièce</th>
+            <th>Période</th>
+            <th>Suivi mensuel (clic = comptabiliser)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  updateNavCounts();
+}
+
+function openEcheancierModal(editId) {
+  const cats = [...new Set(ensureEcheanciersArray().map(e => e.categorie).filter(Boolean))].sort();
+  document.getElementById('ech-categorie-list').innerHTML = cats.map(c => `<option value="${c}">`).join('');
+  const typeSel = document.getElementById('ech-type-piece');
+  typeSel.innerHTML = '<option value="">—</option>' + TYPEDOC_LIST.map(t => `<option value="${t.code}">${t.code} — ${t.label}</option>`).join('');
+  document.getElementById('ech-edit-id').value = editId || '';
+  if(editId) {
+    const ech = ensureEcheanciersArray().find(e => e.id === editId);
+    if(!ech) return;
+    document.getElementById('echeancier-modal-title').textContent = '🔁 MODIFIER L\'ÉCHÉANCIER';
+    document.getElementById('ech-libelle').value = ech.libelle||'';
+    document.getElementById('ech-categorie').value = ech.categorie||'';
+    document.getElementById('ech-montant').value = ech.montant||'';
+    document.getElementById('ech-type-piece').value = ech.typePiece||'';
+    document.getElementById('ech-nom-piece').value = ech.nomPiece||'';
+    document.getElementById('ech-num-auto').checked = !!ech.numeroAuto;
+    document.getElementById('ech-compte-debit').value = ech.compteDebit||'';
+    document.getElementById('ech-compte-credit').value = ech.compteCredit||'';
+    document.getElementById('ech-credit-double').checked = !!ech.crediteDouble;
+    document.getElementById('ech-compte-credit2').value = ech.compteCredit2||'';
+    document.getElementById('ech-periode-debut').value = ech.periodeDebut||'';
+    document.getElementById('ech-periode-fin').value = ech.periodeFin||'';
+    document.getElementById('ech-suffixe-type').value = ech.suffixeType||'aucun';
+    document.getElementById('ech-suffixe-perso').value = ech.suffixePerso||'';
+  } else {
+    document.getElementById('echeancier-modal-title').textContent = '🔁 NOUVEL ÉCHÉANCIER';
+    ['ech-libelle','ech-categorie','ech-montant','ech-type-piece','ech-nom-piece','ech-compte-debit','ech-compte-credit','ech-compte-credit2','ech-periode-debut','ech-periode-fin','ech-suffixe-perso'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+    document.getElementById('ech-suffixe-type').value = 'aucun';
+    document.getElementById('ech-num-auto').checked = false;
+    document.getElementById('ech-credit-double').checked = false;
+  }
+  toggleEcheancierNomPieceLock();
+  toggleEcheancierNumAuto();
+  toggleEcheancierCreditDouble();
+  toggleEcheancierSuffixe();
+  document.getElementById('echeancier-modal').style.display = 'flex';
+}
+function closeEcheancierModal() { document.getElementById('echeancier-modal').style.display = 'none'; }
+
+function saveEcheancier() {
+  const editId = document.getElementById('ech-edit-id').value;
+  const libelle = document.getElementById('ech-libelle').value.trim();
+  const categorie = document.getElementById('ech-categorie').value.trim();
+  const montant = parseFloat(document.getElementById('ech-montant').value) || 0;
+  const typePiece = document.getElementById('ech-type-piece').value.trim();
+  const nomPiece = document.getElementById('ech-nom-piece').value.trim();
+  const numeroAuto = document.getElementById('ech-num-auto').checked;
+  const compteDebit = document.getElementById('ech-compte-debit').value.trim();
+  const compteCredit = document.getElementById('ech-compte-credit').value.trim();
+  const crediteDouble = document.getElementById('ech-credit-double').checked;
+  const compteCredit2 = crediteDouble ? document.getElementById('ech-compte-credit2').value.trim() : '';
+  const periodeDebut = document.getElementById('ech-periode-debut').value;
+  const periodeFin = document.getElementById('ech-periode-fin').value;
+  const suffixeType = document.getElementById('ech-suffixe-type').value;
+  const suffixePerso = document.getElementById('ech-suffixe-perso').value.trim();
+
+  if(!libelle) { toast('Le libellé est requis','error'); return; }
+  if(!categorie) { toast('La catégorie est requise','error'); return; }
+  if(!montant || montant<=0) { toast('Le montant doit être positif','error'); return; }
+  if(!compteDebit || compteDebit.length!==6) { toast('Compte à débiter invalide (6 chiffres)','error'); return; }
+  if(!compteCredit || compteCredit.length!==6) { toast('Compte à créditer invalide (6 chiffres)','error'); return; }
+  if(crediteDouble && (!compteCredit2 || compteCredit2.length!==6)) { toast('2ᵉ compte à créditer invalide (6 chiffres)','error'); return; }
+  if(!periodeDebut) { toast('La période de début est requise','error'); return; }
+  if(periodeFin && periodeFin < periodeDebut) { toast('La période de fin doit être après le début','error'); return; }
+
+  const list = ensureEcheanciersArray();
+  if(editId) {
+    const ech = list.find(e => e.id === editId);
+    if(ech) Object.assign(ech, {libelle, categorie, montant, typePiece, nomPiece, numeroAuto, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso});
+    toast('Échéancier modifié','success');
+  } else {
+    list.push({id:crypto.randomUUID(), libelle, categorie, montant, typePiece, nomPiece, numeroAuto, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso, moisComptabilises:[]});
+    toast('Échéancier ajouté','success');
+  }
+  saveDB();
+  closeEcheancierModal();
+  renderEcheanciers();
+}
+
+let echeancierDeleteTargetId = null;
+function askDeleteEcheancier(id) {
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  echeancierDeleteTargetId = id;
+  document.getElementById('echeancier-delete-msg').innerHTML = `Supprimer l'échéancier <strong style="color:var(--cyan)">${ech.libelle}</strong> ?<br>Les écritures déjà comptabilisées ne seront pas supprimées.`;
+  document.getElementById('echeancier-delete-modal').style.display = 'flex';
+}
+function closeEcheancierDeleteModal() { document.getElementById('echeancier-delete-modal').style.display = 'none'; echeancierDeleteTargetId = null; }
+function confirmDeleteEcheancier() {
+  if(!echeancierDeleteTargetId) return;
+  DB.echeanciers = ensureEcheanciersArray().filter(e => e.id !== echeancierDeleteTargetId);
+  saveDB();
+  closeEcheancierDeleteModal();
+  renderEcheanciers();
+  toast('Échéancier supprimé','warn');
+}
+
+// ── Détail mensuel ──
+function openEcheancierDetailModal(id) {
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  document.getElementById('echeancier-detail-title').textContent = '📋 ' + ech.libelle;
+  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+  const done = ech.moisComptabilises || [];
+  document.getElementById('echeancier-detail-body').innerHTML = allMois.map(mois => {
+    const isDone = done.includes(mois);
+    const dateEcr = dateEcheancePourMois(ech, mois);
+    const statut = isDone ? `<span style="color:var(--green);">✓ comptabilisée</span>` : `<span style="color:var(--amber);">à comptabiliser</span>`;
+    const btn = isDone ? '' : `<button class="btn btn-sm" onclick="comptabiliserEcheancierMoisIndividuel('${ech.id}','${mois}');openEcheancierDetailModal('${ech.id}')" style="padding:1px 8px;font-size:9px;">COMPTABILISER</button>`;
+    return `<tr>
+      <td>${moisLabelFromYYYYMM(mois)}</td>
+      <td style="font-family:var(--mono);font-size:10px;">${fmtDateFr(dateEcr)}</td>
+      <td class="td-num">${fmt(ech.montant)}</td>
+      <td>${statut}</td>
+      <td>${btn}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('echeancier-detail-modal').style.display = 'flex';
+}
+function closeEcheancierDetailModal() { document.getElementById('echeancier-detail-modal').style.display = 'none'; }
+
+// Retrouve le prochain numéro de pièce automatique : dernier numéro purement numérique
+// utilisé dans le Grand Livre, +1. Recalculé à chaque comptabilisation pour rester à jour
+// même si d'autres écritures manuelles ont été passées entre-temps.
+function getNextAutoPieceNumber(prefix) {
+  prefix = prefix || '';
+  let max = 0, padWidth = 0, useSlash = true;
+  // La saisie manuelle construit le numéro de pièce comme "TYPE/RÉF" (ex: FA/024) —
+  // on accepte aussi le format collé sans séparateur (FA024) par sécurité.
+  const reSlash = new RegExp('^' + prefix + '/(\\d+)$');
+  const reNoSlash = new RegExp('^' + prefix + '(\\d+)$');
+  DB.ecritures.forEach(e => {
+    const nd = String(e.numDoc||'').trim();
+    let m = nd.match(reSlash);
+    if(m) {
+      const n = parseInt(m[1], 10);
+      if(n > max) { max = n; padWidth = m[1].length; useSlash = true; }
+      return;
+    }
+    m = nd.match(reNoSlash);
+    if(m) {
+      const n = parseInt(m[1], 10);
+      if(n > max) { max = n; padWidth = m[1].length; useSlash = false; }
+    }
+  });
+  if(max === 0) return prefix ? prefix + '/1' : '1';
+  const next = String(max + 1).padStart(padWidth, '0');
+  return prefix + (useSlash ? '/' : '') + next;
+}
+
+// Comptabilise un mois donné pour un échéancier (débit/crédit direct)
+function postEcheancierMois(ech, mois) {
+  const [yy, mm] = mois.split('-');
+  const dateEcr = dateEcheancePourMois(ech, mois);
+  const numDoc = ech.numeroAuto ? getNextAutoPieceNumber(ech.typePiece) : (ech.nomPiece ? ech.nomPiece : (ech.typePiece ? `${ech.typePiece}/${mm}/${yy.slice(-2)}` : ''));
+  const libelleEcriture = buildLibelleEcheance(ech, mois);
+  const io = Date.now() + Math.floor(Math.random()*1000);
+
+  ech.moisIo = ech.moisIo || {};
+  ech.moisIo[mois] = io;
+
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
+
+  if(ech.crediteDouble && ech.compteCredit2) {
+    // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur,
+    // le 2e le solde exact (jamais plus de 2 décimales, jamais d'écart sur le total).
+    const part1 = Math.ceil(ech.montant * 50) / 100;
+    const part2 = Math.round((ech.montant - part1) * 100) / 100;
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit2, libelleCompte:getLib(ech.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
+  } else {
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:ech.montant});
+  }
+
+  ech.moisComptabilises = ech.moisComptabilises || [];
+  ech.moisComptabilises.push(mois);
+}
+
+// Comptabilise un mois précis, individuellement, à la demande
+function comptabiliserEcheancierMoisIndividuel(id, mois) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  if((ech.moisComptabilises||[]).includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
+  postEcheancierMois(ech, mois);
+  renum(); saveDB(); updateNavCounts();
+  toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  renderEcheanciers();
+}
+
+// Annule la comptabilisation d'un mois : supprime l'écriture correspondante et repasse la case en orange
+// ── Demande de confirmation avant d'annuler une comptabilisation (échéancier ou emprunt) ──
+let _decomptaPending = null;
+
+function askDecomptabiliserEcheancierMois(id, mois) {
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  _decomptaPending = {type:'echeancier', id, mois};
+  document.getElementById('decompta-confirm-msg').innerHTML = `Annuler la comptabilisation de <strong style="color:var(--cyan)">${ech.libelle}</strong> pour <strong>${moisLabelFromYYYYMM(mois)}</strong> ?<br>L'écriture correspondante sera supprimée du Grand Livre.`;
+  document.getElementById('decompta-confirm-modal').style.display = 'flex';
+}
+function askDecomptabiliserEmpruntMois(id, mois) {
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+  _decomptaPending = {type:'emprunt', id, mois};
+  document.getElementById('decompta-confirm-msg').innerHTML = `Annuler la comptabilisation de <strong style="color:var(--cyan)">${emp.libelle}</strong> pour <strong>${moisLabelFromYYYYMM(mois)}</strong> ?<br>L'écriture correspondante sera supprimée du Grand Livre.`;
+  document.getElementById('decompta-confirm-modal').style.display = 'flex';
+}
+function closeDecomptaConfirmModal() { document.getElementById('decompta-confirm-modal').style.display = 'none'; _decomptaPending = null; }
+function confirmDecompta() {
+  if(!_decomptaPending) return;
+  const {type, id, mois} = _decomptaPending;
+  document.getElementById('decompta-confirm-modal').style.display = 'none';
+  _decomptaPending = null;
+  if(type === 'echeancier') decomptabiliserEcheancierMois(id, mois);
+  else if(type === 'emprunt') decomptabiliserEmpruntMois(id, mois);
+}
+
+function decomptabiliserEcheancierMois(id, mois) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  const io = ech.moisIo && ech.moisIo[mois];
+  if(io !== undefined) {
+    DB.ecritures = DB.ecritures.filter(e => e._io !== io);
+    delete ech.moisIo[mois];
+  } else {
+    toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
+  }
+  ech.moisComptabilises = (ech.moisComptabilises||[]).filter(m => m !== mois);
+  renum(); saveDB(); updateNavCounts();
+  toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  renderEcheanciers();
+}
+
+// Rattrape tous les mois en retard (jusqu'au mois actuel inclus) d'un échéancier
+function comptabiliserEcheancierRetard(id) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const ech = ensureEcheanciersArray().find(e => e.id === id);
+  if(!ech) return;
+  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+  const done = ech.moisComptabilises || [];
+  const aTraiter = allMois.filter(m => m <= moisActuelYYYYMM() && !done.includes(m));
+  if(!aTraiter.length) { toast('Aucun mois en retard pour cet échéancier','info'); return; }
+  aTraiter.forEach(mois => postEcheancierMois(ech, mois));
+  renum(); saveDB(); updateNavCounts();
+  toast(`${aTraiter.length} écriture(s) comptabilisée(s) pour "${ech.libelle}"`,'success');
+  renderEcheanciers();
+}
+
+// Comptabilise le mois en cours pour TOUS les échéanciers actifs, en un clic
+function comptabiliserToutesEcheancesDuMois() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const list = ensureEcheanciersArray();
+  const moisActuel = moisActuelYYYYMM();
+  let count = 0;
+  list.forEach(ech => {
+    if(moisActuel < ech.periodeDebut.slice(0,7) || moisActuel > effectiveFin(ech).slice(0,7)) return;
+    const done = ech.moisComptabilises || [];
+    if(done.includes(moisActuel)) return;
+    postEcheancierMois(ech, moisActuel);
+    count++;
+  });
+  if(!count) { toast('Aucune échéance à comptabiliser pour ce mois','info'); return; }
+  renum(); saveDB(); updateNavCounts();
+  toast(`${count} échéance(s) comptabilisée(s) pour ${moisLabelFromYYYYMM(moisActuel)}`,'success');
+  renderEcheanciers();
+}
+
+// ══════════════════════════════════════════════
+// MODULE EMPRUNTS
+// ══════════════════════════════════════════════
+function ensureEmpruntsArray() { if(!Array.isArray(DB.emprunts)) DB.emprunts = []; return DB.emprunts; }
+
+const EMPRUNT_TEMPLATE_COLS = ['Mois (AAAA-MM)', 'Date échéance (JJ/MM/AAAA)', 'Capital début', 'Intérêts', 'Capital remboursé', 'Capital restant dû', 'Mensualité'];
+
+async function ensureXLSXLoaded() {
+  if(typeof XLSX !== 'undefined') return;
+  await new Promise((res,rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function downloadEmpruntTemplate() {
+  await ensureXLSXLoaded();
+  const rows = [
+    EMPRUNT_TEMPLATE_COLS,
+    ['2026-01', '05/01/2026', 100000, 250.5, 800.2, 99199.8, 1050.7],
+    ['2026-02', '05/02/2026', 99199.8, 248.3, 802.4, 98397.4, 1050.7],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:16},{wch:20},{wch:14},{wch:12},{wch:16},{wch:16},{wch:14}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Tableau amortissement');
+  XLSX.writeFile(wb, 'Modele_Tableau_Amortissement.xlsx');
+  toast('Modèle téléchargé — remplissez-le puis importez-le sur la ligne de l\'emprunt concerné','success');
+}
+
+let _empruntImportTargetId = null;
+function triggerEmpruntImport(id) {
+  _empruntImportTargetId = id;
+  document.getElementById('emprunt-import-input').click();
+}
+
+async function handleEmpruntImport(evt) {
+  const file = evt.target.files[0];
+  if(!file || !_empruntImportTargetId) return;
+  await ensureXLSXLoaded();
+  const emp = ensureEmpruntsArray().find(e => e.id === _empruntImportTargetId);
+  if(!emp) return;
+
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, {type:'array', cellDates:true});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1});
+
+  const tableau = [];
+  for(let i=1; i<rows.length; i++) {
+    const r = rows[i];
+    if(!r || !r[0]) continue;
+    let mois = String(r[0]).trim();
+    // Normaliser au format YYYY-MM si besoin
+    if(/^\d{4}-\d{1,2}$/.test(mois)) { const [y,m] = mois.split('-'); mois = y+'-'+String(m).padStart(2,'0'); }
+    let dateEcheance = r[1];
+    if(dateEcheance instanceof Date) {
+      dateEcheance = dateEcheance.toISOString().slice(0,10);
+    } else if(typeof dateEcheance === 'number') {
+      // Filet de sécurité : numéro de série Excel (jours depuis 30/12/1899) au cas où cellDates n'aurait pas suffi
+      const d = new Date(Math.round((dateEcheance - 25569) * 86400 * 1000));
+      dateEcheance = d.toISOString().slice(0,10);
+    } else if(typeof dateEcheance === 'string' && dateEcheance.includes('/')) {
+      const [dd,mm,yy] = dateEcheance.split('/');
+      dateEcheance = yy+'-'+mm.padStart(2,'0')+'-'+dd.padStart(2,'0');
+    }
+    tableau.push({
+      mois, dateEcheance,
+      capitalDebut: parseFloat(r[2])||0,
+      interets: parseFloat(r[3])||0,
+      capitalRembourse: parseFloat(r[4])||0,
+      capitalRestant: parseFloat(r[5])||0,
+      mensualite: parseFloat(r[6])||0,
+    });
+  }
+
+  if(!tableau.length) { toast('Aucune ligne valide trouvée dans le fichier','error'); return; }
+  emp.tableau = tableau;
+  emp.moisComptabilises = emp.moisComptabilises || [];
+  saveDB();
+  evt.target.value = '';
+  _empruntImportTargetId = null;
+  toast(`${tableau.length} ligne(s) importée(s) pour "${emp.libelle}"`,'success');
+  renderEmprunts();
+}
+
+function empruntMoisGridHtml(emp) {
+  const tableau = emp.tableau || [];
+  if(!tableau.length) return `<span style="font-size:10px;color:var(--text2);font-style:italic;">Aucun tableau importé</span>`;
+  const done = emp.moisComptabilises || [];
+  const moisActuel = moisActuelYYYYMM();
+  const byMois = {};
+  tableau.forEach(r => { byMois[r.mois] = r; });
+  const years = [...new Set(tableau.map(r => r.mois.split('-')[0]))].sort();
+
+  const cell = (bg, fg, title, onclickAttr, cursor, content) =>
+    `<td style="padding:1px;border:none;"><span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:2px;background:${bg};color:${fg};font-size:7px;font-weight:700;font-family:var(--mono);cursor:${cursor};">${content}</span></td>`;
+
+  let html = `<table style="border-collapse:collapse;"><thead><tr><td style="padding:0;border:none;"></td>${years.map(y=>`<td style="font-size:8px;color:var(--text2);text-align:center;padding:0 1px;border:none;">${y}</td>`).join('')}</tr></thead><tbody>`;
+  for(let mIdx = 0; mIdx < 12; mIdx++) {
+    const lettre = MOIS_LABELS[mIdx].charAt(0).toUpperCase();
+    html += `<tr><td style="font-size:8px;color:var(--text2);text-align:right;padding:1px 3px 1px 0;border:none;">${lettre}</td>`;
+    years.forEach(y => {
+      const mois = y + '-' + String(mIdx+1).padStart(2,'0');
+      const row = byMois[mois];
+      if(!row) { html += `<td style="padding:1px;border:none;"></td>`; return; }
+      const isDone = done.includes(mois);
+      const isFuture = mois > moisActuel;
+      let bg, fg, title, onclickAttr = '', cursor = 'default';
+      if(isDone) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(mois)+' — comptabilisée (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
+      else if(isFuture) { bg='var(--line2)'; fg='var(--text2)'; title=moisLabelFromYYYYMM(mois)+' — à venir'; }
+      else { bg='var(--amber)'; fg='#332200'; title=moisLabelFromYYYYMM(mois)+' — cliquer pour comptabiliser'; onclickAttr=` onclick="comptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
+      html += cell(bg, fg, title, onclickAttr, cursor, lettre);
+    });
+    html += `</tr>`;
+  }
+  html += `</tbody></table>`;
+  return html;
+}
+
+function renderEmprunts() {
+  const list = ensureEmpruntsArray();
+  const body = document.getElementById('emprunts-body');
+  const empty = document.getElementById('emprunts-empty');
+  if(!body) return;
+
+  if(!list.length) {
+    body.innerHTML = '';
+    if(empty) empty.style.display = 'block';
+    document.querySelector('#tab-emprunts table').style.display = 'none';
+    updateNavCounts();
+    return;
+  }
+  if(empty) empty.style.display = 'none';
+  document.querySelector('#tab-emprunts table').style.display = '';
+
+  const moisActuel = moisActuelYYYYMM();
+  let totalCapitalRestant = 0;
+
+  body.innerHTML = list.slice().sort((a,b) => (a.libelle||'').localeCompare(b.libelle||'')).map(emp => {
+    const tableau = emp.tableau || [];
+    const done = emp.moisComptabilises || [];
+    // Capital restant dû : dernière ligne comptabilisée, sinon la 1ère ligne du tableau (capital de départ)
+    const derniereComptabilisee = tableau.slice().reverse().find(r => done.includes(r.mois));
+    const capitalRestant = derniereComptabilisee ? derniereComptabilisee.capitalRestant : (tableau[0] ? tableau[0].capitalDebut : emp.montantInitial || 0);
+    totalCapitalRestant += capitalRestant;
+
+    const rowActuelle = tableau.find(r => r.mois === moisActuel);
+    const peutComptabiliser = rowActuelle && !done.includes(moisActuel);
+    const btnMoisCourant = peutComptabiliser
+      ? `<button class="btn btn-sm btn-icon" onclick="comptabiliserEmpruntMois('${emp.id}','${moisActuel}')" title="Comptabiliser ${moisLabelFromYYYYMM(moisActuel)}" style="padding:1px 5px;font-size:10px;color:var(--green);">✓</button>`
+      : `<button class="btn btn-sm btn-icon" disabled title="Pas d'échéance à comptabiliser ce mois-ci" style="padding:1px 5px;font-size:10px;opacity:0.3;cursor:default;">✓</button>`;
+
+    return `<tr style="vertical-align:top;">
+      <td style="font-size:11px;padding-top:8px;overflow:hidden;">${emp.libelle||''}${emp.banque?`<br><span style="color:var(--text2);font-size:9px;">${emp.banque}</span>`:''}${emp.montantInitial?`<br><span style="color:var(--text2);font-size:9px;">Emprunté : ${fmt(emp.montantInitial)} €</span>`:''}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--text2);padding:8px 3px;overflow:hidden;">${emp.compteEmprunt||''}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--text2);padding:8px 3px;overflow:hidden;">${emp.compteInterets||''}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--text2);padding:8px 3px;overflow:hidden;">${emp.compteCredit||''}</td>
+      <td class="td-num" style="font-size:10px;font-weight:600;padding:8px 3px;overflow:hidden;">${fmt(capitalRestant)}</td>
+      <td style="text-align:center;padding:8px 3px;overflow:hidden;">
+        <button class="btn btn-sm" onclick="triggerEmpruntImport('${emp.id}')" title="Importer / remplacer le tableau d'amortissement" style="padding:1px 3px;font-size:8px;">${tableau.length?'REMPL.':'IMPORT'}</button>
+      </td>
+      <td style="overflow-x:auto;max-width:0;">${empruntMoisGridHtml(emp)}</td>
+      <td style="text-align:center;white-space:nowrap;padding-top:8px;">
+        ${btnMoisCourant}
+        <button class="btn btn-sm btn-icon" onclick="openEmpruntMarquerModal('${emp.id}')" title="Marquer des mois comme déjà comptabilisés (sans écriture)" style="padding:1px 5px;font-size:10px;">⚙</button>
+        <button class="btn btn-sm btn-icon" onclick="openEmpruntModal('${emp.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteEmprunt('${emp.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  body.innerHTML += `<tr style="border-top:2px solid var(--line2);font-weight:700;">
+    <td colspan="4" style="text-align:right;font-size:11px;padding:8px 4px;">TOTAL CAPITAL RESTANT DÛ</td>
+    <td class="td-num" style="font-size:12px;color:var(--cyan);padding:8px 4px;">${fmt(totalCapitalRestant)}</td>
+    <td colspan="3"></td>
+  </tr>`;
+
+  updateNavCounts();
+}
+
+function openEmpruntModal(editId) {
+  document.getElementById('emp-edit-id').value = editId || '';
+  if(editId) {
+    const emp = ensureEmpruntsArray().find(e => e.id === editId);
+    if(!emp) return;
+    document.getElementById('emprunt-modal-title').textContent = '🏦 MODIFIER L\'EMPRUNT';
+    document.getElementById('emp-libelle').value = emp.libelle||'';
+    document.getElementById('emp-banque').value = emp.banque||'';
+    document.getElementById('emp-date-debut').value = emp.dateDebut||'';
+    document.getElementById('emp-montant-initial').value = emp.montantInitial||'';
+    document.getElementById('emp-compte-emprunt').value = emp.compteEmprunt||'';
+    document.getElementById('emp-compte-interets').value = emp.compteInterets||'';
+    document.getElementById('emp-compte-credit').value = emp.compteCredit||'';
+  } else {
+    document.getElementById('emprunt-modal-title').textContent = '🏦 NOUVEL EMPRUNT';
+    ['emp-libelle','emp-banque','emp-date-debut','emp-montant-initial','emp-compte-emprunt','emp-compte-interets','emp-compte-credit'].forEach(id => {
+      const el = document.getElementById(id); if(el) el.value = '';
+    });
+  }
+  document.getElementById('emprunt-modal').style.display = 'flex';
+}
+function closeEmpruntModal() { document.getElementById('emprunt-modal').style.display = 'none'; }
+
+function saveEmprunt() {
+  const editId = document.getElementById('emp-edit-id').value;
+  const libelle = document.getElementById('emp-libelle').value.trim();
+  const banque = document.getElementById('emp-banque').value.trim();
+  const dateDebut = document.getElementById('emp-date-debut').value;
+  const montantInitial = parseFloat(document.getElementById('emp-montant-initial').value) || 0;
+  const compteEmprunt = document.getElementById('emp-compte-emprunt').value.trim();
+  const compteInterets = document.getElementById('emp-compte-interets').value.trim();
+  const compteCredit = document.getElementById('emp-compte-credit').value.trim();
+
+  if(!libelle) { toast('Le libellé est requis','error'); return; }
+  if(!compteEmprunt || compteEmprunt.length!==6) { toast('Compte d\'emprunt invalide (6 chiffres)','error'); return; }
+  if(!compteInterets || compteInterets.length!==6) { toast('Compte d\'intérêts invalide (6 chiffres)','error'); return; }
+  if(!compteCredit || compteCredit.length!==6) { toast('Compte à créditer invalide (6 chiffres)','error'); return; }
+
+  const list = ensureEmpruntsArray();
+  if(editId) {
+    const emp = list.find(e => e.id === editId);
+    if(emp) Object.assign(emp, {libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit});
+    toast('Emprunt modifié','success');
+  } else {
+    list.push({id:crypto.randomUUID(), libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit, tableau:[], moisComptabilises:[]});
+    toast('Emprunt ajouté — pensez à importer son tableau d\'amortissement','success');
+  }
+  saveDB();
+  closeEmpruntModal();
+  renderEmprunts();
+}
+
+let empruntDeleteTargetId = null;
+function askDeleteEmprunt(id) {
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+  empruntDeleteTargetId = id;
+  document.getElementById('emprunt-delete-msg').innerHTML = `Supprimer l'emprunt <strong style="color:var(--cyan)">${emp.libelle}</strong> ?<br>Les écritures déjà comptabilisées ne seront pas supprimées.`;
+  document.getElementById('emprunt-delete-modal').style.display = 'flex';
+}
+function closeEmpruntDeleteModal() { document.getElementById('emprunt-delete-modal').style.display = 'none'; empruntDeleteTargetId = null; }
+function confirmDeleteEmprunt() {
+  if(!empruntDeleteTargetId) return;
+  DB.emprunts = ensureEmpruntsArray().filter(e => e.id !== empruntDeleteTargetId);
+  saveDB();
+  closeEmpruntDeleteModal();
+  renderEmprunts();
+  toast('Emprunt supprimé','warn');
+}
+
+// Comptabilise un mois donné pour un emprunt : débit intérêts + débit capital remboursé / crédit compte banque
+// ── Marquer des mois comme déjà comptabilisés, sans passer d'écriture ──
+// Utile pour rattraper l'historique quand les écritures ont déjà été passées manuellement avant l'usage de ce module.
+function openEmpruntMarquerModal(id) {
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+  document.getElementById('emp-marquer-id').value = id;
+  document.getElementById('emprunt-marquer-title').textContent = '⚙ MARQUER — ' + emp.libelle;
+  document.getElementById('emp-marquer-mois').value = moisActuelYYYYMM();
+  document.getElementById('emprunt-marquer-modal').style.display = 'flex';
+}
+function closeEmpruntMarquerModal() { document.getElementById('emprunt-marquer-modal').style.display = 'none'; }
+
+function confirmMarquerEmpruntFait() {
+  const id = document.getElementById('emp-marquer-id').value;
+  const moisLimite = document.getElementById('emp-marquer-mois').value;
+  if(!moisLimite) { toast('Choisissez un mois','error'); return; }
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+
+  emp.moisComptabilises = emp.moisComptabilises || [];
+  const tableau = emp.tableau || [];
+  let count = 0;
+  tableau.forEach(row => {
+    if(row.mois <= moisLimite && !emp.moisComptabilises.includes(row.mois)) {
+      emp.moisComptabilises.push(row.mois);
+      count++;
+    }
+  });
+
+  if(!count) { toast('Aucun mois à marquer (déjà à jour ou hors tableau importé)','info'); closeEmpruntMarquerModal(); return; }
+  saveDB();
+  closeEmpruntMarquerModal();
+  toast(`${count} mois marqué(s) comme déjà comptabilisé(s) — aucune écriture passée`,'success');
+  renderEmprunts();
+}
+
+function comptabiliserEmpruntMois(id, mois) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+  const row = (emp.tableau||[]).find(r => r.mois === mois);
+  if(!row) { toast('Aucune ligne trouvée pour ce mois dans le tableau','error'); return; }
+  emp.moisComptabilises = emp.moisComptabilises || [];
+  if(emp.moisComptabilises.includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
+
+  const dateEcr = row.dateEcheance || (mois+'-01');
+  const libelleEcriture = `${emp.libelle} - ${moisLabelFromYYYYMM(mois)}`;
+  const io = Date.now() + Math.floor(Math.random()*1000);
+
+  emp.moisIo = emp.moisIo || {};
+  emp.moisIo[mois] = io;
+
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:'', debit:row.capitalRembourse, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:'', debit:row.interets, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:'', debit:0, credit:row.mensualite});
+
+  emp.moisComptabilises.push(mois);
+  renum(); saveDB(); updateNavCounts();
+  toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  renderEmprunts();
+}
+
+// Annule la comptabilisation d'un mois pour un emprunt : supprime l'écriture et repasse la case en orange
+function decomptabiliserEmpruntMois(id, mois) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp) return;
+  const io = emp.moisIo && emp.moisIo[mois];
+  if(io !== undefined) {
+    DB.ecritures = DB.ecritures.filter(e => e._io !== io);
+    delete emp.moisIo[mois];
+  } else {
+    toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
+  }
+  emp.moisComptabilises = (emp.moisComptabilises||[]).filter(m => m !== mois);
+  renum(); saveDB(); updateNavCounts();
+  toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  renderEmprunts();
+}
+
+// ══════════════════════════════════════════════
+// MODULE ÉCRITURES D'INVENTAIRE — Constatation du résultat
+// ══════════════════════════════════════════════
+
+// Vérifie si le résultat a déjà été constaté cette année (présence d'une écriture CLOTURE au 31/12)
+function resultatDejaConstate() {
+  const dateCloture = CURRENT_YEAR + '-12-31';
+  return DB.ecritures.some(e => e.numDoc === 'CLOTURE' && e.date === dateCloture);
+}
+
+// Calcule le résultat net de l'exercice (produits classe 7 - charges classe 6),
+// uniquement pour connaître le montant à constater — aucun de ces comptes n'est modifié.
+function computeResultatExercice() {
+  let totalCharges = 0, totalProduits = 0;
+  DB.ecritures.forEach(e => {
+    const c = String(e.compte);
+    if(c[0] === '6') totalCharges += (e.debit||0) - (e.credit||0);
+    else if(c[0] === '7') totalProduits += (e.credit||0) - (e.debit||0);
+  });
+  totalCharges = Math.round(totalCharges*100)/100;
+  totalProduits = Math.round(totalProduits*100)/100;
+  const resultat = Math.round((totalProduits - totalCharges)*100)/100;
+  return {totalCharges, totalProduits, resultat};
+}
+
+// ══════════════════════════════════════════════
+// INTÉRÊTS DES COMPTES COURANTS D'ASSOCIÉS
+// ══════════════════════════════════════════════
+function ensureCcInteretsConfig() { if(!DB.ccInterets || typeof DB.ccInterets !== 'object') DB.ccInterets = {}; return DB.ccInterets; }
+
+// Liste des comptes 455xxx utilisés dans l'exercice, avec leur libellé
+function getComptes455() {
+  const map = {};
+  DB.ecritures.forEach(e => {
+    const c = String(e.compte);
+    if(!c.startsWith('455')) return;
+    if(!map[c]) map[c] = e.libelleCompte || getLib(c) || c;
+  });
+  return Object.keys(map).sort().map(c => ({compte:c, libelle:map[c]}));
+}
+
+function renderCCInteretsTauxList() {
+  const container = document.getElementById('cc-interets-taux-list');
+  if(!container) return;
+  const comptes = getComptes455();
+  const config = ensureCcInteretsConfig();
+  if(!comptes.length) {
+    container.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;">Aucun compte courant d'associé (455) trouvé dans cet exercice.</div>`;
+    return;
+  }
+  container.innerHTML = comptes.map(c => {
+    const taux = config[c.compte]?.taux ?? '';
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);width:65px;">${c.compte}</span>
+      <span style="flex:1;font-size:11px;">${c.libelle}</span>
+      <input type="number" step="0.01" value="${taux}" placeholder="Taux %" onchange="saveTauxCC('${c.compte}', this.value)" style="width:90px;font-family:var(--mono);height:28px;">
+    </div>`;
+  }).join('');
+}
+
+function saveTauxCC(compte, value) {
+  const config = ensureCcInteretsConfig();
+  const taux = parseFloat(value) || 0;
+  config[compte] = {taux};
+  saveDB();
+}
+
+// Calcule le tableau d'intérêts d'un compte courant : mouvements chronologiques,
+// solde après chaque mouvement, nombre de jours jusqu'au mouvement suivant (ou fin d'exercice),
+// intérêt = solde × taux/100 / 365 × jours.
+function computeInteretsCompte(compte, taux) {
+  const mvts = DB.ecritures.filter(e => String(e.compte) === compte).sort((a,b) => a.date.localeCompare(b.date));
+  const byDate = {};
+  mvts.forEach(e => {
+    if(!byDate[e.date]) byDate[e.date] = {credit:0, debit:0};
+    byDate[e.date].credit += e.credit||0;
+    byDate[e.date].debit += e.debit||0;
+  });
+  const dates = Object.keys(byDate).sort();
+  const yearNum = isNaN(parseInt(CURRENT_YEAR)) ? new Date().getFullYear() : parseInt(CURRENT_YEAR);
+  const finExercice = (yearNum+1) + '-01-01';
+
+  let solde = 0;
+  const periodes = [];
+  let totalInteret = 0;
+
+  dates.forEach((date, i) => {
+    const mvt = byDate[date];
+    solde = Math.round((solde + mvt.credit - mvt.debit) * 100) / 100;
+    const dateSuivante = (i+1 < dates.length) ? dates[i+1] : finExercice;
+    const jours = Math.round((new Date(dateSuivante) - new Date(date)) / 86400000);
+    const interet = Math.round(solde * (taux/100) / 365 * jours * 100) / 100;
+    totalInteret += interet;
+    periodes.push({date, mouvementCredit: mvt.credit, mouvementDebit: mvt.debit, solde, dateSuivante, jours, interet});
+  });
+
+  totalInteret = Math.round(totalInteret*100)/100;
+  return {periodes, totalInteret};
+}
+
+function editerTableauCCInterets() {
+  const comptes = getComptes455();
+  const config = ensureCcInteretsConfig();
+  if(!comptes.length) { toast("Aucun compte courant d'associé trouvé dans cet exercice","error"); return; }
+
+  const sectionsHtml = comptes.map(c => {
+    const taux = config[c.compte]?.taux || 0;
+    const {periodes, totalInteret} = computeInteretsCompte(c.compte, taux);
+    const rows = periodes.map(p => {
+      const mvtTxt = p.mouvementCredit ? `+${fmt(p.mouvementCredit)}` : (p.mouvementDebit ? `-${fmt(p.mouvementDebit)}` : '—');
+      return `<tr>
+        <td style="padding:5px 8px;border:1px solid #ccc;">${fmtDateFr(p.date)}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${mvtTxt}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${fmt(p.solde)}€</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${p.jours}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${fmt(p.interet)}€</td>
+      </tr>`;
+    }).join('');
+    return `<div style="margin-bottom:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:11px;">
+        <tr><td colspan="5" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+          ${c.compte} — ${c.libelle} — Taux : ${taux}%
+        </td></tr>
+        <tr>
+          <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">Date mouvement</td>
+          <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Mouvement</td>
+          <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Solde</td>
+          <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Jours</td>
+          <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Intérêt</td>
+        </tr>
+        ${rows}
+        <tr><td colspan="4" style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL INTÉRÊTS ${CURRENT_YEAR}</td>
+        <td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalInteret)}€</td></tr>
+      </table>
+    </div>`;
+  }).join('');
+
+  const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
+    ${rptHeader('Calcul des intérêts de comptes courants', `Exercice ${CURRENT_YEAR}`)}
+    ${sectionsHtml}
+    ${rptFooter()}
+  </div>`;
+
+  printDoc(html, `Interets_CC_${CURRENT_YEAR}`, false);
+}
+
+function ccInteretsDejaComptabilises() {
+  const dateEcr = CURRENT_YEAR + '-12-31';
+  return DB.ecritures.some(e => e.numDoc === 'OD/Calcul des intérêts de c:c' && e.date === dateEcr);
+}
+
+function openCCInteretsConfirmModal() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  if(ccInteretsDejaComptabilises()) {
+    toast('Les intérêts de comptes courants ont déjà été comptabilisés pour cet exercice','error');
+    return;
+  }
+  const comptes = getComptes455();
+  const config = ensureCcInteretsConfig();
+  if(!comptes.length) { toast("Aucun compte courant d'associé trouvé","error"); return; }
+
+  const lignes = comptes.map(c => {
+    const taux = config[c.compte]?.taux || 0;
+    const {totalInteret} = computeInteretsCompte(c.compte, taux);
+    return {compte:c.compte, libelle:c.libelle, taux, interet: totalInteret};
+  }).filter(l => Math.abs(l.interet) > 0.001);
+
+  if(!lignes.length) { toast('Aucun intérêt à comptabiliser (taux à 0 ou soldes nuls)','error'); return; }
+  window._ccInteretsLignes = lignes;
+
+  const totalGeneral = Math.round(lignes.reduce((s,l)=>s+l.interet,0)*100)/100;
+  const body = document.getElementById('cc-interets-body');
+  body.innerHTML = `
+    <p style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
+      Pour chaque compte courant, débit du <strong>661500</strong> en contrepartie du compte 455 correspondant, au 31/12/${CURRENT_YEAR}.
+    </p>
+    <table style="font-size:11px;">
+      <thead><tr><th>Compte</th><th>Libellé</th><th class="td-num">Taux</th><th class="td-num">Intérêt</th></tr></thead>
+      <tbody>
+        ${lignes.map(l=>`<tr><td style="font-family:var(--mono);color:var(--cyan);">${l.compte}</td><td>${l.libelle}</td><td class="td-num">${l.taux}%</td><td class="td-num">${fmt(l.interet)}€</td></tr>`).join('')}
+        <tr style="font-weight:700;border-top:1px solid var(--line2);"><td colspan="3" style="text-align:right;">TOTAL</td><td class="td-num">${fmt(totalGeneral)}€</td></tr>
+      </tbody>
+    </table>
+  `;
+  document.getElementById('cc-interets-modal').style.display = 'flex';
+}
+function closeCCInteretsConfirmModal() { document.getElementById('cc-interets-modal').style.display = 'none'; }
+
+function confirmerComptabiliserCCInterets() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const lignes = window._ccInteretsLignes;
+  if(!lignes || !lignes.length) return;
+  if(ccInteretsDejaComptabilises()) { toast('Déjà comptabilisé','error'); closeCCInteretsConfirmModal(); return; }
+
+  const dateEcr = CURRENT_YEAR + '-12-31';
+  const libelleEcriture = "Intérêts des comptes courant d'associés";
+  const numDoc = 'OD/Calcul des intérêts de c:c';
+
+  lignes.forEach(l => {
+    // Une écriture distincte par compte courant (chacune avec son propre numéro de pièce comptable)
+    const io = Date.now() + Math.floor(Math.random()*1000);
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'661500', libelleCompte:getLib('661500')||'Intérêts des comptes courants', libelleEcriture, numDoc, debit:l.interet, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:l.compte, libelleCompte:l.libelle, libelleEcriture, numDoc, debit:0, credit:l.interet});
+  });
+
+  renum(); saveDB(); updateNavCounts();
+  closeCCInteretsConfirmModal();
+  toast(`Intérêts de comptes courants comptabilisés pour ${CURRENT_YEAR}`,'success');
+}
+
+function renderInventaire() {
+  renderCCInteretsTauxList();
+}
+
+function openInventaireModal() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  if(resultatDejaConstate()) {
+    toast('Le résultat de cet exercice a déjà été constaté — supprimez l\'écriture CLOTURE existante dans le Grand Livre avant de recommencer','error');
+    return;
+  }
+  const {totalCharges, totalProduits, resultat} = computeResultatExercice();
+  window._inventaireCalc = {resultat};
+
+  const isBenefice = resultat >= 0;
+  const rn = (v) => fmt(v);
+  const compteResultat = isBenefice ? '120000' : '129000';
+  const compteContrepartie = isBenefice ? '800120' : '800129';
+
+  const body = document.getElementById('inventaire-body');
+  body.innerHTML = `
+    <p style="font-size:11px;color:var(--text2);margin-bottom:14px;line-height:1.6;">
+      Cette opération comptabilise uniquement le résultat de l'exercice
+      <strong style="color:var(--cyan);">${CURRENT_YEAR}</strong> — aucun compte de charges ou de produits n'est modifié.
+    </p>
+    <div style="display:flex;gap:10px;margin-bottom:14px;">
+      <div style="flex:1;background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:10px;text-align:center;">
+        <div style="font-size:9px;color:var(--text2);letter-spacing:0.05em;">TOTAL PRODUITS</div>
+        <div style="font-size:16px;font-weight:700;color:var(--green);font-family:var(--mono);">${rn(totalProduits)} €</div>
+      </div>
+      <div style="flex:1;background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:10px;text-align:center;">
+        <div style="font-size:9px;color:var(--text2);letter-spacing:0.05em;">TOTAL CHARGES</div>
+        <div style="font-size:16px;font-weight:700;color:var(--red);font-family:var(--mono);">${rn(totalCharges)} €</div>
+      </div>
+      <div style="flex:1;background:${isBenefice?'rgba(68,232,122,0.1)':'rgba(255,107,107,0.1)'};border:1px solid ${isBenefice?'rgba(68,232,122,0.3)':'rgba(255,107,107,0.3)'};border-radius:var(--radius);padding:10px;text-align:center;">
+        <div style="font-size:9px;color:var(--text2);letter-spacing:0.05em;">RÉSULTAT (${isBenefice?'BÉNÉFICE':'PERTE'})</div>
+        <div style="font-size:16px;font-weight:700;color:${isBenefice?'var(--green)':'var(--red)'};font-family:var(--mono);">${rn(Math.abs(resultat))} €</div>
+      </div>
+    </div>
+    <table style="font-size:11px;">
+      <thead><tr><th>Compte</th><th>Libellé</th><th class="td-num">Débit</th><th class="td-num">Crédit</th></tr></thead>
+      <tbody>
+        ${isBenefice ? `
+          <tr><td style="font-family:var(--mono);color:var(--cyan);">${compteContrepartie}</td><td>Contrepartie résultat (bénéfice)</td><td class="td-num">${rn(resultat)}</td><td class="td-num"></td></tr>
+          <tr><td style="font-family:var(--mono);color:var(--cyan);">${compteResultat}</td><td>Résultat de l'exercice (bénéfice)</td><td class="td-num"></td><td class="td-num">${rn(resultat)}</td></tr>
+        ` : `
+          <tr><td style="font-family:var(--mono);color:var(--cyan);">${compteResultat}</td><td>Résultat de l'exercice (perte)</td><td class="td-num">${rn(Math.abs(resultat))}</td><td class="td-num"></td></tr>
+          <tr><td style="font-family:var(--mono);color:var(--cyan);">${compteContrepartie}</td><td>Contrepartie résultat (perte)</td><td class="td-num"></td><td class="td-num">${rn(Math.abs(resultat))}</td></tr>
+        `}
+      </tbody>
+    </table>
+  `;
+  document.getElementById('inventaire-modal').style.display = 'flex';
+}
+function closeInventaireModal() { document.getElementById('inventaire-modal').style.display = 'none'; }
+
+function confirmerConstatationResultat() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const calc = window._inventaireCalc;
+  if(!calc) return;
+  if(resultatDejaConstate()) { toast('Déjà constaté','error'); closeInventaireModal(); return; }
+
+  const {resultat} = calc;
+  const dateEcr = CURRENT_YEAR + '-12-31';
+  const isBenefice = resultat >= 0;
+  const libelleEcriture = `Résultat de l'exercice (${isBenefice ? 'bénéfice' : 'perte'})`;
+  const io = Date.now();
+
+  if(isBenefice) {
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'800120', libelleCompte:'Contrepartie résultat (bénéfice)', libelleEcriture, numDoc:'CLOTURE', debit:resultat, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc:'CLOTURE', debit:0, credit:resultat});
+  } else {
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc:'CLOTURE', debit:Math.abs(resultat), credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'800129', libelleCompte:'Contrepartie résultat (perte)', libelleEcriture, numDoc:'CLOTURE', debit:0, credit:Math.abs(resultat)});
+  }
+
+  renum(); saveDB(); updateNavCounts();
+  closeInventaireModal();
+  toast(`Résultat de l'exercice ${CURRENT_YEAR} constaté (${isBenefice?'bénéfice':'perte'} de ${fmt(Math.abs(resultat))} €)`,'success');
+  renderInventaire();
+}
 
 // ══════════════════════════════════════════════
 // BOOT
@@ -5031,14 +7823,32 @@ async function boot() {
   applyExerciseStatus();
   startLiveSync();
   checkMonthlyExport();
+  // L'alerte ne doit jamais apparaître avant que l'utilisateur soit connecté
+  if(sessionStorage.getItem('sci_auth') === '1') checkEcheanciersExpirationAuBoot();
 }
 // ══════════════════════════════════════════════
 // MODULE IMMOBILISATIONS
 // ══════════════════════════════════════════════
 function ensureImmoArray() { if(!Array.isArray(DB.immobilisations)) DB.immobilisations = []; return DB.immobilisations; }
 
+function toggleImmoAmortFields() {
+  const nonAmort = document.getElementById('immo-non-amortissable').checked;
+  const duree = document.getElementById('immo-duree');
+  const dotation = document.getElementById('immo-compte-dotation');
+  const amort = document.getElementById('immo-compte-amort');
+  [duree, dotation, amort].forEach(el => {
+    el.disabled = nonAmort;
+    if(nonAmort) el.value = '';
+  });
+  ['immo-field-duree','immo-field-dotation','immo-field-amort'].forEach(id => {
+    const field = document.getElementById(id);
+    if(field) field.style.opacity = nonAmort ? '0.4' : '1';
+  });
+}
+
 // Calcule le tableau d'amortissement linéaire avec prorata temporis (jours réels / jours dans l'année)
 function computeAmortSchedule(immo) {
+  if(immo.nonAmortissable) return [];
   const valeurBrute = parseFloat(immo.valeurBrute) || 0;
   const duree = parseInt(immo.dureeAnnees) || 1;
   const dateAchat = immo.dateAchat;
@@ -5086,46 +7896,235 @@ function computeAmortSchedule(immo) {
   return schedule;
 }
 
+function immoRootLabel(root) {
+  const map = {
+    '211': 'Terrains',
+    '212': 'Agencements et aménagements de terrains',
+    '213': 'Constructions',
+    '214': "Constructions sur sol d'autrui",
+    '215': 'Installations techniques, matériel et outillage',
+    '218': 'Autres immobilisations corporelles',
+    '231': 'Immobilisations corporelles en cours',
+    '261': 'Titres de participation',
+    '271': 'Titres immobilisés',
+    '275': 'Dépôts et cautionnements versés',
+  };
+  return map[root] || ('Compte '+root);
+}
+
+// ══════════════════════════════════════════════
+// REGISTRE DES IMMOBILISATIONS — Édition comptable
+// ══════════════════════════════════════════════
+function buildRegistreImmoData() {
+  const list = ensureImmoArray();
+  const year = parseInt(CURRENT_YEAR);
+  const groups = {};
+  list.forEach(immo => {
+    const root = String(immo.compteImmo||'').slice(0,3) || '???';
+    if(!groups[root]) groups[root] = [];
+    const schedule = computeAmortSchedule(immo);
+    const anterieur = immo.nonAmortissable ? null : schedule.filter(s => s.annee < year).reduce((max,s) => s.cumul, 0);
+    const exerciceRow = immo.nonAmortissable ? null : schedule.find(s => s.annee === year);
+    const exercice = exerciceRow ? exerciceRow.dotation : 0;
+    const valeurBrute = parseFloat(immo.valeurBrute) || 0;
+    const valeurResiduelle = immo.nonAmortissable ? valeurBrute : Math.round((valeurBrute - (anterieur||0) - exercice) * 100) / 100;
+    const taux = immo.nonAmortissable ? null : (immo.dureeAnnees ? Math.round((1/immo.dureeAnnees)*10000)/10000 : null);
+    groups[root].push({
+      compte: immo.compteImmo, libelle: immo.libelle, dateAchat: immo.dateAchat, valeurBrute,
+      taux, anterieur: anterieur||0, exercice, valeurResiduelle,
+      nonAmortissable: !!immo.nonAmortissable
+    });
+  });
+  const sortedRoots = Object.keys(groups).sort();
+  return sortedRoots.map(root => ({
+    root, label: immoRootLabel(root),
+    items: groups[root].sort((a,b) => String(a.compte).localeCompare(String(b.compte)))
+  }));
+}
+
+function renderRegistreImmoHTML() {
+  const groups = buildRegistreImmoData();
+  const ORANGE = '#e84b0f', ORANGE_LIGHT = '#fde8df';
+  const rn = (v) => v===null||v===undefined ? '' : fmt(v);
+  const rt = (v) => v===null||v===undefined ? '' : (v*100).toFixed(2)+'%';
+
+  const groupsHtml = groups.map(g => {
+    const rows = g.items.map(it => `<tr>
+      <td style="font-size:9px;">${it.libelle}</td>
+      <td style="font-family:var(--mono,monospace);font-size:9px;white-space:nowrap;">${fmtDateGL(it.dateAchat)}</td>
+      <td class="r-num" style="font-size:9px;">${rn(it.valeurBrute)}</td>
+      <td class="r-num" style="font-size:9px;">${it.nonAmortissable?'—':rt(it.taux)}</td>
+      <td class="r-num" style="font-size:9px;">${it.nonAmortissable?'—':rn(it.anterieur)}</td>
+      <td class="r-num" style="font-size:9px;">${it.nonAmortissable?'—':rn(it.exercice)}</td>
+      <td class="r-num" style="font-size:9px;font-weight:600;">${rn(it.valeurResiduelle)}</td>
+    </tr>`).join('');
+
+    return `<div style="margin-bottom:16px;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr style="background-color:${ORANGE};-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+            <th colspan="7" style="text-align:left;color:#fff;font-weight:700;font-size:10px;padding:5px 6px;">${g.root} — ${g.label.toUpperCase()}</th>
+          </tr>
+          <tr style="background-color:${ORANGE_LIGHT};-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+            <th style="text-align:left;font-size:9px;padding:4px 6px;">Description</th>
+            <th style="text-align:left;font-size:9px;">Date acq.</th>
+            <th class="r-num" style="font-size:9px;">Prix acq.</th>
+            <th class="r-num" style="font-size:9px;">Taux</th>
+            <th class="r-num" style="font-size:9px;">Antérieur</th>
+            <th class="r-num" style="font-size:9px;">Exercice</th>
+            <th class="r-num" style="font-size:9px;">Val. résiduelle</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  return `<div class="rpt">
+    ${rptHeader('Registre des Immobilisations', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR} — Montants en euros`)}
+    ${groupsHtml || '<p style="font-size:12px;color:#888;">Aucune immobilisation enregistrée.</p>'}
+    ${rptFooter()}
+  </div>`;
+}
+
+async function exportRegistreImmo(fmt) {
+  if(fmt === 'pdf') {
+    printDoc(renderRegistreImmoHTML(), `Registre_Immobilisations_${CURRENT_YEAR}`);
+    return;
+  }
+  // Excel
+  if(typeof XLSX === 'undefined') {
+    await new Promise((res,rej) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const groups = buildRegistreImmoData();
+  const ORANGE = 'E84B0F', ORANGE_LIGHT = 'FDE8DF';
+  const hdrS = {font:{bold:true,color:{rgb:'FFFFFF'},name:'Arial',sz:10}, fill:{fgColor:{rgb:ORANGE}}, alignment:{horizontal:'left'}};
+  const subS = {font:{bold:true,name:'Arial',sz:9}, fill:{fgColor:{rgb:ORANGE_LIGHT}}, alignment:{horizontal:'left'}};
+  const subSR = {...subS, alignment:{horizontal:'right'}};
+  const nrm = {font:{name:'Arial',sz:9}, alignment:{horizontal:'left'}};
+  const nrmR = {font:{name:'Arial',sz:9}, alignment:{horizontal:'right'}};
+
+  function mkCell(v,s) { return {v: v===null||v===undefined?'':v, s, t: typeof v==='number'?'n':'s'}; }
+
+  const rows = [];
+  rows.push([mkCell('REGISTRE DES IMMOBILISATIONS — Exercice '+CURRENT_YEAR, hdrS)]);
+  rows.push([]);
+
+  groups.forEach(g => {
+    rows.push([mkCell(g.root+' — '+g.label.toUpperCase(), hdrS), mkCell('',hdrS), mkCell('',hdrS), mkCell('',hdrS), mkCell('',hdrS), mkCell('',hdrS), mkCell('',hdrS)]);
+    rows.push([mkCell('Description',subS), mkCell('Date acq.',subS), mkCell('Prix acq.',subSR), mkCell('Taux',subSR), mkCell('Antérieur',subSR), mkCell('Exercice',subSR), mkCell('Val. résiduelle',subSR)]);
+    g.items.forEach(it => {
+      rows.push([
+        mkCell(it.libelle, nrm),
+        mkCell(it.dateAchat ? fmtDateGL(it.dateAchat) : '', nrm),
+        mkCell(it.valeurBrute, nrmR),
+        mkCell(it.nonAmortissable ? '—' : (it.taux!==null ? (it.taux*100).toFixed(2)+'%' : ''), nrmR),
+        mkCell(it.nonAmortissable ? '—' : it.anterieur, nrmR),
+        mkCell(it.nonAmortissable ? '—' : it.exercice, nrmR),
+        mkCell(it.valeurResiduelle, nrmR),
+      ]);
+    });
+    rows.push([]);
+  });
+
+  const ws = {};
+  rows.forEach((row, ri) => {
+    row.forEach((cell, ci) => {
+      if(!cell) return;
+      const ref = XLSX.utils.encode_cell({r:ri, c:ci});
+      ws[ref] = {v: cell.v, t: cell.t||'s'};
+      if(cell.s) ws[ref].s = cell.s;
+    });
+  });
+  ws['!ref'] = XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:Math.max(rows.length-1,0), c:6}});
+  ws['!cols'] = [{wch:38},{wch:14},{wch:13},{wch:9},{wch:13},{wch:13},{wch:15}];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Registre Immos');
+  XLSX.writeFile(wb, `Registre_Immobilisations_${CURRENT_YEAR}.xlsx`, {cellStyles:true, bookType:'xlsx'});
+  toast('Export Excel du registre généré', 'success');
+}
+
 function renderImmos() {
   const list = ensureImmoArray();
-  const body = document.getElementById('immos-body');
+  const groupsWrap = document.getElementById('immos-groups');
   const empty = document.getElementById('immos-empty');
-  if(!body) return;
+  if(!groupsWrap) return;
 
   if(!list.length) {
-    body.innerHTML = '';
+    groupsWrap.innerHTML = '';
     if(empty) empty.style.display = 'block';
-    document.querySelector('#immos-list-wrap table').style.display = 'none';
     updateNavCounts();
     return;
   }
   if(empty) empty.style.display = 'none';
-  document.querySelector('#immos-list-wrap table').style.display = '';
 
   const rn = (v) => fmt(v);
+  const yearNow = String(CURRENT_YEAR);
 
-  body.innerHTML = list.slice().sort((a,b) => (a.dateAchat||'').localeCompare(b.dateAchat||'')).map(immo => {
-    const schedule = computeAmortSchedule(immo);
-    const yearNow = String(CURRENT_YEAR);
-    // Cumul amorti jusqu'à l'exercice courant inclus
-    const cumulActuel = schedule.filter(s => s.annee <= parseInt(yearNow)).reduce((max,s) => s.cumul, 0);
-    const vncActuelle = Math.round((parseFloat(immo.valeurBrute) - cumulActuel) * 100) / 100;
-    return `<tr>
-      <td style="font-size:11px;">${immo.libelle||''}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${immo.compteImmo||''}</td>
-      <td style="font-family:var(--mono);font-size:10px;">${fmtDateGL(immo.dateAchat)}</td>
-      <td class="td-num" style="font-size:11px;">${rn(immo.valeurBrute)}</td>
-      <td style="font-size:11px;text-align:center;">${immo.dureeAnnees} ans</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteDotation||''}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteAmort||''}</td>
-      <td class="td-num" style="font-size:11px;color:var(--amber);">${rn(cumulActuel)}</td>
-      <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
-      <td style="text-align:center;white-space:nowrap;">
-        <button class="btn btn-sm btn-icon" onclick="viewImmoSchedule('${immo.id}')" title="Tableau d'amortissement" style="padding:1px 5px;font-size:10px;">📊</button>
-        <button class="btn btn-sm btn-icon" onclick="openImmoModal('${immo.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
-        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteImmo('${immo.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
-      </td>
-    </tr>`;
+  // Regrouper par racine comptable (3 premiers chiffres du compte d'immobilisation)
+  const groups = {};
+  list.forEach(immo => {
+    const root = String(immo.compteImmo||'').slice(0,3) || '???';
+    if(!groups[root]) groups[root] = [];
+    groups[root].push(immo);
+  });
+  const sortedRoots = Object.keys(groups).sort();
+
+  groupsWrap.innerHTML = sortedRoots.map(root => {
+    const items = groups[root].slice().sort((a,b) => String(a.compteImmo||'').localeCompare(String(b.compteImmo||'')));
+    const rowsHtml = items.map(immo => {
+      const schedule = computeAmortSchedule(immo);
+      const cumulActuel = immo.nonAmortissable ? 0 : schedule.filter(s => s.annee <= parseInt(yearNow)).reduce((max,s) => s.cumul, 0);
+      const vncActuelle = immo.nonAmortissable ? parseFloat(immo.valeurBrute) : Math.round((parseFloat(immo.valeurBrute) - cumulActuel) * 100) / 100;
+      const scheduleBtn = immo.nonAmortissable
+        ? ''
+        : `<button class="btn btn-sm btn-icon" onclick="viewImmoSchedule('${immo.id}')" title="Tableau d'amortissement" style="padding:1px 5px;font-size:10px;">📊</button>`;
+      return `<tr${immo.nonAmortissable ? ' style="opacity:0.85;"' : ''}>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${immo.compteImmo||''}</td>
+        <td style="font-size:11px;">${immo.libelle||''}${immo.nonAmortissable ? ' <span style="font-size:9px;color:var(--text2);border:1px solid var(--line2);border-radius:3px;padding:1px 5px;margin-left:4px;">TERRAIN</span>' : ''}</td>
+        <td style="font-family:var(--mono);font-size:10px;">${fmtDateGL(immo.dateAchat)}</td>
+        <td class="td-num" style="font-size:11px;">${rn(immo.valeurBrute)}</td>
+        <td style="font-size:11px;text-align:center;">${immo.nonAmortissable ? '—' : immo.dureeAnnees+' ans'}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.nonAmortissable ? '—' : (immo.compteDotation||'')}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.nonAmortissable ? '—' : (immo.compteAmort||'')}</td>
+        <td class="td-num" style="font-size:11px;color:var(--amber);">${immo.nonAmortissable ? '—' : rn(cumulActuel)}</td>
+        <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
+        <td style="text-align:center;white-space:nowrap;">
+          ${scheduleBtn}
+          <button class="btn btn-sm btn-icon" onclick="openImmoModal('${immo.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteImmo('${immo.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `<div style="margin-bottom:22px;">
+      <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:var(--cyan);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--line2);">
+        ${root} — ${immoRootLabel(root)}
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:70px">N° Compte</th>
+            <th>Libellé</th>
+            <th style="width:90px">Date acquisition</th>
+            <th class="td-num" style="width:100px">Valeur brute</th>
+            <th style="width:70px">Durée</th>
+            <th style="width:85px">Compte Dotation</th>
+            <th style="width:85px">Compte Amort.</th>
+            <th class="td-num" style="width:100px">Amort. cumulés</th>
+            <th class="td-num" style="width:100px">VNC actuelle</th>
+            <th style="width:90px"></th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>`;
   }).join('');
 
   updateNavCounts();
@@ -5145,12 +8144,15 @@ function openImmoModal(editId) {
     document.getElementById('immo-compte-dotation').value = immo.compteDotation || '';
     document.getElementById('immo-compte-amort').value = immo.compteAmort || '';
     document.getElementById('immo-notes').value = immo.notes || '';
+    document.getElementById('immo-non-amortissable').checked = !!immo.nonAmortissable;
   } else {
     document.getElementById('immo-modal-title').textContent = '🏛 NOUVELLE IMMOBILISATION';
     ['immo-libelle','immo-compte-immo','immo-date-achat','immo-valeur-brute','immo-duree','immo-compte-dotation','immo-compte-amort','immo-notes'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
+    document.getElementById('immo-non-amortissable').checked = false;
   }
+  toggleImmoAmortFields();
   document.getElementById('immo-modal').style.display = 'flex';
 }
 
@@ -5164,28 +8166,31 @@ function saveImmo() {
   const compteImmo = document.getElementById('immo-compte-immo').value.trim();
   const dateAchat = document.getElementById('immo-date-achat').value;
   const valeurBrute = parseFloat(document.getElementById('immo-valeur-brute').value) || 0;
-  const dureeAnnees = parseInt(document.getElementById('immo-duree').value) || 0;
-  const compteDotation = document.getElementById('immo-compte-dotation').value.trim();
-  const compteAmort = document.getElementById('immo-compte-amort').value.trim();
+  const nonAmortissable = document.getElementById('immo-non-amortissable').checked;
+  const dureeAnnees = nonAmortissable ? 0 : (parseInt(document.getElementById('immo-duree').value) || 0);
+  const compteDotation = nonAmortissable ? '' : document.getElementById('immo-compte-dotation').value.trim();
+  const compteAmort = nonAmortissable ? '' : document.getElementById('immo-compte-amort').value.trim();
   const notes = document.getElementById('immo-notes').value.trim();
 
   if(!libelle) { toast('Le libellé est requis','error'); return; }
   if(!compteImmo || compteImmo.length !== 6) { toast('Compte d\'immobilisation invalide (6 chiffres)','error'); return; }
   if(!dateAchat) { toast('La date d\'acquisition est requise','error'); return; }
   if(!valeurBrute || valeurBrute <= 0) { toast('La valeur brute doit être positive','error'); return; }
-  if(!dureeAnnees || dureeAnnees <= 0) { toast('La durée d\'amortissement doit être positive','error'); return; }
-  if(!compteDotation || compteDotation.length !== 6) { toast('Compte de dotation invalide (6 chiffres)','error'); return; }
-  if(!compteAmort || compteAmort.length !== 6) { toast('Compte d\'amortissement invalide (6 chiffres)','error'); return; }
+  if(!nonAmortissable) {
+    if(!dureeAnnees || dureeAnnees <= 0) { toast('La durée d\'amortissement doit être positive','error'); return; }
+    if(!compteDotation || compteDotation.length !== 6) { toast('Compte de dotation invalide (6 chiffres)','error'); return; }
+    if(!compteAmort || compteAmort.length !== 6) { toast('Compte d\'amortissement invalide (6 chiffres)','error'); return; }
+  }
 
   const list = ensureImmoArray();
   if(editId) {
     const immo = list.find(i => i.id === editId);
     if(immo) {
-      Object.assign(immo, {libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes});
+      Object.assign(immo, {libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes, nonAmortissable});
     }
     toast('Immobilisation modifiée','success');
   } else {
-    list.push({id: crypto.randomUUID(), libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes});
+    list.push({id: crypto.randomUUID(), libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes, nonAmortissable});
     toast('Immobilisation ajoutée','success');
   }
 
@@ -5195,6 +8200,112 @@ function saveImmo() {
 }
 
 let immoDeleteTargetId = null;
+// ══════════════════════════════════════════════
+// COMPTABILISATION AUTOMATIQUE DES DOTATIONS
+// ══════════════════════════════════════════════
+let _dotationPending = [];
+
+function isDotationAlreadyPosted(immo) {
+  const libEcr = `Amortissement ${CURRENT_YEAR} - ${immo.libelle}`;
+  return DB.ecritures.some(e => e.journal === 'OD' && e.libelleEcriture === libEcr && String(e.compte) === String(immo.compteDotation));
+}
+
+function openDotationModal() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — comptabilisation impossible','error'); return; }
+  const list = ensureImmoArray().filter(i => !i.nonAmortissable);
+  const year = parseInt(CURRENT_YEAR);
+
+  _dotationPending = [];
+  const rows = [];
+
+  list.forEach(immo => {
+    const schedule = computeAmortSchedule(immo);
+    const row = schedule.find(s => s.annee === year);
+    if(!row || row.dotation <= 0) return;
+    const alreadyPosted = isDotationAlreadyPosted(immo);
+    const item = {immo, montant: row.dotation, alreadyPosted};
+    _dotationPending.push(item);
+    rows.push(item);
+  });
+
+  document.getElementById('immo-dotation-date').textContent = `31/12/${CURRENT_YEAR}`;
+
+  const body = document.getElementById('immo-dotation-body');
+  const empty = document.getElementById('immo-dotation-empty');
+  const confirmBtn = document.getElementById('immo-dotation-confirm-btn');
+
+  if(!rows.length) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    confirmBtn.style.display = 'none';
+  } else {
+    empty.style.display = 'none';
+    confirmBtn.style.display = '';
+    body.innerHTML = rows.map((item, idx) => {
+      const {immo, montant, alreadyPosted} = item;
+      const statusHtml = alreadyPosted
+        ? `<span style="color:var(--text2);font-size:10px;">✓ déjà comptabilisée</span>`
+        : `<span style="color:var(--green);font-size:10px;">à comptabiliser</span>`;
+      return `<tr style="${alreadyPosted?'opacity:0.5;':''}">
+        <td style="text-align:center;"><input type="checkbox" class="dotation-check" data-idx="${idx}" ${alreadyPosted?'disabled':'checked'} style="width:13px;height:13px;cursor:pointer;margin:0;"></td>
+        <td style="font-size:11px;">${immo.libelle}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteDotation}</td>
+        <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.compteAmort}</td>
+        <td class="td-num" style="font-size:11px;">${fmt(montant)}</td>
+        <td>${statusHtml}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('immo-dotation-modal').style.display = 'flex';
+}
+
+function closeDotationModal() {
+  document.getElementById('immo-dotation-modal').style.display = 'none';
+  _dotationPending = [];
+}
+
+function confirmDotationEcritures() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — comptabilisation impossible','error'); return; }
+  const checks = document.querySelectorAll('.dotation-check:checked');
+  if(!checks.length) { toast('Aucune dotation sélectionnée','error'); return; }
+
+  const snap = JSON.parse(JSON.stringify(DB.ecritures));
+  undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
+  redoStack = []; updUndoRedo();
+
+  const date = `${CURRENT_YEAR}-12-31`;
+  const base = Date.now();
+  let count = 0, total = 0;
+
+  checks.forEach((cb, i) => {
+    const idx = parseInt(cb.dataset.idx);
+    const item = _dotationPending[idx];
+    if(!item || item.alreadyPosted) return;
+    const {immo, montant} = item;
+    const io = base + i; // _io unique et croissant → passera après les écritures déjà présentes
+    const libelleEcriture = `Amortissement ${CURRENT_YEAR} - ${immo.libelle}`;
+    DB.ecritures.push({
+      id: crypto.randomUUID(), _io: io, journal: 'OD', date,
+      compte: immo.compteDotation, libelleCompte: getLib(immo.compteDotation) || 'Dotation aux amortissements',
+      libelleEcriture, numDoc: '', debit: montant, credit: 0
+    });
+    DB.ecritures.push({
+      id: crypto.randomUUID(), _io: io, journal: 'OD', date,
+      compte: immo.compteAmort, libelleCompte: getLib(immo.compteAmort) || 'Amortissements',
+      libelleEcriture, numDoc: '', debit: 0, credit: montant
+    });
+    count++; total += montant;
+  });
+
+  if(!count) { toast('Aucune dotation à comptabiliser','error'); return; }
+
+  renum(); saveDB(); updateNavCounts();
+  closeDotationModal();
+  toast(`${count} écriture(s) de dotation comptabilisée(s) — total ${fmt(total)} €`, 'success');
+  renderImmos();
+}
+
 function askDeleteImmo(id) {
   const immo = ensureImmoArray().find(i => i.id === id);
   if(!immo) return;
@@ -5218,7 +8329,7 @@ function confirmDeleteImmo() {
 
 function viewImmoSchedule(id) {
   const immo = ensureImmoArray().find(i => i.id === id);
-  if(!immo) return;
+  if(!immo || immo.nonAmortissable) return;
   const schedule = computeAmortSchedule(immo);
   document.getElementById('immo-schedule-title').textContent = '📊 ' + immo.libelle;
   document.getElementById('immo-schedule-info').innerHTML = `Compte : <strong style="color:var(--cyan)">${immo.compteImmo}</strong> · Acquis le <strong>${fmtDateGL(immo.dateAchat)}</strong> · Valeur brute <strong>${fmt(immo.valeurBrute)} €</strong> · Durée <strong>${immo.dureeAnnees} ans</strong>`;
