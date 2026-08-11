@@ -581,6 +581,9 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="nav-item" onclick="showTab('inventaire')" id="nav-inventaire">
       <span class="ni-icon">🧮</span> Écritures d'inventaire
     </div>
+    <div class="nav-item" onclick="showTab('approbation')" id="nav-approbation">
+      <span class="ni-icon">📜</span> Approbation du résultat
+    </div>
     <div class="nav-version">Designed and developed by Clément Maufroy</div>
   </nav>
 
@@ -1011,6 +1014,61 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         </div>
       </div>
       <div id="echeanciers-expiration-banner"></div>
+
+      <!-- ══════════════ FRAIS KILOMÉTRIQUES (toujours présent, en tête) ══════════════ -->
+      <div class="card" style="margin-bottom:22px;border:1px solid var(--cyan);">
+        <div class="card-title">🚗 Frais kilométriques</div>
+
+        <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">VÉHICULES</div>
+            <div id="km-vehicules-list" style="margin-bottom:8px;"></div>
+            <div style="display:flex;gap:6px;">
+              <input type="text" id="km-new-vehicule" placeholder="Nom du véhicule" style="flex:1;height:30px;">
+              <button class="btn btn-sm" onclick="addKmVehicule()">+ AJOUTER</button>
+            </div>
+          </div>
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">BARÈME FISCAL</div>
+            <div class="form-row c2 mb8">
+              <div class="form-field">
+                <label>€ par km</label>
+                <input type="number" step="0.0001" id="km-bareme-taux" onchange="saveKmConfig()" style="font-family:var(--mono);">
+              </div>
+              <div class="form-field">
+                <label>Constante (€)</label>
+                <input type="number" step="0.01" id="km-bareme-constante" onchange="saveKmConfig()" style="font-family:var(--mono);">
+              </div>
+            </div>
+            <div style="font-size:9px;color:var(--text2);margin-top:-4px;">Montant = (km × taux) + constante, par véhicule utilisé sur le mois.</div>
+          </div>
+          <div style="flex:1;min-width:260px;">
+            <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">COMPTES COMPTABLES</div>
+            <div class="form-row c2 mb8">
+              <div class="form-field">
+                <label>Compte à débiter</label>
+                <input type="text" id="km-compte-debit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-debit')" onkeydown="genAcKey(event,'km-compte-debit')" onblur="genAcBlur('km-compte-debit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
+              </div>
+              <div class="form-field">
+                <label>Compte à créditer</label>
+                <input type="text" id="km-compte-credit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit')" onkeydown="genAcKey(event,'km-compte-credit')" onblur="genAcBlur('km-compte-credit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--line2);padding-top:14px;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <label style="font-size:11px;font-weight:700;color:var(--text2);">SAISIE DU MOIS :</label>
+            <input type="month" id="km-saisie-mois" onchange="renderKmSaisieMois()">
+          </div>
+          <div id="km-saisie-body" style="margin-bottom:10px;"></div>
+          <button class="btn btn-primary" onclick="validerKmMois()">✓ VALIDER LA SAISIE DU MOIS</button>
+        </div>
+
+        <div id="km-fiches-list" style="margin-top:16px;"></div>
+      </div>
+
       <div id="echeanciers-groups"></div>
       <div id="echeanciers-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
         Aucun échéancier enregistré. Cliquez sur "+ AJOUTER UN ÉCHÉANCIER" pour commencer.
@@ -1085,6 +1143,59 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
     </div>
 
+    <!-- ══════════════ APPROBATION DU RÉSULTAT ══════════════ -->
+    <div class="tab-content" id="tab-approbation">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">APPROBATION DU RÉSULTAT</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Affectation du résultat par l'Assemblée Générale</div>
+        <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Reprend le résultat de l'exercice précédent, tel qu'il figure actuellement en compte 120 (bénéfice) ou 129 (perte), pour l'affecter — via le procès-verbal d'Assemblée Générale Ordinaire — au report à nouveau ou à la réserve légale.</p>
+        <div id="approbation-summary" style="margin-bottom:16px;"></div>
+
+        <div id="approbation-form">
+          <div class="form-row mb8">
+            <div class="form-field" style="grid-column:1/-1;">
+              <label>Affectation du résultat</label>
+              <select id="appro-destination" onchange="updateApprobationSummary()">
+                <option value="ran">Report à nouveau</option>
+                <option value="reserve">Réserve légale</option>
+              </select>
+              <div id="appro-reserve-warning" style="display:none;font-size:10px;color:var(--red);margin-top:4px;">Impossible d'affecter à la réserve légale tant que le report à nouveau est négatif.</div>
+            </div>
+          </div>
+          <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);">INFORMATIONS DE L'ASSEMBLÉE GÉNÉRALE</div>
+          <div class="form-row c2 mb8">
+            <div class="form-field">
+              <label>Date de l'AG *</label>
+              <input type="date" id="appro-date">
+            </div>
+            <div class="form-field">
+              <label>Heure de l'AG *</label>
+              <input type="time" id="appro-heure" value="18:00">
+            </div>
+          </div>
+          <div class="form-row mb8">
+            <div class="form-field" style="grid-column:1/-1;">
+              <label>Lieu de l'AG *</label>
+              <input type="text" id="appro-lieu" placeholder="Cambrin">
+            </div>
+          </div>
+          <div class="form-row mb8">
+            <div class="form-field" style="grid-column:1/-1;">
+              <label>Adresse complète de l'AG *</label>
+              <input type="text" id="appro-adresse" placeholder="27 rue des Prêles – 62149 Cambrin">
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="genererPVApprobation()">📜 GÉNÉRER LE PV ET COMPTABILISER</button>
+        </div>
+        <div id="approbation-pv-list" style="margin-top:20px;"></div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1143,7 +1254,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row c2 mb8">
       <div class="form-field">
         <label>Compte d'immobilisation *</label>
-        <input type="text" id="immo-compte-immo" placeholder="213100" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="immo-compte-immo" placeholder="213100" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('immo-compte-immo')" onkeydown="genAcKey(event,'immo-compte-immo')" onblur="genAcBlur('immo-compte-immo')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Date d'acquisition *</label>
@@ -1163,11 +1274,11 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row c2 mb8" id="immo-row-comptes-amort">
       <div class="form-field" id="immo-field-dotation">
         <label>Compte de dotation aux amortissements *</label>
-        <input type="text" id="immo-compte-dotation" placeholder="681120" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="immo-compte-dotation" placeholder="681120" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('immo-compte-dotation')" onkeydown="genAcKey(event,'immo-compte-dotation')" onblur="genAcBlur('immo-compte-dotation')" autocomplete="off">
       </div>
       <div class="form-field" id="immo-field-amort">
         <label>Compte d'amortissement (28x) *</label>
-        <input type="text" id="immo-compte-amort" placeholder="281300" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="immo-compte-amort" placeholder="281300" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('immo-compte-amort')" onkeydown="genAcKey(event,'immo-compte-amort')" onblur="genAcBlur('immo-compte-amort')" autocomplete="off">
       </div>
     </div>
     <div class="form-row mb8">
@@ -1343,15 +1454,15 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row c3 mb8">
       <div class="form-field">
         <label>Compte CA (loyers) *</label>
-        <input type="text" id="loc-compte-ca" placeholder="706001" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="loc-compte-ca" placeholder="706001" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-ca')" onkeydown="genAcKey(event,'loc-compte-ca')" onblur="genAcBlur('loc-compte-ca')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Compte provision charges *</label>
-        <input type="text" id="loc-compte-provision" placeholder="708100" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="loc-compte-provision" placeholder="708100" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-provision')" onkeydown="genAcKey(event,'loc-compte-provision')" onblur="genAcBlur('loc-compte-provision')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Compte client (411) *</label>
-        <input type="text" id="loc-compte-client" placeholder="411001" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="loc-compte-client" placeholder="411001" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-client')" onkeydown="genAcKey(event,'loc-compte-client')" onblur="genAcBlur('loc-compte-client')" autocomplete="off">
       </div>
     </div>
     <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;">
@@ -1544,8 +1655,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row mb8">
       <div class="form-field" style="grid-column:1/-1;">
         <label>Catégorie *</label>
-        <input type="text" id="ech-categorie" placeholder="Assurances PNO" list="ech-categorie-list">
-        <datalist id="ech-categorie-list"></datalist>
+        <input type="text" id="ech-categorie" placeholder="Assurances PNO" oninput="genAcCategorieSearch('ech-categorie')" onkeydown="genAcCategorieKey(event,'ech-categorie')" onblur="genAcCategorieBlur('ech-categorie')" autocomplete="off">
       </div>
     </div>
     <div class="form-row c2 mb8">
@@ -1575,11 +1685,11 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row c2 mb8">
       <div class="form-field">
         <label>Compte à débiter *</label>
-        <input type="text" id="ech-compte-debit" placeholder="616380" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="ech-compte-debit" placeholder="616380" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('ech-compte-debit')" onkeydown="genAcKey(event,'ech-compte-debit')" onblur="genAcBlur('ech-compte-debit')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Compte à créditer *</label>
-        <input type="text" id="ech-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="ech-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('ech-compte-credit')" onkeydown="genAcKey(event,'ech-compte-credit')" onblur="genAcBlur('ech-compte-credit')" autocomplete="off">
       </div>
     </div>
     <div class="form-row mb8">
@@ -1593,7 +1703,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row mb8" id="ech-credit2-field" style="display:none;">
       <div class="form-field" style="grid-column:1/-1;">
         <label>2ᵉ compte à créditer (50%)</label>
-        <input type="text" id="ech-compte-credit2" placeholder="455110" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="ech-compte-credit2" placeholder="455110" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('ech-compte-credit2')" onkeydown="genAcKey(event,'ech-compte-credit2')" onblur="genAcBlur('ech-compte-credit2')" autocomplete="off">
       </div>
     </div>
     <div class="form-row c2 mb8">
@@ -1682,15 +1792,15 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row c3 mb8">
       <div class="form-field">
         <label>Compte d'emprunt (164) *</label>
-        <input type="text" id="emp-compte-emprunt" placeholder="164000" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="emp-compte-emprunt" placeholder="164000" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('emp-compte-emprunt')" onkeydown="genAcKey(event,'emp-compte-emprunt')" onblur="genAcBlur('emp-compte-emprunt')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Compte d'intérêts (661) *</label>
-        <input type="text" id="emp-compte-interets" placeholder="661100" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="emp-compte-interets" placeholder="661100" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('emp-compte-interets')" onkeydown="genAcKey(event,'emp-compte-interets')" onblur="genAcBlur('emp-compte-interets')" autocomplete="off">
       </div>
       <div class="form-field">
         <label>Compte à créditer *</label>
-        <input type="text" id="emp-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);">
+        <input type="text" id="emp-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('emp-compte-credit')" onkeydown="genAcKey(event,'emp-compte-credit')" onblur="genAcBlur('emp-compte-credit')" autocomplete="off">
       </div>
     </div>
     <div class="alert alert-warn mb8" style="font-size:10px;">Le tableau d'amortissement doit être importé séparément après création via le bouton "IMPORTER" sur la ligne de l'emprunt (téléchargez d'abord le modèle Excel à remplir).</div>
@@ -1959,6 +2069,8 @@ let DB = {
   echeanciers: [],
   emprunts: [],
   ccInterets: {},
+  pvApprobations: [],
+  km: {vehicules:[], bareme:{taux:0, constante:0}, compteDebit:'', compteCredit:'', saisies:{}, fiches:[]},
   nextGlobalNum: 1,
   journalNums: {VE:1,HA:1,IMMO:1,OD:1,TRESO:1},
 };
@@ -2013,6 +2125,8 @@ async function loadDB() {
       if(!Array.isArray(DB.locataires)) DB.locataires = [];
       if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
       if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
+      if(!Array.isArray(DB.pvApprobations)) DB.pvApprobations = [];
+      if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], bareme:{taux:0, constante:0}, compteDebit:'', compteCredit:'', saisies:{}, fiches:[]};
       // Sync _isTest flag to localStorage cache
       if(DB._isTest !== undefined) {
         localStorage.setItem('ledger_test_flag_' + String(CURRENT_YEAR), DB._isTest ? '1' : '0');
@@ -2026,6 +2140,8 @@ async function loadDB() {
   if(!Array.isArray(DB.locataires)) DB.locataires = [];
   if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
   if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
+  if(!Array.isArray(DB.pvApprobations)) DB.pvApprobations = [];
+  if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], bareme:{taux:0, constante:0}, compteDebit:'', compteCredit:'', saisies:{}, fiches:[]};
 }
 async function loadDBAndRenum() {
   await loadDB();
@@ -2041,7 +2157,7 @@ function startLiveSync() {
       Object.assign(DB, remote);
       renum(); updateNavCounts();
       const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire};
+      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation};
       if(active && renders[active]) renders[active]();
     }
   });
@@ -2066,7 +2182,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -3419,6 +3535,82 @@ const TYPEDOC_LIST = [
   {code:'CAF', label:'Bordereau CAF'},
 ];
 let simpleAcIdxMap = {};
+// ── Autocomplétion de compte générique, réutilisable sur n'importe quel champ ──
+// (fiches immobilisations, locataires, emprunts, échéanciers...)
+let genAcActiveId = null, genAcIdx = -1;
+function genAcSearch(fieldId) {
+  const inp = document.getElementById(fieldId);
+  if(!inp) return;
+  const q = (inp.value||'').toLowerCase().trim();
+  let list = document.getElementById('genacl-'+fieldId);
+  if(!list) { list=document.createElement('div'); list.id='genacl-'+fieldId; list.className='ac-list'; document.body.appendChild(list); }
+  if(!q) { list.classList.remove('open'); return; }
+  const matches = (DB.tbData||[]).filter(r=>String(r.compte).startsWith(q)||(r.libelle||'').toLowerCase().includes(q)).slice(0,30);
+  if(!matches.length) { list.classList.remove('open'); return; }
+  list.innerHTML = matches.map(r=>`<div class="ac-item" onmousedown="genAcPick('${fieldId}','${r.compte}')"><span class="ac-num">${r.compte}</span><span class="ac-lib">${(r.libelle||'').replace(/</g,'&lt;')}</span></div>`).join('');
+  const rect = inp.getBoundingClientRect();
+  list.style.top = (rect.bottom + 2) + 'px';
+  list.style.left = rect.left + 'px';
+  list.style.width = Math.max(380, rect.width) + 'px';
+  list.classList.add('open');
+  genAcActiveId = fieldId; genAcIdx = -1;
+}
+function genAcPick(fieldId, compte) {
+  const inp = document.getElementById(fieldId);
+  if(inp) { inp.value = compte; inp.dispatchEvent(new Event('change', {bubbles:true})); }
+  genAcClose(fieldId);
+}
+function genAcClose(fieldId) {
+  const list = document.getElementById('genacl-'+fieldId);
+  if(list) list.classList.remove('open');
+}
+function genAcKey(e, fieldId) {
+  const list = document.getElementById('genacl-'+fieldId);
+  const items = list?.querySelectorAll('.ac-item') || [];
+  const isOpen = list?.classList.contains('open');
+  if(e.key === 'ArrowDown' && isOpen) { e.preventDefault(); genAcIdx=Math.min(genAcIdx+1,items.length-1); items.forEach((it,i)=>it.classList.toggle('active',i===genAcIdx)); return; }
+  if(e.key === 'ArrowUp' && isOpen) { e.preventDefault(); genAcIdx=Math.max(genAcIdx-1,0); items.forEach((it,i)=>it.classList.toggle('active',i===genAcIdx)); return; }
+  if(e.key === 'Enter' && isOpen && genAcIdx >= 0) { e.preventDefault(); items[genAcIdx]?.dispatchEvent(new MouseEvent('mousedown')); return; }
+  if(e.key === 'Escape') { genAcClose(fieldId); return; }
+  if(e.key === 'Tab' && isOpen && items.length === 1) { items[0]?.dispatchEvent(new MouseEvent('mousedown')); }
+}
+function genAcBlur(fieldId) { setTimeout(() => genAcClose(fieldId), 150); }
+
+// ── Autocomplétion pour un champ texte libre (catégorie d'échéancier, etc.) sur une liste de suggestions fournie dynamiquement ──
+let genAcCatIdx = -1;
+function genAcCategorieSearch(fieldId) {
+  const inp = document.getElementById(fieldId);
+  if(!inp) return;
+  const q = (inp.value||'').toLowerCase().trim();
+  const cats = [...new Set(ensureEcheanciersArray().map(e => e.categorie).filter(Boolean))].sort();
+  let list = document.getElementById('genacl-'+fieldId);
+  if(!list) { list=document.createElement('div'); list.id='genacl-'+fieldId; list.className='ac-list'; document.body.appendChild(list); }
+  const matches = cats.filter(c => c.toLowerCase().includes(q));
+  if(!matches.length) { list.classList.remove('open'); return; }
+  list.innerHTML = matches.map(c=>`<div class="ac-item" onmousedown="genAcCategoriePick('${fieldId}','${c.replace(/'/g,"\\'")}')"><span class="ac-lib">${c}</span></div>`).join('');
+  const rect = inp.getBoundingClientRect();
+  list.style.top = (rect.bottom + 2) + 'px';
+  list.style.left = rect.left + 'px';
+  list.style.width = Math.max(280, rect.width) + 'px';
+  list.classList.add('open');
+  genAcCatIdx = -1;
+}
+function genAcCategoriePick(fieldId, cat) {
+  const inp = document.getElementById(fieldId);
+  if(inp) inp.value = cat;
+  genAcClose(fieldId);
+}
+function genAcCategorieKey(e, fieldId) {
+  const list = document.getElementById('genacl-'+fieldId);
+  const items = list?.querySelectorAll('.ac-item') || [];
+  const isOpen = list?.classList.contains('open');
+  if(e.key === 'ArrowDown' && isOpen) { e.preventDefault(); genAcCatIdx=Math.min(genAcCatIdx+1,items.length-1); items.forEach((it,i)=>it.classList.toggle('active',i===genAcCatIdx)); return; }
+  if(e.key === 'ArrowUp' && isOpen) { e.preventDefault(); genAcCatIdx=Math.max(genAcCatIdx-1,0); items.forEach((it,i)=>it.classList.toggle('active',i===genAcCatIdx)); return; }
+  if(e.key === 'Enter' && isOpen && genAcCatIdx >= 0) { e.preventDefault(); items[genAcCatIdx]?.dispatchEvent(new MouseEvent('mousedown')); return; }
+  if(e.key === 'Escape') { genAcClose(fieldId); return; }
+}
+function genAcCategorieBlur(fieldId) { setTimeout(() => genAcClose(fieldId), 150); }
+
 function simpleAc(fieldId, list) {
   const inp = document.getElementById(fieldId);
   const q = (inp?.value||'').toLowerCase().trim();
@@ -5968,7 +6160,7 @@ function saveLocataire() {
   if(!nom1) { toast('Le nom du locataire principal est requis','error'); return; }
   if(!loyer || loyer<=0) { toast('Le montant du loyer doit être positif','error'); return; }
   if(!compteCA || compteCA.length!==6) { toast('Compte CA invalide (6 chiffres)','error'); return; }
-  if(!compteProvision || compteProvision.length!==6) { toast('Compte provision invalide (6 chiffres)','error'); return; }
+  if(provision > 0 && (!compteProvision || compteProvision.length!==6)) { toast('Compte provision invalide (6 chiffres)','error'); return; }
   if(!compteClient || compteClient.length!==6) { toast('Compte client invalide (6 chiffres)','error'); return; }
 
   const list = ensureLocatairesArray();
@@ -6526,7 +6718,9 @@ function comptabiliserHistoriqueEntry(locId, entryId) {
     const ioCA = Date.now();
     DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteClient, libelleCompte:getLib(loc.compteClient)||'Client', libelleEcriture:libelleCA, numDoc:numDocCA, debit:entry.totalDu, credit:0});
     DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteCA, libelleCompte:getLib(loc.compteCA)||'Loyers', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.loyer});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteProvision, libelleCompte:getLib(loc.compteProvision)||'Provision', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.provision});
+    if(entry.provision > 0 && loc.compteProvision) {
+      DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteProvision, libelleCompte:getLib(loc.compteProvision)||'Provision', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.provision});
+    }
 
     const postPaiement = (montant, date, libelle, numDoc) => {
       if(!montant || montant <= 0.01) return;
@@ -6642,6 +6836,170 @@ function confirmArchiveHistoriqueEntry() {
 // MODULE ÉCHÉANCIERS
 // ══════════════════════════════════════════════
 function ensureEcheanciersArray() { if(!Array.isArray(DB.echeanciers)) DB.echeanciers = []; return DB.echeanciers; }
+
+// ══════════════════════════════════════════════
+// FRAIS KILOMÉTRIQUES (bloc permanent en tête des Échéanciers)
+// ══════════════════════════════════════════════
+function ensureKm() {
+  if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], bareme:{taux:0, constante:0}, compteDebit:'', compteCredit:'', saisies:{}, fiches:[]};
+  DB.km.vehicules = DB.km.vehicules || [];
+  DB.km.bareme = DB.km.bareme || {taux:0, constante:0};
+  DB.km.saisies = DB.km.saisies || {};
+  DB.km.fiches = DB.km.fiches || [];
+  return DB.km;
+}
+
+function renderKmModule() {
+  const km = ensureKm();
+  const vList = document.getElementById('km-vehicules-list');
+  if(vList) {
+    vList.innerHTML = km.vehicules.length
+      ? km.vehicules.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:11px;">
+          <span style="flex:1;">${v.nom}</span>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="removeKmVehicule('${v.id}')" style="padding:1px 5px;font-size:9px;">✕</button>
+        </div>`).join('')
+      : `<div style="font-size:10px;color:var(--text2);font-style:italic;">Aucun véhicule enregistré.</div>`;
+  }
+  const tauxEl = document.getElementById('km-bareme-taux');
+  const constEl = document.getElementById('km-bareme-constante');
+  const debEl = document.getElementById('km-compte-debit');
+  const credEl = document.getElementById('km-compte-credit');
+  if(tauxEl && document.activeElement !== tauxEl) tauxEl.value = km.bareme.taux || '';
+  if(constEl && document.activeElement !== constEl) constEl.value = km.bareme.constante || '';
+  if(debEl && document.activeElement !== debEl) debEl.value = km.compteDebit || '';
+  if(credEl && document.activeElement !== credEl) credEl.value = km.compteCredit || '';
+
+  const moisInput = document.getElementById('km-saisie-mois');
+  if(moisInput && !moisInput.value) moisInput.value = moisActuelYYYYMM();
+  renderKmSaisieMois();
+  renderKmFichesList();
+}
+
+function addKmVehicule() {
+  const inp = document.getElementById('km-new-vehicule');
+  const nom = inp.value.trim();
+  if(!nom) { toast('Nom du véhicule requis','error'); return; }
+  const km = ensureKm();
+  km.vehicules.push({id:crypto.randomUUID(), nom});
+  inp.value = '';
+  saveDB();
+  renderKmModule();
+}
+function removeKmVehicule(id) {
+  const km = ensureKm();
+  km.vehicules = km.vehicules.filter(v => v.id !== id);
+  saveDB();
+  renderKmModule();
+}
+function saveKmConfig() {
+  const km = ensureKm();
+  km.bareme.taux = parseFloat(document.getElementById('km-bareme-taux').value) || 0;
+  km.bareme.constante = parseFloat(document.getElementById('km-bareme-constante').value) || 0;
+  km.compteDebit = document.getElementById('km-compte-debit').value.trim();
+  km.compteCredit = document.getElementById('km-compte-credit').value.trim();
+  saveDB();
+}
+
+function renderKmSaisieMois() {
+  const km = ensureKm();
+  const moisInput = document.getElementById('km-saisie-mois');
+  const mois = moisInput ? moisInput.value : moisActuelYYYYMM();
+  const body = document.getElementById('km-saisie-body');
+  if(!body) return;
+
+  const dejaFiche = km.fiches.some(f => f.mois === mois);
+  if(!km.vehicules.length) { body.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;">Ajoutez d'abord au moins un véhicule.</div>`; return; }
+
+  const saisieMois = km.saisies[mois] || {};
+  body.innerHTML = `<table style="font-size:11px;"><thead><tr><th>Véhicule</th><th class="td-num" style="width:120px">Km parcourus</th></tr></thead><tbody>
+    ${km.vehicules.map(v => `<tr>
+      <td>${v.nom}</td>
+      <td class="td-num"><input type="number" step="1" value="${saisieMois[v.id]||''}" ${dejaFiche?'disabled':''} onchange="saveKmSaisieValue('${mois}','${v.id}',this.value)" style="width:100px;text-align:right;font-family:var(--mono);"></td>
+    </tr>`).join('')}
+  </tbody></table>
+  ${dejaFiche ? `<div style="font-size:10px;color:var(--green);margin-top:6px;">✓ Ce mois a déjà été validé et comptabilisé.</div>` : ''}`;
+}
+
+function saveKmSaisieValue(mois, vehiculeId, val) {
+  const km = ensureKm();
+  km.saisies[mois] = km.saisies[mois] || {};
+  km.saisies[mois][vehiculeId] = parseFloat(val) || 0;
+  saveDB();
+}
+
+function validerKmMois() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const km = ensureKm();
+  const mois = document.getElementById('km-saisie-mois').value;
+  if(!mois) { toast('Choisissez un mois','error'); return; }
+  if(km.fiches.some(f => f.mois === mois)) { toast('Ce mois a déjà été validé','error'); return; }
+  if(!km.compteDebit || !km.compteCredit) { toast('Renseignez les comptes à débiter et créditer','error'); return; }
+  const saisieMois = km.saisies[mois] || {};
+  const lignes = km.vehicules
+    .map(v => ({vehicule:v.nom, km:saisieMois[v.id]||0}))
+    .filter(l => l.km > 0)
+    .map(l => ({...l, montant: Math.round((l.km*km.bareme.taux + km.bareme.constante)*100)/100}));
+
+  if(!lignes.length) { toast('Aucun kilométrage renseigné pour ce mois','error'); return; }
+  const total = Math.round(lignes.reduce((s,l)=>s+l.montant,0)*100)/100;
+
+  const [yy,mm] = mois.split('-');
+  const dateEcr = mois + '-' + String(dernierJourMois(mois)).padStart(2,'0');
+  const libelleEcriture = `Frais kilométriques ${moisLabelFromYYYYMM(mois)}`;
+  const io = Date.now();
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc:'KM/'+mm+'/'+yy.slice(-2), debit:total, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc:'KM/'+mm+'/'+yy.slice(-2), debit:0, credit:total});
+
+  const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
+    ${rptHeader('Fiche kilométrique', moisLabelFromYYYYMM(mois))}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="4" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">FRAIS KILOMÉTRIQUES — ${moisLabelFromYYYYMM(mois).toUpperCase()}</td></tr>
+      <tr>
+        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">Véhicule</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Km</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Barème</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">Montant</td>
+      </tr>
+      ${lignes.map(l=>`<tr>
+        <td style="padding:5px 8px;border:1px solid #ccc;">${l.vehicule}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${l.km}</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${km.bareme.taux}€/km + ${fmt(km.bareme.constante)}€</td>
+        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${fmt(l.montant)}€</td>
+      </tr>`).join('')}
+      <tr><td colspan="3" style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL</td>
+      <td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(total)}€</td></tr>
+    </table>
+    ${rptFooter()}
+  </div>`;
+
+  km.fiches.push({id:crypto.randomUUID(), mois, dateEmission:new Date().toISOString().slice(0,10), total, docHtml:html, docTitle:`Fiche_KM_${mois}`});
+
+  renum(); saveDB(); updateNavCounts();
+  printDoc(html, `Fiche_KM_${mois}`, false);
+  toast(`Frais kilométriques comptabilisés pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  renderKmModule();
+}
+
+function renderKmFichesList() {
+  const zone = document.getElementById('km-fiches-list');
+  if(!zone) return;
+  const km = ensureKm();
+  const list = km.fiches.slice().sort((a,b) => (b.mois||'').localeCompare(a.mois||''));
+  if(!list.length) { zone.innerHTML = ''; return; }
+  zone.innerHTML = `<div style="font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);margin-bottom:8px;">FICHES KILOMÉTRIQUES GÉNÉRÉES</div>
+    <div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
+      ${list.map(f => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+        <span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewKmFiche('${f.id}')">📄 ${moisLabelFromYYYYMM(f.mois)}</span>
+        <span style="color:var(--text2);">${fmt(f.total)} €</span>
+      </div>`).join('')}
+    </div>`;
+}
+function viewKmFiche(id) {
+  const km = ensureKm();
+  const f = km.fiches.find(x => x.id === id);
+  if(!f || !f.docHtml) { toast('Document introuvable','error'); return; }
+  printDoc(f.docHtml, f.docTitle || 'Fiche_KM', false);
+}
 
 // Liste des mois YYYY-MM entre début et fin inclus (basé sur les dates complètes)
 function computeMoisRange(debutDate, finDate) {
@@ -6801,6 +7159,7 @@ function renderEcheanciers() {
   if(!groupsWrap) return;
 
   checkEcheanciersExpiration();
+  renderKmModule();
 
   if(!list.length) {
     groupsWrap.innerHTML = '';
@@ -6894,8 +7253,6 @@ function renderEcheanciers() {
 }
 
 function openEcheancierModal(editId) {
-  const cats = [...new Set(ensureEcheanciersArray().map(e => e.categorie).filter(Boolean))].sort();
-  document.getElementById('ech-categorie-list').innerHTML = cats.map(c => `<option value="${c}">`).join('');
   const typeSel = document.getElementById('ech-type-piece');
   typeSel.innerHTML = '<option value="">—</option>' + TYPEDOC_LIST.map(t => `<option value="${t.code}">${t.code} — ${t.label}</option>`).join('');
   document.getElementById('ech-edit-id').value = editId || '';
@@ -7787,6 +8144,201 @@ function confirmerConstatationResultat() {
   closeInventaireModal();
   toast(`Résultat de l'exercice ${CURRENT_YEAR} constaté (${isBenefice?'bénéfice':'perte'} de ${fmt(Math.abs(resultat))} €)`,'success');
   renderInventaire();
+}
+
+// ══════════════════════════════════════════════
+// MODULE APPROBATION DU RÉSULTAT
+// ══════════════════════════════════════════════
+
+// Lit le solde net (débit-crédit) d'un ou plusieurs préfixes de compte, sur l'exercice courant
+function soldeCompteApprobation(prefixes) {
+  let net = 0;
+  DB.ecritures.forEach(e => {
+    const c = String(e.compte);
+    if(prefixes.some(p => c.startsWith(p))) net += (e.debit||0) - (e.credit||0);
+  });
+  return Math.round(net*100)/100;
+}
+
+function computeApprobationData() {
+  const net120 = soldeCompteApprobation(['120']); // négatif si crédit (bénéfice)
+  const net129 = soldeCompteApprobation(['129']); // positif si débit (perte)
+  const benefice = net120 < -0.001 ? Math.round(-net120*100)/100 : 0;
+  const perte = net129 > 0.001 ? Math.round(net129*100)/100 : 0;
+  const ran = Math.round((-soldeCompteApprobation(['110']) - soldeCompteApprobation(['119']))*100)/100; // >0 = créditeur (favorable)
+  return {benefice, perte, ran};
+}
+
+function renderApprobation() {
+  const summary = document.getElementById('approbation-summary');
+  const form = document.getElementById('approbation-form');
+  if(!summary) return;
+  const {benefice, perte, ran} = computeApprobationData();
+
+  if(!benefice && !perte) {
+    summary.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:14px;color:var(--text2);font-size:12px;">Aucun résultat à affecter — le compte 120/129 est actuellement nul (déjà affecté, ou aucun résultat constaté pour l'exercice précédent).</div>`;
+    if(form) form.style.display = 'none';
+    renderApprobationPvList();
+    return;
+  }
+  if(form) form.style.display = 'block';
+
+  const isBenefice = benefice > 0;
+  const montant = isBenefice ? benefice : perte;
+  summary.innerHTML = `<div style="display:flex;gap:10px;">
+    <div style="flex:1;background:${isBenefice?'rgba(68,232,122,0.1)':'rgba(255,107,107,0.1)'};border:1px solid ${isBenefice?'rgba(68,232,122,0.3)':'rgba(255,107,107,0.3)'};border-radius:var(--radius);padding:10px;text-align:center;">
+      <div style="font-size:9px;color:var(--text2);letter-spacing:0.05em;">RÉSULTAT À AFFECTER (${isBenefice?'BÉNÉFICE':'PERTE'})</div>
+      <div style="font-size:16px;font-weight:700;color:${isBenefice?'var(--green)':'var(--red)'};font-family:var(--mono);">${fmt(montant)} €</div>
+    </div>
+    <div style="flex:1;background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:10px;text-align:center;">
+      <div style="font-size:9px;color:var(--text2);letter-spacing:0.05em;">REPORT À NOUVEAU ACTUEL</div>
+      <div style="font-size:16px;font-weight:700;color:${ran>=0?'var(--green)':'var(--red)'};font-family:var(--mono);">${fmt(ran)} €</div>
+    </div>
+  </div>`;
+
+  const destSel = document.getElementById('appro-destination');
+  const reserveOpt = destSel?.querySelector('option[value="reserve"]');
+  const warning = document.getElementById('appro-reserve-warning');
+  if(reserveOpt) {
+    const reserveBloquee = !isBenefice || ran < 0;
+    reserveOpt.disabled = reserveBloquee;
+    if(warning) warning.style.display = reserveBloquee ? 'block' : 'none';
+    if(reserveBloquee && destSel.value === 'reserve') destSel.value = 'ran';
+  }
+  renderApprobationPvList();
+}
+
+// Liste des PV déjà générés, toujours accessibles en un clic (comme les quittances/appels de loyer)
+function renderApprobationPvList() {
+  const zone = document.getElementById('approbation-pv-list');
+  if(!zone) return;
+  const list = (DB.pvApprobations||[]).slice().sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
+  if(!list.length) { zone.innerHTML = ''; return; }
+  zone.innerHTML = `<div style="font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);margin-bottom:8px;">PV DÉJÀ GÉNÉRÉS</div>
+    <div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
+      ${list.map(pv => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+        <span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewPVApprobation('${pv.id}')">📜 PV d'AGO — Affectation du résultat ${pv.anneeConcernee}</span>
+        <span style="color:var(--text2);">${fmt(pv.montant)} €</span>
+      </div>`).join('')}
+    </div>`;
+}
+function viewPVApprobation(id) {
+  const pv = (DB.pvApprobations||[]).find(p => p.id === id);
+  if(!pv || !pv.docHtml) { toast('Document introuvable','error'); return; }
+  printDoc(pv.docHtml, pv.docTitle || 'PV_AGO', false);
+}
+
+
+function genererPVApprobation() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const {benefice, perte, ran} = computeApprobationData();
+  if(!benefice && !perte) { toast('Aucun résultat à affecter','error'); return; }
+
+  const isBenefice = benefice > 0;
+  const montant = isBenefice ? benefice : perte;
+  const destination = document.getElementById('appro-destination').value;
+  if(destination === 'reserve' && (!isBenefice || ran < 0)) { toast('Affectation à la réserve légale impossible dans ce contexte','error'); return; }
+
+  const date = document.getElementById('appro-date').value;
+  const heure = document.getElementById('appro-heure').value;
+  const lieu = document.getElementById('appro-lieu').value.trim();
+  const adresse = document.getElementById('appro-adresse').value.trim();
+  if(!date || !heure || !lieu || !adresse) { toast("Merci de renseigner toutes les informations de l'Assemblée Générale","error"); return; }
+
+  // ── Écriture comptable ──
+  const io = Date.now();
+  const libelleEcriture = "Affectation du résultat de l'exercice précédent";
+  const numDoc = 'PV/AGO';
+
+  if(isBenefice) {
+    const compteDest = destination === 'reserve' ? '106100' : '110000';
+    const libDest = destination === 'reserve' ? 'Réserve légale' : 'Report à nouveau (solde créditeur)';
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc, debit:montant, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:compteDest, libelleCompte:libDest, libelleEcriture, numDoc, debit:0, credit:montant});
+  } else {
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc, debit:0, credit:montant});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'119000', libelleCompte:'Report à nouveau (solde débiteur)', libelleEcriture, numDoc, debit:montant, credit:0});
+  }
+  renum(); saveDB(); updateNavCounts();
+
+  // ── Génération du PV d'AG ──
+  const dateObj = new Date(date + 'T00:00:00');
+  const dateTxt = dateObj.toLocaleDateString('fr-FR', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+  const anneeTxt = dateObj.getFullYear();
+  const [hh, mm] = heure.split(':');
+  const heureTxt = mm === '00' ? `${parseInt(hh)} heures` : `${hh}h${mm}`;
+
+  const destinationTxt = destination === 'reserve' ? 'à la réserve légale' : 'au report à nouveau';
+  const compteDestTxt = destination === 'reserve' ? '106 « Réserve légale »' : (isBenefice ? '110 « Report à nouveau créditeur »' : '119 « Report à nouveau débiteur »');
+  const resultatTxt = isBenefice ? `un bénéfice de ${fmt(montant)}€` : `une perte de ${fmt(montant)}€`;
+
+  const html = `<div style="font-family:'Times New Roman',serif;max-width:800px;margin:0 auto;padding:32px;color:#111;font-size:12px;line-height:1.7;">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div style="font-weight:700;font-size:15px;">SCI DES PRÊLES</div>
+      <div>Société Civile Immobilière</div>
+      <div>Au capital de 6 000 euros</div>
+      <div>Siège social : 27 rue des Prêles – 62149 Cambrin</div>
+      <div>SIREN 929 734 002 R.C.S Arras</div>
+    </div>
+    <div style="text-align:center;font-weight:700;margin:24px 0 6px;">ASSEMBLÉE GÉNÉRALE ORDINAIRE DU ${String(dateObj.getDate()).padStart(2,'0')} ${MOIS_LABELS[dateObj.getMonth()].toUpperCase()} ${anneeTxt}</div>
+    <div style="text-align:center;">-----</div>
+    <div style="text-align:center;font-weight:700;margin:14px 0 20px;">PROCÈS-VERBAL</div>
+
+    <p>L'an ${anneeEnLettres(anneeTxt)},</p>
+    <p>Le ${dateTxt}, à ${heureTxt}, </p>
+    <p>Les associés de la SCI des Prêles, SCI au capital social de six mille euros (6 000 euros), dont le siège social est situé à ${lieu}, au ${adresse}, enregistrée au Registre du Commerce et des Sociétés de Arras, sous le numéro 929 734 002, se sont réunis en Assemblée Générale Ordinaire dans les locaux du siège social.</p>
+    <p>Le secrétariat de l'assemblée est confié à Monsieur Clément Maufroy, associé de la société.</p>
+    <p>Monsieur Clément Maufroy rappelle que l'Assemblée Générale est convoquée à l'effet de délibérer sur l'ordre du jour suivant : </p>
+    <p style="font-style:italic;">Approbation des comptes de l'exercice ${anneeTxt - 1} et affectation du résultat</p>
+    <p>Monsieur Clément Maufroy constate que l'ensemble des associés représentant 100% des droits de vote sont présents, et annonce que le quorum est donc atteint. L'Assemblée est déclarée régulièrement constituée et peut valablement délibérer.</p>
+
+    <p style="text-align:center;font-weight:700;margin-top:20px;">PREMIÈRE RÉSOLUTION</p>
+    <p>L'Assemblée Générale, après avoir pris connaissance des comptes annuels de l'exercice clos, arrêtant ${resultatTxt}, approuve lesdits comptes tels qu'ils lui ont été présentés.</p>
+    <p>Cette résolution est adoptée à l'unanimité.</p>
+
+    <p style="text-align:center;font-weight:700;margin-top:20px;">DEUXIÈME RÉSOLUTION</p>
+    <p>L'Assemblée Générale décide d'affecter le résultat de l'exercice, soit ${resultatTxt}, ${destinationTxt} (compte ${compteDestTxt}).</p>
+    <p>Cette résolution est adoptée à l'unanimité.</p>
+
+    <p style="margin-top:20px;">L'ordre du jour étant épuisé, la séance est levée à ${heureTxt}.</p>
+    <p>A ${lieu}, le ${String(dateObj.getDate()).padStart(2,'0')}/${String(dateObj.getMonth()+1).padStart(2,'0')}/${anneeTxt}</p>
+
+    <p style="margin-top:30px;font-weight:700;">Signatures</p>
+    <div style="display:flex;justify-content:space-between;margin-top:40px;">
+      <div>Monsieur Alexandre Camus, <br>Associé</div>
+      <div>Monsieur Clément Maufroy, <br>Associé</div>
+    </div>
+  </div>`;
+
+  const docTitle = `PV_AGO_Approbation_${anneeTxt - 1}`;
+  DB.pvApprobations = DB.pvApprobations || [];
+  DB.pvApprobations.push({id:crypto.randomUUID(), dateEmission:new Date().toISOString().slice(0,10), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, docHtml:html, docTitle});
+  saveDB();
+
+  printDoc(html, docTitle, false);
+  toast(`Résultat affecté ${destinationTxt} — écriture comptabilisée et PV généré`,'success');
+  renderApprobation();
+}
+
+function anneeEnLettres(annee) {
+  // Conversion simple d'une année en toutes lettres pour le formalisme du PV (ex: deux mille vingt-cinq)
+  const unites = ['zéro','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const dizaines = ['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+  const n = parseInt(annee, 10);
+  const millier = Math.floor(n/1000);
+  const reste = n%1000;
+  const centaine = Math.floor(reste/100);
+  const dizReste = reste%100;
+  let txt = 'deux mille';
+  if(centaine) txt += ' ' + (centaine>1?unites[centaine]+' cent':'cent');
+  if(dizReste) {
+    if(dizReste < 20) txt += ' ' + unites[dizReste];
+    else {
+      const d = Math.floor(dizReste/10), u = dizReste%10;
+      txt += ' ' + dizaines[d] + (u ? (d===7||d===9?'-'+unites[10+u]:(u===1&&d!==8?' et un':'-'+unites[u])) : (d===8?'s':''));
+    }
+  }
+  return txt;
 }
 
 // ══════════════════════════════════════════════
