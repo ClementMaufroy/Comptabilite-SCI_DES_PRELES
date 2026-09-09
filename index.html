@@ -3627,8 +3627,7 @@ async function confirmImport(){
 // EXPORT
 // ══════════════════════════════════════════════
 async function exportData(){
-  await saveJSONFile('ledger_backup_'+CURRENT_YEAR+'_'+today()+'.json', JSON.stringify(DB,null,2));
-  toast('Export JSON téléchargé','success');
+  await exportAllExercisesBackup();
 }
 
 function exportGLExcel() {
