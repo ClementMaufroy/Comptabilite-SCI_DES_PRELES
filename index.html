@@ -2190,7 +2190,7 @@ function showWeeklyExportBanner() {
   banner.innerHTML = `
     <span style="font-size:22px;">💾</span>
     <span style="font-family:var(--mono);font-size:12px;color:var(--text0);letter-spacing:0.03em;">
-      Sauvegarde hebdomadaire disponible — cliquez pour choisir l'emplacement d'enregistrement
+      Sauvegarde hebdomadaire disponible — cliquez pour choisir le dossier d'enregistrement
     </span>
     <button class="btn btn-primary" onclick="doWeeklyExportNow()" style="padding:7px 20px;font-size:11px;letter-spacing:0.06em;white-space:nowrap;">⬇ SAUVEGARDER</button>
     <button class="btn btn-sm" onclick="dismissWeeklyExportBanner()" style="padding:5px 12px;font-size:10px;color:var(--text2);border:1px solid var(--line2);">Plus tard</button>
@@ -2252,31 +2252,65 @@ async function downloadExerciseJSON(year, data) {
 
 // Exporte 1 fichier JSON par exercice existant dans Firebase — couvre 100% des données,
 // pas seulement l'exercice actuellement affiché à l'écran.
+// Demande UNE SEULE fois un dossier de destination, puis y écrit tous les fichiers
+// d'un coup (pas une fenêtre par exercice).
 async function exportAllExercisesBackup() {
   let years = [];
   try { years = await window._fbListYears(); } catch(e) { years = []; }
   if(!years.includes(String(CURRENT_YEAR))) years.push(String(CURRENT_YEAR));
   years = [...new Set(years)].sort();
 
-  let exported = 0;
-  for(let i = 0; i < years.length; i++) {
-    const y = years[i];
-    if(isTestExercise(y)) continue; // les exercices de test ne sont jamais sauvegardés
+  // Rassembler d'abord toutes les données à exporter (hors exercices test / vides)
+  const filesToSave = [];
+  for(const y of years) {
+    if(isTestExercise(y)) continue;
     let data;
     if(String(y) === String(CURRENT_YEAR)) {
-      data = DB; // l'exercice actif : on prend l'état en mémoire, le plus à jour
+      data = DB;
     } else {
       try { data = await window._fbLoad(y); } catch(e) { data = null; }
     }
     if(!data || !Array.isArray(data.ecritures) || !data.ecritures.length) continue;
-    const saved = await downloadExerciseJSON(y, data);
-    if(!saved) break; // l'utilisateur a annulé le sélecteur → on arrête la boucle
-    exported++;
-    await new Promise(r => setTimeout(r, 400));
+    const payload = { _backupMeta: { exercice: y, dateExport: new Date().toISOString(), version: 1 }, data };
+    filesToSave.push({
+      name: `Fichier JSON de sauvegarde comptable - Exercice ${y} - ${todayTime()}.json`,
+      content: JSON.stringify(payload, null, 0)
+    });
   }
 
-  if(exported > 0) showBackupExportedModal(exported);
-  else toast('Aucun exercice à sauvegarder (aucune donnée ou exercices de test uniquement)', 'error');
+  if(!filesToSave.length) {
+    toast('Aucun exercice à sauvegarder (aucune donnée ou exercices de test uniquement)', 'error');
+    return;
+  }
+
+  // Méthode moderne : un seul choix de dossier, puis écriture de tous les fichiers dedans.
+  if(window.showDirectoryPicker) {
+    try {
+      const dirHandle = await window.showDirectoryPicker({ id: 'atrium-json-backup', mode: 'readwrite' });
+      for(const f of filesToSave) {
+        const fileHandle = await dirHandle.getFileHandle(f.name, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(f.content);
+        await writable.close();
+      }
+      showBackupExportedModal(filesToSave.length);
+      return;
+    } catch(e) {
+      if(e && e.name === 'AbortError') return; // l'utilisateur a annulé le choix du dossier
+      // Autre erreur (permission refusée, etc.) → on retombe sur le téléchargement classique ci-dessous
+    }
+  }
+
+  // Fallback : téléchargement classique (navigateur non compatible showDirectoryPicker).
+  for(const f of filesToSave) {
+    const blob = new Blob([f.content], {type:'application/json;charset=utf-8;'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = f.name;
+    a.click();
+    await new Promise(r => setTimeout(r, 400));
+  }
+  showBackupExportedModal(filesToSave.length);
 }
 
 function showBackupExportedModal(nbExercices) {
@@ -2656,6 +2690,25 @@ function lineNavKey(e, prefix, id) {
   const colIdx = COLS.indexOf(prefix);
   const rows = Array.from(document.querySelectorAll('#lines-body tr'));
   const rowIdx = rows.findIndex(r => r.id === 'ln-'+id);
+
+  if(e.key === 'Enter') {
+    e.preventDefault();
+    // Sur les colonnes montant, calculer la formule éventuelle avant de bouger
+    if(prefix === 'ld' || prefix === 'lcr') {
+      evalMontant(document.getElementById(prefix+id));
+    }
+    // Puis descendre d'une ligne dans la même colonne (créer une ligne si on est en bas)
+    if(rowIdx < rows.length - 1) {
+      const nextRowId = rows[rowIdx+1].id.replace('ln-','');
+      document.getElementById(prefix+nextRowId)?.focus();
+    } else if(EXERCISE_STATUS !== 'closed') {
+      addLine();
+      const newRows = Array.from(document.querySelectorAll('#lines-body tr'));
+      const newLastId = newRows[newRows.length-1]?.id?.replace('ln-','');
+      if(newLastId) document.getElementById(prefix+newLastId)?.focus();
+    }
+    return;
+  }
 
   if(e.key === 'ArrowRight') {
     // Aller à la colonne suivante (skip ll qui est readonly)
