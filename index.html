@@ -1612,23 +1612,34 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div class="form-row mb8">
         <div class="form-field" style="grid-column:1/-1;">
           <label>Libellé écriture (base) *</label>
-          <input type="text" id="type-libelle-base" oninput="updateTypePreview()" placeholder="ex. Loyer {mois} — {libelle_saisi}">
+          <input type="text" id="type-libelle-base" oninput="updateTypePreview()" placeholder="ex. Loyer — {libelle_saisi}">
           <div style="font-size:9px;color:var(--text2);margin-top:3px;">
-            Variables : <code style="color:var(--cyan);">{mois}</code> (mois d'affectation), <code style="color:var(--cyan);">{libelle_saisi}</code> (le libellé que vous saisirez à chaque mouvement)
+            Variables : <code style="color:var(--cyan);">{mois}</code> (mois d'affectation), <code style="color:var(--cyan);">{libelle_saisi}</code> (le libellé saisi à chaque mouvement)
           </div>
+        </div>
+      </div>
+
+      <div class="form-row mb8">
+        <div class="form-field" style="grid-column:1/-1;">
+          <label>Suffixe automatique du libellé</label>
+          <select id="type-suffixe-libelle" onchange="updateTypePreview()">
+            <option value="aucun">— Aucun suffixe automatique —</option>
+            <option value="mois_annee">Ajouter " mois année " (ex. septembre 2026)</option>
+            <option value="mm_aaaa">Ajouter " MM/AAAA " (ex. 09/2026)</option>
+          </select>
         </div>
       </div>
 
       <div class="form-row mb8">
         <div class="form-field">
           <label>Préfixe n° de pièce</label>
-          <input type="text" id="type-prefixe-piece" oninput="updateTypePreview()" placeholder="ex. QUIT, RB, CAF..." style="font-family:var(--mono);">
+          <select id="type-prefixe-piece" onchange="updateTypePreview()" style="font-family:var(--mono);"></select>
         </div>
         <div class="form-field">
           <label>Format n° de pièce</label>
           <select id="type-format-piece" onchange="updateTypePreview()">
-            <option value="prefixe">Préfixe seul</option>
-            <option value="prefixe_mois">Préfixe + année-mois (ex. RB_2026-09)</option>
+            <option value="prefixe">Préfixe seul (ex. QUIT)</option>
+            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT_09/26)</option>
           </select>
         </div>
       </div>
@@ -6540,24 +6551,39 @@ function moisImpliques(loc) {
   return [...set].sort();
 }
 
-// Génère le n° de pièce d'un mouvement selon le format du type. Aucune notion de compteur.
+// Génère le n° de pièce d'un mouvement selon le format du type.
+// - 'prefixe'          -> "RB"
+// - 'prefixe_mois'     -> "RB_09/26"  (MM/AA du mois d'affectation)
 function genererNumeroPiece(type, moisAffectation) {
   if(!type) return '';
   const prefix = type.prefixePiece || '';
   if(type.formatPiece === 'prefixe_mois' && moisAffectation) {
-    return prefix + '_' + moisAffectation;
+    const [y, m] = moisAffectation.split('-');
+    return prefix + '_' + m + '/' + y.slice(-2);
   }
-  return prefix; // 'prefixe' seul, ou pas de format
+  return prefix;
 }
 
-// Substitue {mois} et {libelle_saisi} dans le libellé de base d'un type
+// Compose le libellé final d'un mouvement, avec substitution des variables et
+// éventuel suffixe automatique choisi au paramétrage du type.
+// Variables : {mois}, {libelle_saisi} (alias {libelle}).
+// Suffixes possibles :
+//   'aucun'       -> rien
+//   'mois_annee'  -> " septembre 2026"
+//   'mm_aaaa'     -> " 09/2026"
 function composerLibelle(type, libelleSaisi, moisAffectation) {
   if(!type) return libelleSaisi || '';
   let s = type.libelleBase || '';
   const moisLabel = moisAffectation ? moisLabelFromYYYYMM(moisAffectation) : '';
   s = s.replace(/\{mois\}/g, moisLabel);
   s = s.replace(/\{libelle_saisi\}/g, libelleSaisi || '');
-  s = s.replace(/\{libelle\}/g, libelleSaisi || ''); // alias plus court
+  s = s.replace(/\{libelle\}/g, libelleSaisi || '');
+  s = s.trim();
+  if(moisAffectation && type.suffixeLibelle && type.suffixeLibelle !== 'aucun') {
+    const [y, m] = moisAffectation.split('-');
+    if(type.suffixeLibelle === 'mois_annee') s += ' ' + moisLabel;
+    else if(type.suffixeLibelle === 'mm_aaaa') s += ' ' + m + '/' + y;
+  }
   return s.trim();
 }
 
@@ -6706,6 +6732,9 @@ function openTypesModal(locId) {
   ensureLocV2(loc);
   document.getElementById('types-modal-loc-id').value = locId;
   document.getElementById('types-modal-loc-name').textContent = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ') + ' — ' + (loc.adresse1||'');
+  // Alimente le select des préfixes avec la même liste que la saisie comptable manuelle
+  const prefSel = document.getElementById('type-prefixe-piece');
+  prefSel.innerHTML = '<option value="">—</option>' + TYPEDOC_LIST.map(t => `<option value="${t.code}">${t.code} — ${t.label}</option>`).join('');
   renderTypesList();
   document.getElementById('types-modal').style.display = 'flex';
 }
@@ -6713,6 +6742,8 @@ function openTypesModal(locId) {
 function closeTypesModal() {
   document.getElementById('types-modal').style.display = 'none';
   document.getElementById('type-edit-form').style.display = 'none';
+  // Si un locataire est ouvert en détail derrière, on rafraîchit pour voir les nouveaux types
+  if(_locDetailId) renderLocataireDetail();
 }
 
 function renderTypesList() {
@@ -6764,6 +6795,7 @@ function newType() {
   document.getElementById('type-compte-credit').value = '';
   document.getElementById('type-journal').value = 'VE';
   document.getElementById('type-libelle-base').value = '';
+  document.getElementById('type-suffixe-libelle').value = 'mois_annee';
   document.getElementById('type-prefixe-piece').value = '';
   document.getElementById('type-format-piece').value = 'prefixe_mois';
   updateTypePreview();
@@ -6783,6 +6815,7 @@ function editType(typeId) {
   document.getElementById('type-compte-credit').value = t.compteCredit||'';
   document.getElementById('type-journal').value = t.journal||'VE';
   document.getElementById('type-libelle-base').value = t.libelleBase||'';
+  document.getElementById('type-suffixe-libelle').value = t.suffixeLibelle||'mois_annee';
   document.getElementById('type-prefixe-piece').value = t.prefixePiece||'';
   document.getElementById('type-format-piece').value = t.formatPiece||'prefixe_mois';
   updateTypePreview();
@@ -6797,9 +6830,10 @@ function updateTypePreview() {
   const nom = document.getElementById('type-nom').value.trim() || '(nom du type)';
   const sens = document.getElementById('type-sens').value;
   const libelleBase = document.getElementById('type-libelle-base').value;
+  const suffixeLibelle = document.getElementById('type-suffixe-libelle').value;
   const prefixe = document.getElementById('type-prefixe-piece').value;
   const format = document.getElementById('type-format-piece').value;
-  const fauxType = { nom, sens, libelleBase, prefixePiece: prefixe, formatPiece: format };
+  const fauxType = { nom, sens, libelleBase, suffixeLibelle, prefixePiece: prefixe, formatPiece: format };
   const previewLib = composerLibelle(fauxType, '<libellé saisi>', '2026-09') || '(vide)';
   const previewNum = genererNumeroPiece(fauxType, '2026-09') || '(vide)';
   document.getElementById('type-preview-libelle').textContent = previewLib;
@@ -6818,6 +6852,7 @@ function saveType() {
   const compteCredit = document.getElementById('type-compte-credit').value.trim();
   const journal = document.getElementById('type-journal').value;
   const libelleBase = document.getElementById('type-libelle-base').value.trim();
+  const suffixeLibelle = document.getElementById('type-suffixe-libelle').value;
   const prefixePiece = document.getElementById('type-prefixe-piece').value.trim();
   const formatPiece = document.getElementById('type-format-piece').value;
 
@@ -6829,9 +6864,9 @@ function saveType() {
 
   if(editId) {
     const t = loc.types.find(x => x.id === editId);
-    if(t) Object.assign(t, { nom, sens, compteDebit, compteCredit, journal, libelleBase, prefixePiece, formatPiece });
+    if(t) Object.assign(t, { nom, sens, compteDebit, compteCredit, journal, libelleBase, suffixeLibelle, prefixePiece, formatPiece });
   } else {
-    loc.types.push({ id: crypto.randomUUID(), nom, sens, compteDebit, compteCredit, journal, libelleBase, prefixePiece, formatPiece });
+    loc.types.push({ id: crypto.randomUUID(), nom, sens, compteDebit, compteCredit, journal, libelleBase, suffixeLibelle, prefixePiece, formatPiece });
   }
   saveDB();
   document.getElementById('type-edit-form').style.display = 'none';
@@ -6901,6 +6936,7 @@ function confirmCopyTypes() {
       nom: t.nom, sens: t.sens,
       compteDebit: t.compteDebit, compteCredit: t.compteCredit,
       journal: t.journal, libelleBase: t.libelleBase,
+      suffixeLibelle: t.suffixeLibelle,
       prefixePiece: t.prefixePiece, formatPiece: t.formatPiece
     });
   });
@@ -6928,11 +6964,10 @@ function renderLocataires() {
   if(_locDetailId) { renderLocataireDetail(); return; }
 
   const list = ensureLocatairesArray();
-  const body = document.getElementById('locataires-body');
-  const empty = document.getElementById('locataires-empty');
-  if(!body) return;
+  const wrap = document.getElementById('locataires-list-wrap');
+  if(!wrap) return; // on n'est pas sur l'onglet locataires
   // Restaurer l'affichage normal (au cas où la vue détail l'aurait remplacé)
-  document.querySelector('#locataires-list-wrap').innerHTML = `
+  wrap.innerHTML = `
     <table>
       <thead>
         <tr>
