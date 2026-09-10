@@ -1591,11 +1591,11 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div class="form-row mb8">
         <div class="form-field">
           <label>Compte à débiter (6 chiffres) *</label>
-          <input type="text" id="type-compte-debit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 411001">
+          <input type="text" id="type-compte-debit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 411001" oninput="genAcSearch('type-compte-debit')" onkeydown="genAcKey(event,'type-compte-debit')" onblur="genAcBlur('type-compte-debit')" autocomplete="off">
         </div>
         <div class="form-field">
           <label>Compte à créditer (6 chiffres) *</label>
-          <input type="text" id="type-compte-credit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 706100">
+          <input type="text" id="type-compte-credit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 706100" oninput="genAcSearch('type-compte-credit')" onkeydown="genAcKey(event,'type-compte-credit')" onblur="genAcBlur('type-compte-credit')" autocomplete="off">
         </div>
         <div class="form-field">
           <label>Journal *</label>
@@ -1688,6 +1688,94 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="flex gap8">
       <button class="btn btn-primary" onclick="confirmCopyTypes()">📋 COPIER LES TYPES</button>
       <button class="btn ml-auto" onclick="closeCopyTypesModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ MOUVEMENT LOCATAIRE (saisie / édition) — v2 ══════════════ -->
+<div id="mvt-modal" class="modal-overlay">
+  <div class="modal" style="width:640px;max-height:88vh;overflow-y:auto;">
+    <div class="modal-title" id="mvt-modal-title">+ NOUVEAU MOUVEMENT</div>
+    <input type="hidden" id="mvt-modal-loc-id">
+    <input type="hidden" id="mvt-edit-id">
+    <input type="hidden" id="mvt-sens">
+
+    <div class="form-row mb8">
+      <div class="form-field">
+        <label>Type d'opération *</label>
+        <select id="mvt-type" onchange="onMouvementTypeChanged()"></select>
+      </div>
+      <div class="form-field">
+        <label>Date d'opération * <span style="color:var(--text2);font-weight:400;">(= date d'écriture)</span></label>
+        <input type="date" id="mvt-date-operation">
+      </div>
+    </div>
+
+    <div class="form-row mb8">
+      <div class="form-field">
+        <label>Libellé (variable saisie)</label>
+        <input type="text" id="mvt-libelle" oninput="updateMouvementPreview()" placeholder="Ex. Régul charges 2025, virement du 15/09...">
+      </div>
+      <div class="form-field">
+        <label>Montant total (€) *</label>
+        <input type="number" step="0.01" id="mvt-montant" oninput="updateMouvementTotal()" style="font-family:var(--mono);text-align:right;">
+      </div>
+    </div>
+
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>Mois de référence (détermine les 3 mois candidats d'affectation ci-dessous)</label>
+        <input type="month" id="mvt-mois-ref" onchange="refreshMouvementAffectationRows()">
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:10px;">
+      <div style="padding:8px 12px;border-bottom:1px solid var(--line2);font-size:11px;font-weight:600;">AFFECTATION</div>
+      <div id="mvt-affectations-rows"></div>
+    </div>
+
+    <div id="mvt-total-info" style="padding:8px 12px;background:var(--bg2);border:1px solid var(--line1);border-radius:var(--radius);font-size:11px;margin-bottom:10px;"></div>
+
+    <div style="background:var(--bg2);border:1px solid var(--line1);border-radius:var(--radius);padding:8px 12px;font-size:10px;color:var(--text2);margin-bottom:12px;">
+      <strong style="color:var(--cyan);">Écriture qui sera générée :</strong><br>
+      Libellé : <span id="mvt-preview-libelle" style="color:var(--text0);font-family:var(--mono);"></span><br>
+      N° pièce : <span id="mvt-preview-numpiece" style="color:var(--text0);font-family:var(--mono);"></span>
+    </div>
+
+    <div class="flex gap8">
+      <button class="btn btn-primary" onclick="saveMouvement()">💾 ENREGISTRER ET COMPTABILISER</button>
+      <button class="btn ml-auto" onclick="closeMouvementModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Suppression d'un mouvement -->
+<div id="mvt-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title">Supprimer ce mouvement ?</div>
+    <p id="mvt-delete-msg" style="font-size:12px;margin-bottom:14px;"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteMouvement()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="cancelDeleteMouvement()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Soldes initiaux par mois -->
+<div id="si-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-title">🎯 SOLDES INITIAUX PAR MOIS</div>
+    <input type="hidden" id="si-modal-loc-id">
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">
+      Amorcez ici les <strong>impayés antérieurs</strong> au démarrage de l'outil, mois par mois. Ces montants ne génèrent aucune écriture (ils sont supposés déjà comptabilisés ailleurs). Ils entrent uniquement dans le calcul du solde du mois.
+    </div>
+    <div id="si-rows" style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:10px;"></div>
+    <div style="margin-bottom:14px;">
+      <button class="btn btn-sm" onclick="addSoldeInitialRow()">+ Ajouter une ligne</button>
+    </div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" onclick="saveSoldesInitiauxAndClose()">💾 ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closeSoldesInitiauxModal()">ANNULER</button>
     </div>
   </div>
 </div>
@@ -6668,8 +6756,8 @@ function renderLocataireDetail() {
               <td class="td-num" style="color:${color};font-weight:600;">${fmt(mvt.montant)}</td>
               <td style="text-align:center;">${statut}</td>
               <td style="text-align:center;white-space:nowrap;">
-                <button class="btn btn-sm btn-icon" onclick="alert('À venir : édition du mouvement — étape 3')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
-                <button class="btn btn-sm btn-danger btn-icon" onclick="alert('À venir : suppression du mouvement — étape 3')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+                <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+                <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
               </td>
             </tr>`;
           }).join('')}
@@ -6700,9 +6788,12 @@ function renderLocataireDetail() {
       </div>
 
       <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);gap:8px;">
           <div style="font-size:11px;font-weight:600;color:var(--text0);">SOLDES PAR MOIS</div>
-          ${creditEnAttente>0.005?`<span style="font-size:10px;color:var(--cyan);">Crédit en attente : ${fmt(creditEnAttente)}€</span>`:''}
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${creditEnAttente>0.005?`<span style="font-size:10px;color:var(--cyan);">Crédit en attente : ${fmt(creditEnAttente)}€</span>`:''}
+            <button class="btn btn-sm" onclick="openSoldesInitiauxModal('${loc.id}')" title="Amorcer les soldes des mois antérieurs à l'outil" style="padding:3px 8px;font-size:9px;">🎯 Soldes initiaux</button>
+          </div>
         </div>
         <div style="max-height:180px;overflow-y:auto;">${soldesParMoisHtml}</div>
       </div>
@@ -6711,14 +6802,13 @@ function renderLocataireDetail() {
     <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
         <div style="font-size:11px;font-weight:600;color:var(--text0);">MOUVEMENTS</div>
-        <button class="btn btn-sm btn-primary" onclick="alert('À venir : saisie de mouvement — étape 3')" style="padding:3px 10px;font-size:10px;">+ Nouveau mouvement</button>
+        <button class="btn btn-sm btn-primary" onclick="openMouvementModal('${loc.id}')" style="padding:3px 10px;font-size:10px;">+ Nouveau mouvement</button>
       </div>
       ${mvtsHtml}
     </div>
 
     <div style="margin-top:14px;padding:10px 14px;background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);border-radius:var(--radius);font-size:10px;color:var(--text2);">
-      <strong style="color:var(--cyan);">Refonte en cours (V39) :</strong> les appels de loyer et quittances existants restent des <strong>documents seuls</strong> — ils ne génèrent plus aucune écriture comptable.
-      Toute comptabilisation passera désormais par les <strong>mouvements</strong> ci-dessus (étape 3, prochaine session). L'étape 4 refondera les documents pour qu'ils s'alimentent des mouvements.
+      <strong style="color:var(--cyan);">Refonte en cours (V41) :</strong> les mouvements ci-dessus <strong>génèrent maintenant les écritures comptables</strong> automatiquement. Étape 4 restante : refonte des appels de loyer / quittances pour qu'ils s'alimentent des mouvements (aujourd'hui, ce sont encore les anciens formulaires).
     </div>
   `;
   updateNavCounts();
@@ -6946,7 +7036,432 @@ function confirmCopyTypes() {
   toast(`${(source.types||[]).length} type(s) copié(s)`, 'success');
 }
 
-// Bascule depuis la modale locataire vers la modale types (uniquement pour un locataire déjà enregistré)
+// ══════════════════════════════════════════════
+// ÉTAPE 3-4 : MOUVEMENTS + COMPTABILISATION + CRÉDITS EN ATTENTE + SOLDES INITIAUX
+// ══════════════════════════════════════════════
+
+// Les 3 mois candidats pour l'affectation : m, m-1, m-2 par rapport au mois d'opération saisi
+function troisMoisCandidats(moisReference) {
+  if(!moisReference) return [];
+  return [moisPrecedent(moisPrecedent(moisReference)), moisPrecedent(moisReference), moisReference];
+}
+
+// Rafraîchit l'aperçu du libellé/n° pièce dans la modale mouvement
+function updateMouvementPreview() {
+  const locId = document.getElementById('mvt-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const typeId = document.getElementById('mvt-type').value;
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(!t) {
+    document.getElementById('mvt-preview-libelle').textContent = '(choisissez un type)';
+    document.getElementById('mvt-preview-numpiece').textContent = '';
+    return;
+  }
+  const libelleSaisi = document.getElementById('mvt-libelle').value || '';
+  // Pour l'aperçu, on prend le PREMIER mois affecté (ou celui de saisie si aucun coché)
+  const firstMois = getMouvementAffectations().map(a => a.mois)[0] || document.getElementById('mvt-mois-ref').value;
+  document.getElementById('mvt-preview-libelle').textContent = composerLibelle(t, libelleSaisi, firstMois) || '(vide)';
+  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, firstMois) || '(vide)';
+}
+
+// Rafraîchit la zone d'affectation (les 3 mois candidats avec leurs soldes + cases/montants)
+function refreshMouvementAffectationRows() {
+  const locId = document.getElementById('mvt-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const moisRef = document.getElementById('mvt-mois-ref').value;
+  const sens = document.getElementById('mvt-sens').value;
+  const container = document.getElementById('mvt-affectations-rows');
+  if(!moisRef) { container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:11px;font-style:italic;">Choisissez d\'abord le mois d\'opération.</div>'; return; }
+  const mois3 = troisMoisCandidats(moisRef);
+  // Pour un "+" : un seul mois d'affectation (radio + montant auto). Pour un "-" : multi-sélection avec montant par mois.
+  if(sens === '+') {
+    container.innerHTML = mois3.map((m, i) => {
+      const s = computeSoldeMoisExcluant(loc, m, document.getElementById('mvt-edit-id').value);
+      const soldeTxt = s > 0.005 ? `Solde : <span style="color:var(--amber);font-weight:600;">+${fmt(s)}€</span>` : (s < -0.005 ? `Solde : <span style="color:var(--green);font-weight:600;">${fmt(s)}€</span>` : `<span style="color:var(--text2);">Solde : 0</span>`);
+      const checked = (i === mois3.length - 1) ? 'checked' : '';
+      return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);cursor:pointer;">
+        <input type="radio" name="mvt-aff-mois" value="${m}" ${checked} onchange="updateMouvementPreview()" style="width:14px;height:14px;">
+        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
+        <span style="font-size:10px;">${soldeTxt}</span>
+      </label>`;
+    }).join('');
+  } else {
+    // Sens "-" : multi-sélection + montant par mois
+    container.innerHTML = mois3.map(m => {
+      const s = computeSoldeMoisExcluant(loc, m, document.getElementById('mvt-edit-id').value);
+      const soldeTxt = s > 0.005 ? `Solde dû : <span style="color:var(--amber);font-weight:600;">${fmt(s)}€</span>` : (s < -0.005 ? `Crédit : <span style="color:var(--green);font-weight:600;">${fmt(-s)}€</span>` : `<span style="color:var(--text2);">Soldé (0)</span>`);
+      return `<div class="mvt-aff-row" data-mois="${m}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);">
+        <input type="checkbox" class="mvt-aff-check" data-mois="${m}" onchange="onAffectationChanged('${m}')" style="width:14px;height:14px;">
+        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
+        <span style="font-size:10px;min-width:130px;text-align:right;">${soldeTxt}</span>
+        <input type="number" step="0.01" class="mvt-aff-montant" data-mois="${m}" placeholder="0.00" disabled style="width:100px;font-family:var(--mono);text-align:right;" oninput="updateMouvementTotal()">
+      </div>`;
+    }).join('');
+  }
+  updateMouvementTotal();
+  updateMouvementPreview();
+}
+
+// Solde d'un mois EXCLUANT un mouvement donné (utile en édition pour ne pas compter deux fois)
+function computeSoldeMoisExcluant(loc, yyyymm, excludeMvtId) {
+  ensureLocV2(loc);
+  let solde = 0;
+  (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === yyyymm) solde += (parseFloat(si.montant)||0); });
+  (loc.mouvements||[]).forEach(mvt => {
+    if(excludeMvtId && mvt.id === excludeMvtId) return;
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === yyyymm) {
+        const m = parseFloat(a.montant)||0;
+        solde += (mvt.sens === '+' ? m : -m);
+      }
+    });
+  });
+  return Math.round(solde*100)/100;
+}
+
+function onAffectationChanged(mois) {
+  // Active/désactive le champ montant + auto-remplit avec le solde dû si possible
+  const check = document.querySelector(`.mvt-aff-check[data-mois="${mois}"]`);
+  const input = document.querySelector(`.mvt-aff-montant[data-mois="${mois}"]`);
+  if(!check || !input) return;
+  input.disabled = !check.checked;
+  if(check.checked && !input.value) {
+    const locId = document.getElementById('mvt-modal-loc-id').value;
+    const loc = ensureLocatairesArray().find(l => l.id === locId);
+    const s = computeSoldeMoisExcluant(loc, mois, document.getElementById('mvt-edit-id').value);
+    if(s > 0.005) input.value = s.toFixed(2);
+  } else if(!check.checked) {
+    input.value = '';
+  }
+  updateMouvementTotal();
+  updateMouvementPreview();
+}
+
+// Récupère les affectations depuis le formulaire (+ ou -)
+function getMouvementAffectations() {
+  const sens = document.getElementById('mvt-sens').value;
+  const affs = [];
+  if(sens === '+') {
+    const chosen = document.querySelector('input[name="mvt-aff-mois"]:checked');
+    if(chosen) {
+      const montant = parseFloat(document.getElementById('mvt-montant').value) || 0;
+      if(montant > 0) affs.push({ mois: chosen.value, montant });
+    }
+  } else {
+    document.querySelectorAll('.mvt-aff-check:checked').forEach(cb => {
+      const mois = cb.dataset.mois;
+      const inp = document.querySelector(`.mvt-aff-montant[data-mois="${mois}"]`);
+      const m = parseFloat(inp.value)||0;
+      if(m > 0) affs.push({ mois, montant: m });
+    });
+  }
+  return affs;
+}
+
+// Met à jour la ligne "Total affecté / Excédent / Crédit à créer"
+function updateMouvementTotal() {
+  const sens = document.getElementById('mvt-sens').value;
+  const total = parseFloat(document.getElementById('mvt-montant').value) || 0;
+  const affs = getMouvementAffectations();
+  const totalAff = Math.round(affs.reduce((s,a)=>s+a.montant,0)*100)/100;
+  const excedent = Math.round((total - totalAff)*100)/100;
+  const zone = document.getElementById('mvt-total-info');
+  if(sens === '+') {
+    zone.innerHTML = `<span style="color:var(--text2);">Ce mouvement de <strong style="color:var(--amber);">${fmt(total)}€</strong> sera affecté au mois sélectionné.</span>`;
+  } else {
+    let html = `<span style="color:var(--text2);">Montant du paiement : <strong style="color:var(--green);">${fmt(total)}€</strong> — Total affecté : <strong>${fmt(totalAff)}€</strong></span>`;
+    if(excedent > 0.005) {
+      html += `<br><span style="color:var(--cyan);">→ Excédent de <strong>${fmt(excedent)}€</strong> qui sera stocké comme <strong>crédit en attente</strong>.</span>`;
+    } else if(excedent < -0.005) {
+      html += `<br><span style="color:var(--red);">⚠ Vous avez affecté <strong>${fmt(-excedent)}€ de plus</strong> que le montant du paiement. Corrigez.</span>`;
+    }
+    zone.innerHTML = html;
+  }
+}
+
+// Ouverture de la modale de saisie/édition d'un mouvement
+function openMouvementModal(locId, editId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  if(!loc.types || !loc.types.length) {
+    toast('Paramétrez d\'abord au moins un type d\'opération pour ce locataire', 'error');
+    return;
+  }
+  document.getElementById('mvt-modal-loc-id').value = locId;
+  document.getElementById('mvt-edit-id').value = editId || '';
+  document.getElementById('mvt-modal-title').textContent = editId ? '✎ MODIFIER LE MOUVEMENT' : '+ NOUVEAU MOUVEMENT';
+
+  // Alimente le sélecteur de types
+  const typeSel = document.getElementById('mvt-type');
+  typeSel.innerHTML = '<option value="">— Choisir un type —</option>' +
+    loc.types.map(t => `<option value="${t.id}">${t.sens} ${t.nom}</option>`).join('');
+
+  if(editId) {
+    const mvt = (loc.mouvements||[]).find(m => m.id === editId);
+    if(!mvt) return;
+    // Blocage si écriture dans exercice clôturé
+    if(mvt.ecritureId && EXERCISE_STATUS === 'closed') {
+      toast('Impossible de modifier : l\'exercice est clôturé', 'error');
+      return;
+    }
+    typeSel.value = mvt.typeId;
+    document.getElementById('mvt-sens').value = mvt.sens;
+    document.getElementById('mvt-libelle').value = mvt.libelle||'';
+    document.getElementById('mvt-mois-ref').value = mvt.affectations?.[0]?.mois || (mvt.dateOperation ? mvt.dateOperation.slice(0,7) : '');
+    document.getElementById('mvt-date-operation').value = mvt.dateOperation||'';
+    document.getElementById('mvt-montant').value = mvt.montant||'';
+    refreshMouvementAffectationRows();
+    // Pré-cocher les affectations existantes
+    setTimeout(() => {
+      if(mvt.sens === '+') {
+        const chosen = mvt.affectations?.[0]?.mois;
+        const radios = document.querySelectorAll('input[name="mvt-aff-mois"]');
+        radios.forEach(r => { r.checked = (r.value === chosen); });
+      } else {
+        (mvt.affectations||[]).forEach(a => {
+          const cb = document.querySelector(`.mvt-aff-check[data-mois="${a.mois}"]`);
+          const inp = document.querySelector(`.mvt-aff-montant[data-mois="${a.mois}"]`);
+          if(cb) { cb.checked = true; }
+          if(inp) { inp.disabled = false; inp.value = a.montant.toFixed(2); }
+        });
+      }
+      updateMouvementTotal();
+      updateMouvementPreview();
+    }, 30);
+  } else {
+    // Nouveau mouvement : valeurs par défaut
+    document.getElementById('mvt-sens').value = '+';
+    document.getElementById('mvt-libelle').value = '';
+    const today = new Date().toISOString().slice(0,10);
+    const mois = today.slice(0,7);
+    document.getElementById('mvt-date-operation').value = today;
+    document.getElementById('mvt-mois-ref').value = mois;
+    document.getElementById('mvt-montant').value = '';
+    // Auto-ajuster le sens quand on choisit un type (le type impose son sens)
+    setTimeout(() => refreshMouvementAffectationRows(), 30);
+  }
+
+  document.getElementById('mvt-modal').style.display = 'flex';
+}
+
+// Quand l'utilisateur change de type, on aligne le sens et on rerend les affectations
+function onMouvementTypeChanged() {
+  const locId = document.getElementById('mvt-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  const typeId = document.getElementById('mvt-type').value;
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(t) document.getElementById('mvt-sens').value = t.sens;
+  refreshMouvementAffectationRows();
+  updateMouvementPreview();
+}
+
+function closeMouvementModal() {
+  document.getElementById('mvt-modal').style.display = 'none';
+}
+
+// Enregistre le mouvement + génère/regénère l'écriture comptable
+function saveMouvement() {
+  const locId = document.getElementById('mvt-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé', 'error'); return; }
+
+  const editId = document.getElementById('mvt-edit-id').value;
+  const typeId = document.getElementById('mvt-type').value;
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(!t) { toast('Choisissez un type d\'opération', 'error'); return; }
+  const sens = t.sens; // le type impose le sens
+  const libelle = document.getElementById('mvt-libelle').value.trim();
+  const dateOperation = document.getElementById('mvt-date-operation').value;
+  const montant = parseFloat(document.getElementById('mvt-montant').value) || 0;
+  if(!dateOperation) { toast('Date d\'opération requise', 'error'); return; }
+  if(montant <= 0) { toast('Le montant doit être positif', 'error'); return; }
+  const affectations = getMouvementAffectations();
+  if(!affectations.length) { toast('Sélectionnez au moins un mois d\'affectation', 'error'); return; }
+  const totalAff = Math.round(affectations.reduce((s,a)=>s+a.montant,0)*100)/100;
+  if(totalAff > montant + 0.005) { toast('Total affecté supérieur au montant du mouvement', 'error'); return; }
+  const excedent = Math.round((montant - totalAff)*100)/100;
+  // Pour un "+" : le montant DOIT être exactement égal à l'affectation (un seul mois, pas d'excédent possible)
+  if(sens === '+' && excedent > 0.005) { toast('Pour un +, montant et affectation doivent être identiques', 'error'); return; }
+  const creditEnAttente = (sens === '-') ? excedent : 0;
+
+  // Récupère ou crée le mouvement
+  let mvt;
+  if(editId) {
+    mvt = loc.mouvements.find(m => m.id === editId);
+    if(!mvt) return;
+    if(mvt.ecritureId && EXERCISE_STATUS === 'closed') { toast('Écriture dans exercice clôturé — modification refusée', 'error'); return; }
+    // Supprime les anciennes écritures de ce mouvement (regénération)
+    supprimerEcrituresDuMouvement(mvt);
+  } else {
+    mvt = { id: crypto.randomUUID() };
+    loc.mouvements.push(mvt);
+  }
+  Object.assign(mvt, {
+    sens, typeId, libelle, dateOperation, montant,
+    affectations, creditEnAttente,
+    ecritureId: null
+  });
+
+  // Génère la (les) nouvelle(s) écriture(s)
+  const ioGroup = Date.now() + Math.floor(Math.random()*1000);
+  // Une écriture unique par mouvement, quel que soit le nombre d'affectations
+  // (le libellé référence le 1er mois affecté ; le n° de pièce aussi)
+  const moisPrincipal = affectations[0].mois;
+  const libelleFinal = composerLibelle(t, libelle, moisPrincipal);
+  const numDoc = genererNumeroPiece(t, moisPrincipal);
+  DB.ecritures.push({
+    id: crypto.randomUUID(), _io: ioGroup,
+    journal: t.journal, date: dateOperation,
+    compte: t.compteDebit, libelleCompte: getLib(t.compteDebit)||'',
+    libelleEcriture: libelleFinal, numDoc,
+    debit: montant, credit: 0,
+    _mvtLocataireId: mvt.id
+  });
+  DB.ecritures.push({
+    id: crypto.randomUUID(), _io: ioGroup,
+    journal: t.journal, date: dateOperation,
+    compte: t.compteCredit, libelleCompte: getLib(t.compteCredit)||'',
+    libelleEcriture: libelleFinal, numDoc,
+    debit: 0, credit: montant,
+    _mvtLocataireId: mvt.id
+  });
+  mvt.ecritureId = ioGroup;
+
+  renum();
+  saveDB();
+  closeMouvementModal();
+  renderLocataireDetail();
+  updateNavCounts();
+  toast(editId ? 'Mouvement modifié' : 'Mouvement enregistré et comptabilisé', 'success');
+}
+
+// Supprime toutes les écritures rattachées à un mouvement donné (via _io ou _mvtLocataireId)
+function supprimerEcrituresDuMouvement(mvt) {
+  if(!mvt) return;
+  DB.ecritures = DB.ecritures.filter(e => e._mvtLocataireId !== mvt.id);
+}
+
+// Suppression d'un mouvement (avec confirmation)
+let _mvtDeleteTarget = null;
+function askDeleteMouvement(mvtId) {
+  const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
+  if(!loc) return;
+  const mvt = (loc.mouvements||[]).find(m => m.id === mvtId);
+  if(!mvt) return;
+  if(mvt.ecritureId && EXERCISE_STATUS === 'closed') {
+    toast('Impossible de supprimer : l\'exercice est clôturé', 'error');
+    return;
+  }
+  _mvtDeleteTarget = mvtId;
+  const t = (loc.types||[]).find(x => x.id === mvt.typeId);
+  document.getElementById('mvt-delete-msg').innerHTML =
+    `Supprimer le mouvement <strong>${t ? t.nom : '?'}</strong> du ${mvt.dateOperation} — <strong>${fmt(mvt.montant)}€</strong> ?<br>` +
+    `<span style="color:var(--text2);font-size:11px;">L'écriture comptable correspondante sera également supprimée.</span>`;
+  document.getElementById('mvt-delete-modal').style.display = 'flex';
+}
+
+function confirmDeleteMouvement() {
+  const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
+  if(loc && _mvtDeleteTarget) {
+    const mvt = (loc.mouvements||[]).find(m => m.id === _mvtDeleteTarget);
+    if(mvt) {
+      supprimerEcrituresDuMouvement(mvt);
+      loc.mouvements = loc.mouvements.filter(m => m.id !== _mvtDeleteTarget);
+      renum();
+      saveDB();
+      updateNavCounts();
+      toast('Mouvement supprimé', 'success');
+    }
+  }
+  _mvtDeleteTarget = null;
+  document.getElementById('mvt-delete-modal').style.display = 'none';
+  renderLocataireDetail();
+}
+
+function cancelDeleteMouvement() {
+  _mvtDeleteTarget = null;
+  document.getElementById('mvt-delete-modal').style.display = 'none';
+}
+
+// ── SOLDES INITIAUX PAR MOIS (amorce de l'outil) ──────────────────────────────
+
+function openSoldesInitiauxModal(locId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  document.getElementById('si-modal-loc-id').value = locId;
+  renderSoldesInitiauxRows();
+  document.getElementById('si-modal').style.display = 'flex';
+}
+
+function closeSoldesInitiauxModal() {
+  document.getElementById('si-modal').style.display = 'none';
+  if(_locDetailId) renderLocataireDetail();
+}
+
+function renderSoldesInitiauxRows() {
+  const locId = document.getElementById('si-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const container = document.getElementById('si-rows');
+  const list = loc.soldesInitiaux || [];
+  if(!list.length) {
+    container.innerHTML = '<div style="padding:12px;color:var(--text2);font-size:11px;font-style:italic;text-align:center;">Aucun solde initial. Cliquez sur "+ Ajouter" pour renseigner un impayé antérieur au démarrage.</div>';
+    return;
+  }
+  container.innerHTML = list.map((si, idx) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line1);">
+      <input type="month" value="${si.mois||''}" onchange="updateSoldeInitial(${idx},'mois',this.value)" style="width:150px;">
+      <input type="number" step="0.01" value="${si.montant||0}" onchange="updateSoldeInitial(${idx},'montant',parseFloat(this.value)||0)" placeholder="Montant" style="width:120px;font-family:var(--mono);text-align:right;">
+      <span style="font-size:10px;color:var(--text2);">€ dû par le locataire (positif = dette)</span>
+      <button class="btn btn-sm btn-danger btn-icon" onclick="removeSoldeInitial(${idx})" style="padding:1px 6px;font-size:10px;margin-left:auto;">✕</button>
+    </div>
+  `).join('');
+}
+
+function addSoldeInitialRow() {
+  const locId = document.getElementById('si-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  loc.soldesInitiaux.push({ mois: '', montant: 0 });
+  renderSoldesInitiauxRows();
+}
+
+function updateSoldeInitial(idx, field, value) {
+  const locId = document.getElementById('si-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc || !loc.soldesInitiaux[idx]) return;
+  loc.soldesInitiaux[idx][field] = value;
+  saveDB();
+}
+
+function removeSoldeInitial(idx) {
+  const locId = document.getElementById('si-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc || !loc.soldesInitiaux[idx]) return;
+  loc.soldesInitiaux.splice(idx, 1);
+  saveDB();
+  renderSoldesInitiauxRows();
+}
+
+function saveSoldesInitiauxAndClose() {
+  const locId = document.getElementById('si-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  // Nettoyer les lignes vides
+  loc.soldesInitiaux = (loc.soldesInitiaux||[]).filter(si => si.mois && Math.abs(parseFloat(si.montant)||0) > 0.005);
+  saveDB();
+  closeSoldesInitiauxModal();
+  toast('Soldes initiaux enregistrés', 'success');
+}
+
+// ── Bascule depuis la modale locataire vers la modale types (uniquement pour un locataire déjà enregistré)
 function openTypesModalFromLocModal() {
   const editId = document.getElementById('loc-edit-id').value;
   if(!editId) {
