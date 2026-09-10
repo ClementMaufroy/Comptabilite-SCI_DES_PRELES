@@ -1535,6 +1535,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     </div>
     <div class="flex gap8" style="margin-top:16px;">
       <button class="btn btn-primary" onclick="saveLocataire()">✓ ENREGISTRER</button>
+      <button class="btn btn-sm" onclick="openTypesModalFromLocModal()" id="loc-modal-types-btn" style="margin-left:8px;">⚙ PARAMÉTRER LES TYPES</button>
       <button class="btn ml-auto" onclick="closeLocataireModal()">ANNULER</button>
     </div>
   </div>
@@ -1548,6 +1549,134 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="flex gap8">
       <button class="btn btn-danger" onclick="confirmDeleteLocataire()">SUPPRIMER</button>
       <button class="btn ml-auto" onclick="closeLocataireDeleteModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ TYPES D'OPÉRATIONS — PARAMÉTRAGE (module v2) ══════════════ -->
+<div id="types-modal" class="modal-overlay">
+  <div class="modal" style="width:1080px;max-height:88vh;overflow-y:auto;">
+    <div class="modal-title">⚙ PARAMÉTRAGE DES TYPES D'OPÉRATIONS</div>
+    <input type="hidden" id="types-modal-loc-id">
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;">
+      Locataire : <span id="types-modal-loc-name" style="color:var(--text0);font-weight:600;"></span>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="btn btn-sm btn-primary" onclick="newType()">+ Ajouter un type</button>
+      <button class="btn btn-sm" onclick="openCopyTypesPicker()">📋 Copier depuis un autre locataire</button>
+    </div>
+
+    <div id="types-list-body" style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:14px;"></div>
+
+    <!-- Formulaire d'édition (caché par défaut) -->
+    <div id="type-edit-form" style="display:none;border:1px solid var(--cyan);border-radius:var(--radius);padding:14px;background:rgba(0,229,255,0.03);margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:10px;" id="type-form-title">+ Nouveau type</div>
+      <input type="hidden" id="type-edit-id">
+
+      <div class="form-row mb8">
+        <div class="form-field">
+          <label>Nom du type *</label>
+          <input type="text" id="type-nom" oninput="updateTypePreview()" placeholder="ex. Loyer, Provision charges, Régularisation, Encaissement...">
+        </div>
+        <div class="form-field">
+          <label>Sens *</label>
+          <select id="type-sens" onchange="updateTypePreview()">
+            <option value="+">+ (dette du locataire — appel)</option>
+            <option value="-">− (paiement / crédit)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row mb8">
+        <div class="form-field">
+          <label>Compte à débiter (6 chiffres) *</label>
+          <input type="text" id="type-compte-debit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 411001">
+        </div>
+        <div class="form-field">
+          <label>Compte à créditer (6 chiffres) *</label>
+          <input type="text" id="type-compte-credit" maxlength="6" style="font-family:var(--mono);" placeholder="ex. 706100">
+        </div>
+        <div class="form-field">
+          <label>Journal *</label>
+          <select id="type-journal">
+            <option value="VE">VE — Ventes</option>
+            <option value="HA">HA — Achats</option>
+            <option value="TRESO">TRESO — Trésorerie</option>
+            <option value="OD">OD — Opérations diverses</option>
+            <option value="IMMO">IMMO — Immobilisations</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row mb8">
+        <div class="form-field" style="grid-column:1/-1;">
+          <label>Libellé écriture (base) *</label>
+          <input type="text" id="type-libelle-base" oninput="updateTypePreview()" placeholder="ex. Loyer {mois} — {libelle_saisi}">
+          <div style="font-size:9px;color:var(--text2);margin-top:3px;">
+            Variables : <code style="color:var(--cyan);">{mois}</code> (mois d'affectation), <code style="color:var(--cyan);">{libelle_saisi}</code> (le libellé que vous saisirez à chaque mouvement)
+          </div>
+        </div>
+      </div>
+
+      <div class="form-row mb8">
+        <div class="form-field">
+          <label>Préfixe n° de pièce</label>
+          <input type="text" id="type-prefixe-piece" oninput="updateTypePreview()" placeholder="ex. QUIT, RB, CAF..." style="font-family:var(--mono);">
+        </div>
+        <div class="form-field">
+          <label>Format n° de pièce</label>
+          <select id="type-format-piece" onchange="updateTypePreview()">
+            <option value="prefixe">Préfixe seul</option>
+            <option value="prefixe_mois">Préfixe + année-mois (ex. RB_2026-09)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="background:var(--bg2);border:1px solid var(--line1);border-radius:var(--radius);padding:8px 12px;font-size:10px;color:var(--text2);margin-bottom:10px;">
+        <strong style="color:var(--cyan);">Aperçu pour septembre 2026 :</strong><br>
+        Libellé : <span id="type-preview-libelle" style="color:var(--text0);font-family:var(--mono);"></span><br>
+        N° pièce : <span id="type-preview-numpiece" style="color:var(--text0);font-family:var(--mono);"></span>
+      </div>
+
+      <div class="flex gap8">
+        <button class="btn btn-primary" onclick="saveType()">💾 ENREGISTRER LE TYPE</button>
+        <button class="btn ml-auto" onclick="cancelTypeEdit()">ANNULER</button>
+      </div>
+    </div>
+
+    <div class="flex gap8">
+      <button class="btn ml-auto" onclick="closeTypesModal()">FERMER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Suppression d'un type -->
+<div id="type-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:400px;">
+    <div class="modal-title">Supprimer le type ?</div>
+    <p style="font-size:12px;margin-bottom:14px;">Supprimer définitivement le type <strong id="type-delete-name" style="color:var(--red);"></strong> ?</p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeleteType()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="cancelDeleteType()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Copier les types depuis un autre locataire -->
+<div id="copy-types-modal" class="modal-overlay">
+  <div class="modal" style="width:500px;">
+    <div class="modal-title">📋 Copier les types depuis un autre locataire</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">
+      Les types du locataire choisi seront <strong>ajoutés</strong> à ceux déjà existants. Vous pourrez les modifier individuellement ensuite.
+    </div>
+    <div class="form-field" style="margin-bottom:14px;">
+      <label>Locataire source *</label>
+      <select id="copy-types-source"></select>
+    </div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" onclick="confirmCopyTypes()">📋 COPIER LES TYPES</button>
+      <button class="btn ml-auto" onclick="closeCopyTypesModal()">ANNULER</button>
     </div>
   </div>
 </div>
@@ -6360,20 +6489,479 @@ function computeSoldeLocataire(loc) {
   return Math.round(solde*100)/100;
 }
 
+// ══════════════════════════════════════════════
+// NOUVEAU MODULE GESTION LOCATIVE v2
+// (mouvements par mois + types paramétrables)
+// ══════════════════════════════════════════════
+
+// S'assure que la structure v2 existe sur un locataire (idempotent)
+function ensureLocV2(loc) {
+  if(!Array.isArray(loc.types)) loc.types = [];
+  if(!Array.isArray(loc.mouvements)) loc.mouvements = [];
+  if(!Array.isArray(loc.soldesInitiaux)) loc.soldesInitiaux = [];
+  return loc;
+}
+
+// Solde d'un mois donné = somme(+ affectés à ce mois) − somme(- affectés à ce mois) + solde initial de ce mois
+// > 0 = le locataire doit ; < 0 = crédit / trop-perçu.
+function computeSoldeMois(loc, yyyymm) {
+  ensureLocV2(loc);
+  let solde = 0;
+  (loc.soldesInitiaux||[]).forEach(si => {
+    if(si.mois === yyyymm) solde += (parseFloat(si.montant)||0);
+  });
+  (loc.mouvements||[]).forEach(mvt => {
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === yyyymm) {
+        const m = parseFloat(a.montant)||0;
+        solde += (mvt.sens === '+' ? m : -m);
+      }
+    });
+  });
+  return Math.round(solde*100)/100;
+}
+
+// Total des crédits en attente d'un locataire (excédents non affectés)
+function computeCreditEnAttente(loc) {
+  ensureLocV2(loc);
+  let total = 0;
+  (loc.mouvements||[]).forEach(mvt => { total += (parseFloat(mvt.creditEnAttente)||0); });
+  return Math.round(total*100)/100;
+}
+
+// Renvoie tous les mois YYYY-MM impliqués sur un locataire (soldes initiaux + affectations), triés du plus ancien au plus récent
+function moisImpliques(loc) {
+  ensureLocV2(loc);
+  const set = new Set();
+  (loc.soldesInitiaux||[]).forEach(si => { if(si.mois) set.add(si.mois); });
+  (loc.mouvements||[]).forEach(mvt => {
+    (mvt.affectations||[]).forEach(a => { if(a.mois) set.add(a.mois); });
+  });
+  return [...set].sort();
+}
+
+// Génère le n° de pièce d'un mouvement selon le format du type. Aucune notion de compteur.
+function genererNumeroPiece(type, moisAffectation) {
+  if(!type) return '';
+  const prefix = type.prefixePiece || '';
+  if(type.formatPiece === 'prefixe_mois' && moisAffectation) {
+    return prefix + '_' + moisAffectation;
+  }
+  return prefix; // 'prefixe' seul, ou pas de format
+}
+
+// Substitue {mois} et {libelle_saisi} dans le libellé de base d'un type
+function composerLibelle(type, libelleSaisi, moisAffectation) {
+  if(!type) return libelleSaisi || '';
+  let s = type.libelleBase || '';
+  const moisLabel = moisAffectation ? moisLabelFromYYYYMM(moisAffectation) : '';
+  s = s.replace(/\{mois\}/g, moisLabel);
+  s = s.replace(/\{libelle_saisi\}/g, libelleSaisi || '');
+  s = s.replace(/\{libelle\}/g, libelleSaisi || ''); // alias plus court
+  return s.trim();
+}
+
+// ── Écran détail d'un locataire (vue plein écran, alternative à la liste) ────────
+let _locDetailId = null; // id du locataire actuellement ouvert en détail, ou null
+
+function openLocataireDetail(locId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) { toast('Locataire introuvable','error'); return; }
+  ensureLocV2(loc);
+  _locDetailId = locId;
+  renderLocataires(); // renderLocataires bascule sur la vue détail si _locDetailId est défini
+}
+
+function closeLocataireDetail() {
+  _locDetailId = null;
+  renderLocataires();
+}
+
+// Rendu de la vue détail (appelé par renderLocataires quand _locDetailId est défini)
+function renderLocataireDetail() {
+  const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
+  const wrap = document.getElementById('locataires-list-wrap');
+  const empty = document.getElementById('locataires-empty');
+  if(empty) empty.style.display = 'none';
+  if(!loc) { _locDetailId = null; wrap.innerHTML = ''; return; }
+  ensureLocV2(loc);
+
+  const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
+  const soldeCptGL = computeSoldeLocataire(loc);
+  const creditEnAttente = computeCreditEnAttente(loc);
+
+  // Résumé des soldes par mois impliqué (les plus anciens en premier)
+  const moisList = moisImpliques(loc);
+  const soldesParMoisHtml = moisList.length
+    ? moisList.map(m => {
+        const s = computeSoldeMois(loc, m);
+        const color = s > 0.005 ? 'var(--amber)' : (s < -0.005 ? 'var(--green)' : 'var(--text2)');
+        return `<div style="display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+          <span>${moisLabelFromYYYYMM(m)}</span>
+          <span style="font-family:var(--mono);color:${color};font-weight:600;">${fmt(s)} €</span>
+        </div>`;
+      }).join('')
+    : '<div style="padding:10px;color:var(--text2);font-size:11px;font-style:italic;">Aucun mois n\'a encore de solde ou de mouvement.</div>';
+
+  // Types paramétrés — résumé
+  const typesHtml = loc.types.length
+    ? loc.types.map(t => `<span style="display:inline-flex;align-items:center;gap:5px;background:${t.sens==='+'?'rgba(255,200,64,0.12)':'rgba(0,229,160,0.12)'};color:${t.sens==='+'?'var(--amber)':'var(--green)'};border-radius:3px;padding:3px 8px;font-size:10px;margin:2px;">
+        <span style="font-weight:700;">${t.sens}</span> ${t.nom}
+      </span>`).join('')
+    : '<span style="color:var(--text2);font-size:11px;font-style:italic;">Aucun type paramétré. Cliquez sur ⚙ pour en ajouter.</span>';
+
+  // Mouvements — tableau chronologique (plus récents en premier)
+  const mvts = (loc.mouvements||[]).slice().sort((a,b) => (b.dateOperation||'').localeCompare(a.dateOperation||''));
+  const mvtsHtml = mvts.length
+    ? `<table style="width:100%;font-size:11px;">
+        <thead>
+          <tr>
+            <th style="width:80px;">Date opé.</th>
+            <th style="width:120px;">Type</th>
+            <th>Libellé</th>
+            <th style="width:140px;">Affectation(s)</th>
+            <th class="td-num" style="width:90px;">Montant</th>
+            <th style="width:70px;text-align:center;">Statut</th>
+            <th style="width:70px;text-align:center;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${mvts.map(mvt => {
+            const t = loc.types.find(x => x.id === mvt.typeId);
+            const sens = mvt.sens;
+            const color = sens === '+' ? 'var(--amber)' : 'var(--green)';
+            const affLabels = (mvt.affectations||[]).map(a => `${moisLabelFromYYYYMM(a.mois)} (${fmt(a.montant)}€)`).join('<br>');
+            const statut = mvt.ecritureId
+              ? '<span style="color:var(--green);font-size:9px;">✓ comptabilisé</span>'
+              : '<span style="color:var(--amber);font-size:9px;">non compta.</span>';
+            return `<tr>
+              <td style="font-family:var(--mono);font-size:10px;">${mvt.dateOperation||''}</td>
+              <td><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
+              <td>${mvt.libelle||''}</td>
+              <td style="font-size:10px;">${affLabels}${mvt.creditEnAttente>0.005?`<br><span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)}€ en attente</span>`:''}</td>
+              <td class="td-num" style="color:${color};font-weight:600;">${fmt(mvt.montant)}</td>
+              <td style="text-align:center;">${statut}</td>
+              <td style="text-align:center;white-space:nowrap;">
+                <button class="btn btn-sm btn-icon" onclick="alert('À venir : édition du mouvement — étape 3')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+                <button class="btn btn-sm btn-danger btn-icon" onclick="alert('À venir : suppression du mouvement — étape 3')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`
+    : '<div style="padding:14px;color:var(--text2);font-size:11px;font-style:italic;text-align:center;">Aucun mouvement enregistré pour ce locataire.</div>';
+
+  wrap.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <button class="btn btn-sm" onclick="closeLocataireDetail()">← Retour à la liste</button>
+      <div style="flex:1;">
+        <div style="font-size:16px;font-weight:600;color:var(--text0);">${noms||'(sans nom)'}</div>
+        <div style="font-size:11px;color:var(--text2);">${loc.adresse1||''}${loc.adresse2?' — '+loc.adresse2:''} • Client ${loc.numClient||''}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:10px;color:var(--text2);">Solde compte client (GL)</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:600;color:${soldeCptGL>0?'var(--amber)':(soldeCptGL<0?'var(--green)':'var(--text0)')};">${fmt(soldeCptGL)} €</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+      <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
+          <div style="font-size:11px;font-weight:600;color:var(--text0);">TYPES PARAMÉTRÉS</div>
+          <button class="btn btn-sm btn-primary" onclick="openTypesModal('${loc.id}')" style="padding:3px 10px;font-size:10px;">⚙ Paramétrer</button>
+        </div>
+        <div style="padding:10px 12px;">${typesHtml}</div>
+      </div>
+
+      <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
+          <div style="font-size:11px;font-weight:600;color:var(--text0);">SOLDES PAR MOIS</div>
+          ${creditEnAttente>0.005?`<span style="font-size:10px;color:var(--cyan);">Crédit en attente : ${fmt(creditEnAttente)}€</span>`:''}
+        </div>
+        <div style="max-height:180px;overflow-y:auto;">${soldesParMoisHtml}</div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
+        <div style="font-size:11px;font-weight:600;color:var(--text0);">MOUVEMENTS</div>
+        <button class="btn btn-sm btn-primary" onclick="alert('À venir : saisie de mouvement — étape 3')" style="padding:3px 10px;font-size:10px;">+ Nouveau mouvement</button>
+      </div>
+      ${mvtsHtml}
+    </div>
+
+    <div style="margin-top:14px;padding:10px 14px;background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);border-radius:var(--radius);font-size:10px;color:var(--text2);">
+      <strong style="color:var(--cyan);">Refonte en cours (V39) :</strong> les appels de loyer et quittances existants restent des <strong>documents seuls</strong> — ils ne génèrent plus aucune écriture comptable.
+      Toute comptabilisation passera désormais par les <strong>mouvements</strong> ci-dessus (étape 3, prochaine session). L'étape 4 refondera les documents pour qu'ils s'alimentent des mouvements.
+    </div>
+  `;
+  updateNavCounts();
+}
+
+// ── Paramétrage des types d'opérations ────────────────────────────────────────
+
+function openTypesModal(locId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  document.getElementById('types-modal-loc-id').value = locId;
+  document.getElementById('types-modal-loc-name').textContent = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ') + ' — ' + (loc.adresse1||'');
+  renderTypesList();
+  document.getElementById('types-modal').style.display = 'flex';
+}
+
+function closeTypesModal() {
+  document.getElementById('types-modal').style.display = 'none';
+  document.getElementById('type-edit-form').style.display = 'none';
+}
+
+function renderTypesList() {
+  const locId = document.getElementById('types-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const list = loc.types || [];
+  const body = document.getElementById('types-list-body');
+  if(!list.length) {
+    body.innerHTML = '<div style="padding:14px;color:var(--text2);font-size:11px;font-style:italic;text-align:center;">Aucun type paramétré. Cliquez sur "+ Ajouter un type" pour commencer.</div>';
+    return;
+  }
+  body.innerHTML = `<table style="width:100%;font-size:11px;">
+    <thead><tr>
+      <th style="width:20px;text-align:center;">Sens</th>
+      <th>Nom</th>
+      <th style="width:70px;">Débit</th>
+      <th style="width:70px;">Crédit</th>
+      <th style="width:60px;">Journal</th>
+      <th>Libellé écriture</th>
+      <th style="width:110px;">N° pièce</th>
+      <th style="width:60px;text-align:center;"></th>
+    </tr></thead>
+    <tbody>${list.map(t => {
+      const color = t.sens==='+' ? 'var(--amber)' : 'var(--green)';
+      const numPieceSample = genererNumeroPiece(t, '2026-09') || '—';
+      return `<tr>
+        <td style="text-align:center;color:${color};font-weight:700;">${t.sens}</td>
+        <td>${t.nom}</td>
+        <td style="font-family:var(--mono);font-size:10px;">${t.compteDebit||''}</td>
+        <td style="font-family:var(--mono);font-size:10px;">${t.compteCredit||''}</td>
+        <td>${t.journal||''}</td>
+        <td style="font-size:10px;color:var(--text2);">${t.libelleBase||''}</td>
+        <td style="font-family:var(--mono);font-size:10px;">${numPieceSample}</td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="btn btn-sm btn-icon" onclick="editType('${t.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteType('${t.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
+function newType() {
+  document.getElementById('type-edit-id').value = '';
+  document.getElementById('type-form-title').textContent = '+ Nouveau type';
+  document.getElementById('type-nom').value = '';
+  document.getElementById('type-sens').value = '+';
+  document.getElementById('type-compte-debit').value = '';
+  document.getElementById('type-compte-credit').value = '';
+  document.getElementById('type-journal').value = 'VE';
+  document.getElementById('type-libelle-base').value = '';
+  document.getElementById('type-prefixe-piece').value = '';
+  document.getElementById('type-format-piece').value = 'prefixe_mois';
+  updateTypePreview();
+  document.getElementById('type-edit-form').style.display = 'block';
+}
+
+function editType(typeId) {
+  const locId = document.getElementById('types-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(!t) return;
+  document.getElementById('type-edit-id').value = t.id;
+  document.getElementById('type-form-title').textContent = 'Modifier le type';
+  document.getElementById('type-nom').value = t.nom||'';
+  document.getElementById('type-sens').value = t.sens||'+';
+  document.getElementById('type-compte-debit').value = t.compteDebit||'';
+  document.getElementById('type-compte-credit').value = t.compteCredit||'';
+  document.getElementById('type-journal').value = t.journal||'VE';
+  document.getElementById('type-libelle-base').value = t.libelleBase||'';
+  document.getElementById('type-prefixe-piece').value = t.prefixePiece||'';
+  document.getElementById('type-format-piece').value = t.formatPiece||'prefixe_mois';
+  updateTypePreview();
+  document.getElementById('type-edit-form').style.display = 'block';
+}
+
+function cancelTypeEdit() {
+  document.getElementById('type-edit-form').style.display = 'none';
+}
+
+function updateTypePreview() {
+  const nom = document.getElementById('type-nom').value.trim() || '(nom du type)';
+  const sens = document.getElementById('type-sens').value;
+  const libelleBase = document.getElementById('type-libelle-base').value;
+  const prefixe = document.getElementById('type-prefixe-piece').value;
+  const format = document.getElementById('type-format-piece').value;
+  const fauxType = { nom, sens, libelleBase, prefixePiece: prefixe, formatPiece: format };
+  const previewLib = composerLibelle(fauxType, '<libellé saisi>', '2026-09') || '(vide)';
+  const previewNum = genererNumeroPiece(fauxType, '2026-09') || '(vide)';
+  document.getElementById('type-preview-libelle').textContent = previewLib;
+  document.getElementById('type-preview-numpiece').textContent = previewNum;
+}
+
+function saveType() {
+  const locId = document.getElementById('types-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  ensureLocV2(loc);
+  const editId = document.getElementById('type-edit-id').value;
+  const nom = document.getElementById('type-nom').value.trim();
+  const sens = document.getElementById('type-sens').value;
+  const compteDebit = document.getElementById('type-compte-debit').value.trim();
+  const compteCredit = document.getElementById('type-compte-credit').value.trim();
+  const journal = document.getElementById('type-journal').value;
+  const libelleBase = document.getElementById('type-libelle-base').value.trim();
+  const prefixePiece = document.getElementById('type-prefixe-piece').value.trim();
+  const formatPiece = document.getElementById('type-format-piece').value;
+
+  if(!nom) { toast('Le nom du type est requis','error'); return; }
+  if(!/^\d{6}$/.test(compteDebit)) { toast('Compte à débiter invalide (6 chiffres)','error'); return; }
+  if(!/^\d{6}$/.test(compteCredit)) { toast('Compte à créditer invalide (6 chiffres)','error'); return; }
+  if(!journal) { toast('Journal requis','error'); return; }
+  if(!libelleBase) { toast('Libellé écriture requis','error'); return; }
+
+  if(editId) {
+    const t = loc.types.find(x => x.id === editId);
+    if(t) Object.assign(t, { nom, sens, compteDebit, compteCredit, journal, libelleBase, prefixePiece, formatPiece });
+  } else {
+    loc.types.push({ id: crypto.randomUUID(), nom, sens, compteDebit, compteCredit, journal, libelleBase, prefixePiece, formatPiece });
+  }
+  saveDB();
+  document.getElementById('type-edit-form').style.display = 'none';
+  renderTypesList();
+  toast('Type enregistré','success');
+}
+
+let _typeDeleteId = null;
+function askDeleteType(typeId) {
+  const locId = document.getElementById('types-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(!t) return;
+  // Vérifie qu'aucun mouvement n'utilise ce type
+  const usedBy = (loc.mouvements||[]).filter(m => m.typeId === typeId).length;
+  if(usedBy > 0) {
+    toast(`Impossible : ce type est utilisé par ${usedBy} mouvement(s). Supprimez-les d'abord.`, 'error');
+    return;
+  }
+  _typeDeleteId = typeId;
+  document.getElementById('type-delete-name').textContent = t.nom;
+  document.getElementById('type-delete-modal').style.display = 'flex';
+}
+
+function confirmDeleteType() {
+  const locId = document.getElementById('types-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(loc && _typeDeleteId) {
+    loc.types = (loc.types||[]).filter(t => t.id !== _typeDeleteId);
+    saveDB();
+    renderTypesList();
+    toast('Type supprimé','success');
+  }
+  _typeDeleteId = null;
+  document.getElementById('type-delete-modal').style.display = 'none';
+}
+
+function cancelDeleteType() { _typeDeleteId = null; document.getElementById('type-delete-modal').style.display = 'none'; }
+
+// Copier les types depuis un autre locataire
+function openCopyTypesPicker() {
+  const currentLocId = document.getElementById('types-modal-loc-id').value;
+  const others = ensureLocatairesArray().filter(l => l.id !== currentLocId && (l.types||[]).length > 0);
+  if(!others.length) { toast('Aucun autre locataire n\'a de types paramétrés','error'); return; }
+  const options = others.map(l => {
+    const nom = [l.nom1 ? (l.prenom1||'')+' '+l.nom1 : '', l.nom2 ? (l.prenom2||'')+' '+l.nom2 : ''].filter(Boolean).join(' & ');
+    return `<option value="${l.id}">${nom} — ${l.adresse1||''} (${(l.types||[]).length} type(s))</option>`;
+  }).join('');
+  document.getElementById('copy-types-source').innerHTML = '<option value="">— Choisir un locataire —</option>' + options;
+  document.getElementById('copy-types-modal').style.display = 'flex';
+}
+
+function closeCopyTypesModal() { document.getElementById('copy-types-modal').style.display = 'none'; }
+
+function confirmCopyTypes() {
+  const currentLocId = document.getElementById('types-modal-loc-id').value;
+  const sourceId = document.getElementById('copy-types-source').value;
+  if(!sourceId) { toast('Choisissez un locataire source','error'); return; }
+  const source = ensureLocatairesArray().find(l => l.id === sourceId);
+  const target = ensureLocatairesArray().find(l => l.id === currentLocId);
+  if(!source || !target) return;
+  ensureLocV2(target);
+  // Chaque type copié reçoit un nouvel id (indépendant), pour pouvoir être modifié séparément
+  (source.types||[]).forEach(t => {
+    target.types.push({
+      id: crypto.randomUUID(),
+      nom: t.nom, sens: t.sens,
+      compteDebit: t.compteDebit, compteCredit: t.compteCredit,
+      journal: t.journal, libelleBase: t.libelleBase,
+      prefixePiece: t.prefixePiece, formatPiece: t.formatPiece
+    });
+  });
+  saveDB();
+  renderTypesList();
+  closeCopyTypesModal();
+  toast(`${(source.types||[]).length} type(s) copié(s)`, 'success');
+}
+
+// Bascule depuis la modale locataire vers la modale types (uniquement pour un locataire déjà enregistré)
+function openTypesModalFromLocModal() {
+  const editId = document.getElementById('loc-edit-id').value;
+  if(!editId) {
+    toast('Enregistrez d\'abord le locataire, puis paramétrez ses types','error');
+    return;
+  }
+  closeLocataireModal();
+  openTypesModal(editId);
+}
+
+// ── Fin du nouveau module (étapes 1-2) ────────────────────────────────────────
+
 function renderLocataires() {
+  // Si un locataire est ouvert en détail, on affiche cette vue à la place de la liste
+  if(_locDetailId) { renderLocataireDetail(); return; }
+
   const list = ensureLocatairesArray();
   const body = document.getElementById('locataires-body');
   const empty = document.getElementById('locataires-empty');
   if(!body) return;
+  // Restaurer l'affichage normal (au cas où la vue détail l'aurait remplacé)
+  document.querySelector('#locataires-list-wrap').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px">N° Client</th>
+          <th>Adresse de location</th>
+          <th>Locataire(s)</th>
+          <th class="td-num" style="width:75px">Loyer</th>
+          <th class="td-num" style="width:75px">Provision</th>
+          <th class="td-num" style="width:85px">Solde actuel</th>
+          <th style="width:180px"></th>
+        </tr>
+      </thead>
+      <tbody id="locataires-body"></tbody>
+    </table>
+    <div id="locataires-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+      Aucun locataire enregistré. Cliquez sur "+ AJOUTER UN LOCATAIRE" pour commencer.
+    </div>
+  `;
+  const body2 = document.getElementById('locataires-body');
+  const empty2 = document.getElementById('locataires-empty');
 
   if(!list.length) {
-    body.innerHTML = '';
-    if(empty) empty.style.display = 'block';
+    body2.innerHTML = '';
+    if(empty2) empty2.style.display = 'block';
     document.querySelector('#locataires-list-wrap table').style.display = 'none';
     updateNavCounts();
     return;
   }
-  if(empty) empty.style.display = 'none';
+  if(empty2) empty2.style.display = 'none';
   document.querySelector('#locataires-list-wrap table').style.display = '';
 
   // Rattrapage : certains documents générés avant l'ajout des identifiants n'en ont pas — sans id, les boutons ne peuvent pas les cibler
@@ -6381,10 +6969,14 @@ function renderLocataires() {
   list.forEach(loc => {
     (loc.historique||[]).forEach(h => { if(!h.id) { h.id = crypto.randomUUID(); needsSave = true; } });
     if(!Array.isArray(loc.impayes)) { loc.impayes = []; needsSave = true; }
+    // Rattrapage v2 : garantit la présence des tableaux types / mouvements / soldesInitiaux
+    if(!Array.isArray(loc.types)) { loc.types = []; needsSave = true; }
+    if(!Array.isArray(loc.mouvements)) { loc.mouvements = []; needsSave = true; }
+    if(!Array.isArray(loc.soldesInitiaux)) { loc.soldesInitiaux = []; needsSave = true; }
   });
   if(needsSave) saveDB();
 
-  body.innerHTML = list.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
+  body2.innerHTML = list.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
     const solde = computeSoldeLocataire(loc);
     const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
     const mainRow = `<tr>
@@ -6395,6 +6987,7 @@ function renderLocataires() {
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
       <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
       <td style="text-align:center;white-space:nowrap;">
+        <button class="btn btn-sm btn-primary btn-icon" onclick="openLocataireDetail('${loc.id}')" title="Ouvrir la fiche détaillée" style="padding:1px 7px;font-size:10px;">📊 OUVRIR</button>
         <button class="btn btn-sm btn-icon" onclick="openAppelModal('${loc.id}')" title="Appel de loyer" style="padding:1px 5px;font-size:10px;">📄</button>
         <button class="btn btn-sm btn-icon" onclick="openQuittanceModal('${loc.id}')" title="Quittance" style="padding:1px 5px;font-size:10px;">🧾</button>
         <button class="btn btn-sm btn-icon" onclick="openLocataireModal('${loc.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
@@ -6409,12 +7002,6 @@ function renderLocataires() {
         const isAppel = h.type === 'appel';
         const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
         const montant = isAppel ? h.echeance : h.montantPaye;
-        const statut = isAppel
-          ? (h.comptabilise
-              ? `<span style="color:var(--green);font-size:9px;">✓ comptabilisée</span>`
-              : `<span style="color:var(--amber);font-size:9px;">à comptabiliser</span>`)
-          : `<span style="color:var(--text2);font-size:9px;">document seul</span>`;
-        const compteBtn = (isAppel && !h.comptabilise) ? `<button class="btn btn-sm" onclick="comptabiliserHistoriqueEntry('${loc.id}','${h.id}')" style="padding:1px 8px;font-size:9px;">COMPTABILISER</button>` : '';
         const checkboxHtml = h.docHtml
           ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
           : `<span style="width:13px;display:inline-block;"></span>`;
@@ -6425,8 +7012,6 @@ function renderLocataires() {
           ${checkboxHtml}
           ${labelHtml}
           <span style="color:var(--text2);width:70px;text-align:right;">${fmt(montant)} €</span>
-          <span style="width:100px;">${statut}</span>
-          ${compteBtn}
           <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
         </div>`;
       }).join('');
@@ -6491,6 +7076,9 @@ function addImpayeRow(mois, montant) {
 
 function openLocataireModal(editId) {
   document.getElementById('loc-edit-id').value = editId || '';
+  // Bouton "Paramétrer les types" : visible uniquement en édition (le locataire doit déjà exister)
+  const typesBtn = document.getElementById('loc-modal-types-btn');
+  if(typesBtn) typesBtn.style.display = editId ? '' : 'none';
   if(editId) {
     const loc = ensureLocatairesArray().find(l => l.id === editId);
     if(!loc) return;
@@ -6939,7 +7527,7 @@ function finishAppelGeneration(state, constaterImpaye) {
   saveDB(); updateNavCounts();
   closeAppelModal();
   printDoc(html, `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, false);
-  toast(constaterImpaye ? 'Appel de loyer généré — impayé constaté' : 'Appel de loyer généré — pensez à le comptabiliser depuis la fiche', 'success');
+  toast(constaterImpaye ? 'Appel de loyer généré — impayé constaté' : 'Appel de loyer généré', 'success');
   renderLocataires();
 }
 
@@ -7113,75 +7701,6 @@ function viewHistoriqueDoc(locId, entryId) {
   const entry = (loc.historique||[]).find(h => h.id === entryId);
   if(!entry || !entry.docHtml) { toast('Document non disponible — générez-le à nouveau','error'); return; }
   printDoc(entry.docHtml, entry.docTitle || 'Document', false);
-}
-
-// ── Comptabilisation manuelle depuis la liste des documents ──
-function comptabiliserHistoriqueEntry(locId, entryId) {
-  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
-  const loc = ensureLocatairesArray().find(l => l.id === locId);
-  if(!loc) return;
-  const entry = (loc.historique||[]).find(h => h.id === entryId);
-  if(!entry || entry.comptabilise) return;
-
-  if(entry.type === 'appel') {
-    const dateEcr = entry.mois + '-01';
-    const [ay, am] = entry.mois.split('-');
-    const numDocCA = `QUIT/${am}`;
-    const libelleCA = `Loyer ${moisLabelFromYYYYMM(entry.mois)} - ${loc.adresse1}`;
-
-    // ── Constatation du CA : une seule écriture par mois, indépendante des paiements/impayés ──
-    // Débit 411 pour la mensualité totale (loyer + provision) / Crédit CA (loyer) / Crédit provision
-    const ioCA = Date.now();
-    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteClient, libelleCompte:getLib(loc.compteClient)||'Client', libelleEcriture:libelleCA, numDoc:numDocCA, debit:entry.totalDu, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteCA, libelleCompte:getLib(loc.compteCA)||'Loyers', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.loyer});
-    if(entry.provision > 0 && loc.compteProvision) {
-      DB.ecritures.push({id:crypto.randomUUID(), _io:ioCA, journal:'VE', date:dateEcr, compte:loc.compteProvision, libelleCompte:getLib(loc.compteProvision)||'Provision', libelleEcriture:libelleCA, numDoc:numDocCA, debit:0, credit:entry.provision});
-    }
-
-    const postPaiement = (montant, date, libelle, numDoc) => {
-      if(!montant || montant <= 0.01) return;
-      const io = Date.now() + Math.floor(Math.random()*1000);
-      const d = date || dateEcr;
-      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'TRESO', date:d, compte:'512000', libelleCompte:getLib('512000')||'Banque', libelleEcriture:libelle, numDoc:numDoc||'', debit:montant, credit:0});
-      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'TRESO', date:d, compte:loc.compteClient, libelleCompte:getLib(loc.compteClient)||'Client', libelleEcriture:libelle, numDoc:numDoc||'', debit:0, credit:montant});
-    };
-
-    // ── Paiement APL (mois précédent) : numéro de pièce CAF/MM/AA, toujours une écriture séparée ──
-    if(entry.hasApl && entry.prevAplMontant > 0.01 && entry.moisPrec) {
-      const [py, pm] = entry.moisPrec.split('-');
-      const numDocCaf = `CAF/${pm}/${py.slice(-2)}`;
-      postPaiement(entry.prevAplMontant, entry.prevAplDate, `Paiement APL ${moisLabelFromYYYYMM(entry.moisPrec)} - ${loc.adresse1}`, numDocCaf);
-    }
-
-    // ── Paiements du locataire : regroupés par date de paiement (mois précédent + mouvements sur impayés antérieurs) ──
-    // Si plusieurs mois sont réglés à la même date, une seule écriture est passée avec un libellé listant les mois concernés.
-    const sourcesLocataire = [];
-    if(entry.prevPaye > 0.01 && entry.moisPrec) sourcesLocataire.push({mois: entry.moisPrec, montant: entry.prevPaye, date: entry.prevDatePaiement});
-    (entry.mouvementsImpayes||[]).forEach(mvt => {
-      if(mvt.montant > 0.01 && mvt.mois) sourcesLocataire.push({mois: mvt.mois, montant: mvt.montant, date: mvt.date});
-    });
-
-    const groupesParDate = {};
-    sourcesLocataire.forEach(s => {
-      const key = s.date || dateEcr;
-      if(!groupesParDate[key]) groupesParDate[key] = [];
-      groupesParDate[key].push(s);
-    });
-    Object.keys(groupesParDate).forEach(date => {
-      const grp = groupesParDate[date];
-      const total = Math.round(grp.reduce((s,x)=>s+x.montant,0) * 100) / 100;
-      const moisLabels = [...new Set(grp.map(s => moisLabelFromYYYYMM(s.mois)))].join(' + ');
-      const [dy, dm] = date.split('-');
-      const numDocBanque = `RBANQUE/${dm}/${dy.slice(-2)}`;
-      postPaiement(total, date, `Règlement loyer ${moisLabels} - ${loc.adresse1}`, numDocBanque);
-    });
-  }
-  // Les quittances ne génèrent plus d'écriture : la comptabilisation est intégralement gérée via l'appel de loyer.
-
-  entry.comptabilise = true;
-  renum(); saveDB(); updateNavCounts();
-  toast('Écriture(s) comptabilisée(s)','success');
-  renderLocataires();
 }
 
 // ── Archivage : retire le document de la liste en préservant le solde via soldeInitial ──
