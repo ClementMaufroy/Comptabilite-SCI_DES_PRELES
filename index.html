@@ -1428,10 +1428,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <label>N° Client *</label>
         <input type="text" id="loc-numclient" placeholder="25003" style="font-family:var(--mono);">
       </div>
-      <div class="form-field">
-        <label>Solde initial à la création (€)</label>
-        <input type="number" step="0.01" id="loc-solde-initial" value="0" style="font-family:var(--mono);">
-      </div>
     </div>
     <div class="form-row c2 mb8">
       <div class="form-field" style="grid-column:1/-1;">
@@ -1522,16 +1518,8 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <input type="text" id="loc-compte-client" placeholder="411001" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-client')" onkeydown="genAcKey(event,'loc-compte-client')" onblur="genAcBlur('loc-compte-client')" autocomplete="off">
       </div>
     </div>
-    <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;font-size:11px;">
-        <input type="checkbox" id="loc-has-impaye" onchange="toggleImpayeSection()" style="width:14px;height:14px;cursor:pointer;margin:0;">
-        Ce locataire a des impayés déjà existants à intégrer
-      </label>
-    </div>
-    <div id="loc-impaye-section" style="display:none;background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius);padding:12px;margin-bottom:8px;">
-      <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">Renseignez un montant impayé par mois concerné. Ces montants alimenteront le suivi des impayés du locataire, repris automatiquement lors des prochains appels de loyer.</div>
-      <div id="loc-impaye-rows"></div>
-      <button class="btn btn-sm" onclick="addImpayeRow()" type="button" style="margin-top:6px;">+ AJOUTER UN MOIS IMPAYÉ</button>
+    <div style="border-top:1px solid var(--line2);margin:14px 0 10px;padding-top:10px;font-size:10px;color:var(--text2);">
+      💡 Pour amorcer des <strong>impayés antérieurs</strong> au démarrage de l'outil, utilisez le bouton <strong>🎯 Soldes initiaux</strong> disponible depuis la fiche détail du locataire (après enregistrement).
     </div>
     <div class="flex gap8" style="margin-top:16px;">
       <button class="btn btn-primary" onclick="saveLocataire()">✓ ENREGISTRER</button>
@@ -1714,8 +1702,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row mb8">
       <div class="form-field">
         <label>Libellé (variable saisie)</label>
-        <input type="text" id="mvt-libelle" oninput="updateMouvementPreview()" placeholder="Ex. Régul charges 2025, virement du 15/09...">
-      </div>
+        <input type="text" id="mvt-libelle" oninput="onLibelleEdited()" placeholder="(sera prérempli à partir du type choisi)">      </div>
       <div class="form-field">
         <label>Montant total (€) *</label>
         <input type="number" step="0.01" id="mvt-montant" oninput="updateMouvementTotal()" style="font-family:var(--mono);text-align:right;">
@@ -1762,6 +1749,20 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 </div>
 
 <!-- Soldes initiaux par mois -->
+<!-- Proposition de quittance automatique (mois passé à solde 0) -->
+<div id="quittance-auto-modal" class="modal-overlay">
+  <div class="modal" style="width:460px;">
+    <div class="modal-title">🧾 GÉNÉRER UNE QUITTANCE ?</div>
+    <input type="hidden" id="quittance-auto-loc-id">
+    <input type="hidden" id="quittance-auto-mois">
+    <p id="quittance-auto-msg" style="font-size:12px;margin-bottom:14px;"></p>
+    <div class="flex gap8">
+      <button class="btn btn-primary" onclick="confirmerQuittanceAuto()">🧾 GÉNÉRER LA QUITTANCE</button>
+      <button class="btn ml-auto" onclick="closeQuittanceAutoModal()">PLUS TARD</button>
+    </div>
+  </div>
+</div>
+
 <div id="si-modal" class="modal-overlay">
   <div class="modal" style="width:560px;">
     <div class="modal-title">🎯 SOLDES INITIAUX PAR MOIS</div>
@@ -1782,73 +1783,22 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 
 <!-- ══════════════ APPEL DE LOYER WIZARD ══════════════ -->
 <div id="appel-modal" class="modal-overlay">
-  <div class="modal" style="width:560px;max-height:85vh;overflow-y:auto;">
+  <div class="modal" style="width:520px;">
     <div class="modal-title" id="appel-modal-title">📄 CRÉER UN APPEL DE LOYER</div>
     <input type="hidden" id="appel-loc-id">
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px;padding:8px 10px;background:var(--bg2);border:1px solid var(--line1);border-radius:var(--radius);">
+      Les données de l'appel (loyer, provision, situation du mois précédent, encaissements…) sont désormais <strong>reprises automatiquement des mouvements</strong> du locataire. Vous n'avez plus qu'à choisir le mois, indiquer l'éventuelle APL attendue et un commentaire.
+    </div>
     <div class="form-row mb8">
       <div class="form-field" style="grid-column:1/-1;">
         <label>Mois de l'appel *</label>
-        <input type="month" id="appel-mois" onchange="onAppelMoisChange()">
+        <input type="month" id="appel-mois">
       </div>
     </div>
-    <div id="appel-impayes-block" style="display:none;margin-bottom:12px;"></div>
-    <div id="appel-prev-block" style="display:none;background:rgba(245,208,96,0.08);border:1px solid rgba(245,208,96,0.3);border-radius:var(--radius);padding:12px;margin-bottom:12px;">
-      <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:8px;">SITUATION DU MOIS PRÉCÉDENT (<span id="appel-prev-mois-label"></span>)</div>
-      <div class="form-row mb8">
-        <div class="form-field">
-          <label>Échéance du mois précédent (€)</label>
-          <input type="number" step="0.01" id="appel-prev-echeance" style="font-family:var(--mono);">
-        </div>
-      </div>
-      <div class="form-row c2 mb8">
-        <div class="form-field">
-          <label>Montant payé par le locataire (€)</label>
-          <input type="number" step="0.01" id="appel-prev-paye" style="font-family:var(--mono);">
-        </div>
-        <div class="form-field">
-          <label>Date du paiement du locataire</label>
-          <input type="date" id="appel-prev-date-paiement">
-        </div>
-      </div>
-      <div class="form-row mb8">
-        <div class="form-field" style="grid-column:1/-1;">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
-            <input type="checkbox" id="appel-prev-apl-check" onchange="toggleAppelPrevApl()" style="width:14px;height:14px;cursor:pointer;margin:0;">
-            Un paiement APL a-t-il été reçu pour le mois précédent ?
-          </label>
-        </div>
-      </div>
-      <div id="appel-prev-apl-fields" style="display:none;">
-        <div class="form-row c2 mb8">
-          <div class="form-field">
-            <label>Montant payé par l'APL (€)</label>
-            <input type="number" step="0.01" id="appel-prev-apl-montant" style="font-family:var(--mono);">
-          </div>
-          <div class="form-field">
-            <label>Date du paiement APL</label>
-            <input type="date" id="appel-prev-apl-date">
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="form-row c2 mb8">
-      <div class="form-field">
-        <label>Loyer (€)</label>
-        <input type="number" step="0.01" id="appel-loyer" style="font-family:var(--mono);">
-      </div>
-      <div class="form-field">
-        <label id="appel-provision-label-txt">Provision (€)</label>
-        <input type="number" step="0.01" id="appel-provision" style="font-family:var(--mono);">
-      </div>
-    </div>
-    <div class="form-row c2 mb8">
-      <div class="form-field">
-        <label>APL à déduire pour ce mois (€)</label>
-        <input type="number" step="0.01" id="appel-apl" value="0" style="font-family:var(--mono);" oninput="updateAppelEcheance()">
-      </div>
-      <div class="form-field">
-        <label>Montant de l'échéance / part à charge (€)</label>
-        <input type="number" step="0.01" id="appel-echeance-display" readonly style="font-family:var(--mono);background:var(--bg2);">
+    <div class="form-row mb8">
+      <div class="form-field" style="grid-column:1/-1;">
+        <label>APL attendue pour le mois de l'appel (€) — <span style="color:var(--text2);font-weight:400;">reçue au plus tard le 5 du mois suivant</span></label>
+        <input type="number" step="0.01" id="appel-apl" value="0" style="font-family:var(--mono);">
       </div>
     </div>
     <div class="form-row mb8">
@@ -1858,7 +1808,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
     </div>
     <div class="flex gap8" style="margin-top:16px;">
-      <button class="btn btn-primary" onclick="generateAppelLoyer()">📄 GÉNÉRER L'APPEL DE LOYER</button>
+      <button class="btn btn-primary" onclick="generateAppelLoyerV2()">📄 GÉNÉRER L'APPEL DE LOYER</button>
       <button class="btn ml-auto" onclick="closeAppelModal()">ANNULER</button>
     </div>
   </div>
@@ -1879,18 +1829,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="flex gap8" style="margin-top:16px;">
       <button class="btn btn-primary" id="quittance-generate-btn" onclick="generateQuittance()" disabled>🧾 GÉNÉRER LA QUITTANCE</button>
       <button class="btn ml-auto" onclick="closeQuittanceModal()">ANNULER</button>
-    </div>
-  </div>
-</div>
-
-<!-- ══════════════ CONFIRMATION IMPAYÉ ══════════════ -->
-<div id="impaye-confirm-modal" class="modal-overlay">
-  <div class="modal" style="width:460px;">
-    <div class="modal-title"><span style="color:var(--red);">⚠</span> ÉCART CONSTATÉ</div>
-    <p id="impaye-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:16px;line-height:1.6;"></p>
-    <div class="flex gap8">
-      <button class="btn btn-danger" onclick="resolveImpayeChoice(true)">OUI, CONSTATER UN IMPAYÉ</button>
-      <button class="btn ml-auto" onclick="resolveImpayeChoice(false)">NON</button>
     </div>
   </div>
 </div>
@@ -2313,6 +2251,7 @@ function doLogin() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
     checkEcheanciersExpirationAuBoot();
+    renderPostItPieces();
   } else {
     document.getElementById('login-err').textContent = 'Mot de passe incorrect';
     document.getElementById('login-pw').value = '';
@@ -2644,6 +2583,187 @@ let lineIdCounter = 0;
 let CURRENT_YEAR = new Date().getFullYear();
 let EXERCISE_STATUS = 'open'; // 'open' | 'closed'
 let _unsubscribeListen = null;
+
+// ══════════════════════════════════════════════
+// POST-IT PIÈCES À FORMALISER
+// ══════════════════════════════════════════════
+// Liste des pièces générées par les 5 modules (Gestion Locative, Échéanciers, Emprunts,
+// Écritures d'inventaires, Approbation du résultat) que l'utilisateur doit encore
+// classer physiquement dans son dossier papier. Cochage = pièce classée.
+// Purge auto : 10 jours après cochage. Uniquement les pièces générées à partir de
+// l'implémentation (pas de rétroactif).
+
+function ensurePiecesAFormaliser() {
+  if(!Array.isArray(DB.piecesAFormaliser)) DB.piecesAFormaliser = [];
+  return DB.piecesAFormaliser;
+}
+
+// À appeler à chaque fois qu'un des 5 modules concernés génère une écriture comptable.
+// module : 'locative' | 'echeanciers' | 'emprunts' | 'inventaires' | 'approbation'
+// numDoc : n° de pièce de l'écriture (ex. QUIT_09/26)
+// libelle : libellé lisible (ex. "Loyer 16 rue de la Concorde septembre 2026")
+// date : date de l'écriture (YYYY-MM-DD)
+function notifierPieceGeneree(module, numDoc, libelle, date) {
+  if(!numDoc) return; // pas de pièce sans n° → rien à formaliser
+  const list = ensurePiecesAFormaliser();
+  // Évite les doublons si un même triplet (module+numDoc+date) est notifié deux fois
+  if(list.some(p => p.module === module && p.numDoc === numDoc && p.date === date)) return;
+  list.push({
+    id: crypto.randomUUID(),
+    module, numDoc, libelle: libelle || '',
+    date: date || '',
+    dateAjout: new Date().toISOString(),
+    coche: false,
+    dateCochage: null
+  });
+  saveDB();
+  renderPostItPieces();
+}
+
+// Purge auto : retire les pièces cochées il y a plus de 10 jours
+function purgerPostItPieces() {
+  const list = ensurePiecesAFormaliser();
+  const seuil = Date.now() - 10 * 24 * 3600 * 1000;
+  const avant = list.length;
+  DB.piecesAFormaliser = list.filter(p => !p.coche || !p.dateCochage || new Date(p.dateCochage).getTime() > seuil);
+  if(DB.piecesAFormaliser.length !== avant) saveDB();
+}
+
+const POSTIT_MODULE_LABELS = {
+  locative: 'Gestion locative',
+  echeanciers: 'Échéanciers',
+  emprunts: 'Emprunts',
+  inventaires: 'Écritures d\'inventaires',
+  approbation: 'Approbation du résultat'
+};
+
+let _postItFilterModule = 'all';
+let _postItCollapsed = false;
+let _postItPos = null; // { top, left } — position sauvegardée en localStorage
+
+function togglePostItCollapsed() {
+  _postItCollapsed = !_postItCollapsed;
+  renderPostItPieces();
+}
+
+function setPostItFilter(v) {
+  _postItFilterModule = v;
+  renderPostItPieces();
+}
+
+// Coche/décoche une pièce
+function togglePieceFormalisee(id) {
+  const list = ensurePiecesAFormaliser();
+  const p = list.find(x => x.id === id);
+  if(!p) return;
+  p.coche = !p.coche;
+  p.dateCochage = p.coche ? new Date().toISOString() : null;
+  saveDB();
+  renderPostItPieces();
+}
+
+// Rendu du post-it (fixed, déplaçable). Idempotent.
+function renderPostItPieces() {
+  purgerPostItPieces();
+  let el = document.getElementById('postit-pieces');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'postit-pieces';
+    document.body.appendChild(el);
+  }
+  // Position sauvegardée (localStorage)
+  if(!_postItPos) {
+    try {
+      const saved = localStorage.getItem('postit_pieces_pos');
+      if(saved) _postItPos = JSON.parse(saved);
+    } catch(e) {}
+  }
+  const pos = _postItPos || { top: 90, left: window.innerWidth - 340 };
+  el.style.cssText = `position:fixed;top:${pos.top}px;left:${pos.left}px;width:320px;background:linear-gradient(135deg,#fff3a3 0%,#ffe968 100%);color:#222;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid rgba(0,0,0,0.15);user-select:none;`;
+
+  const list = ensurePiecesAFormaliser();
+  const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
+  const nbNonCochees = filtered.filter(p => !p.coche).length;
+
+  const options = ['<option value="all">Tous modules</option>']
+    .concat(Object.keys(POSTIT_MODULE_LABELS).map(k => `<option value="${k}" ${_postItFilterModule===k?'selected':''}>${POSTIT_MODULE_LABELS[k]}</option>`))
+    .join('');
+
+  const headerHtml = `<div id="postit-header" style="padding:8px 10px;cursor:move;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.05);border-radius:6px 6px 0 0;">
+    <span style="font-size:14px;">📌</span>
+    <strong style="flex:1;font-size:11px;">Pièces à formaliser${nbNonCochees > 0 ? ` <span style="background:#c0392b;color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:4px;">${nbNonCochees}</span>` : ''}</strong>
+    <span style="cursor:pointer;font-size:14px;padding:0 4px;" onclick="togglePostItCollapsed()" title="${_postItCollapsed?'Déplier':'Replier'}">${_postItCollapsed?'▲':'▼'}</span>
+  </div>`;
+
+  if(_postItCollapsed) {
+    el.innerHTML = headerHtml;
+    activatePostItDrag();
+    return;
+  }
+
+  const filterHtml = `<div style="padding:6px 10px;border-bottom:1px solid rgba(0,0,0,0.1);">
+    <select onchange="setPostItFilter(this.value)" style="width:100%;font-size:10px;padding:3px;border:1px solid rgba(0,0,0,0.2);border-radius:3px;background:#fffde5;">${options}</select>
+  </div>`;
+
+  let bodyHtml;
+  if(!filtered.length) {
+    bodyHtml = '<div style="padding:14px 10px;text-align:center;color:#666;font-style:italic;font-size:10px;">Aucune pièce à formaliser.</div>';
+  } else {
+    // Non cochées d'abord (par date décroissante), puis cochées
+    const sorted = filtered.slice().sort((a,b) => {
+      if(a.coche !== b.coche) return a.coche ? 1 : -1;
+      return (b.dateAjout||'').localeCompare(a.dateAjout||'');
+    });
+    bodyHtml = `<div style="max-height:320px;overflow-y:auto;padding:4px 6px;">
+      ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:6px;padding:5px 6px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,180,80,0.15)':'transparent'};margin-bottom:2px;">
+        <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:13px;height:13px;margin-top:2px;cursor:pointer;">
+        <div style="flex:1;font-size:10px;line-height:1.3;${p.coche?'text-decoration:line-through;color:#666;':''}">
+          <div style="font-family:var(--mono);font-weight:600;">${p.numDoc}</div>
+          <div style="color:#555;">${p.libelle||''}</div>
+          <div style="color:#888;font-size:9px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>
+        </div>
+      </label>`).join('')}
+    </div>`;
+  }
+
+  el.innerHTML = headerHtml + filterHtml + bodyHtml;
+  activatePostItDrag();
+}
+
+// Rend l'en-tête déplaçable à la souris (drag & drop)
+function activatePostItDrag() {
+  const el = document.getElementById('postit-pieces');
+  const header = document.getElementById('postit-header');
+  if(!el || !header) return;
+  let dragOffsetX = 0, dragOffsetY = 0, dragging = false;
+  header.onmousedown = (e) => {
+    if(e.target.tagName === 'SPAN' && e.target.onclick) return; // ignore clic bouton replier
+    dragging = true;
+    const rect = el.getBoundingClientRect();
+    dragOffsetX = e.clientX - rect.left;
+    dragOffsetY = e.clientY - rect.top;
+    document.body.style.cursor = 'move';
+    e.preventDefault();
+  };
+  document.addEventListener('mousemove', (e) => {
+    if(!dragging) return;
+    let left = e.clientX - dragOffsetX;
+    let top = e.clientY - dragOffsetY;
+    left = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, left));
+    top = Math.max(0, Math.min(window.innerHeight - 40, top));
+    el.style.left = left + 'px';
+    el.style.top = top + 'px';
+    _postItPos = { top, left };
+  });
+  document.addEventListener('mouseup', () => {
+    if(dragging) {
+      dragging = false;
+      document.body.style.cursor = '';
+      try { localStorage.setItem('postit_pieces_pos', JSON.stringify(_postItPos)); } catch(e) {}
+    }
+  });
+}
+
 
 // ══════════════════════════════════════════════
 // PERSISTENCE — Firebase (+ localStorage fallback)
@@ -6628,6 +6748,41 @@ function computeCreditEnAttente(loc) {
   return Math.round(total*100)/100;
 }
 
+// Solde GLOBAL v2 : somme algébrique de tous les soldes initiaux + tous les mouvements,
+// diminuée des crédits en attente (qui sont "à disposition" du locataire, pas des dettes).
+// > 0 = le locataire doit ; < 0 = solde créditeur.
+function computeSoldeGlobalLocataireV2(loc) {
+  ensureLocV2(loc);
+  let solde = 0;
+  (loc.soldesInitiaux||[]).forEach(si => { solde += (parseFloat(si.montant)||0); });
+  (loc.mouvements||[]).forEach(mvt => {
+    (mvt.affectations||[]).forEach(a => {
+      const m = parseFloat(a.montant)||0;
+      solde += (mvt.sens === '+' ? m : -m);
+    });
+  });
+  solde -= computeCreditEnAttente(loc);
+  return Math.round(solde*100)/100;
+}
+
+// Solde d'un mois AVANT prise en compte d'un mouvement donné (utile pour les appels de loyer :
+// "solde du mois précédent avant que le loyer de ce mois ne soit constaté").
+// - Prend en compte tous les mouvements du mois SAUF ceux du sens "+" saisis pour ce mois avec un typeId donné (le loyer/provision).
+function computeSoldeMoisAvantAppel(loc, yyyymm) {
+  ensureLocV2(loc);
+  let solde = 0;
+  (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === yyyymm) solde += (parseFloat(si.montant)||0); });
+  (loc.mouvements||[]).forEach(mvt => {
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === yyyymm) {
+        const m = parseFloat(a.montant)||0;
+        solde += (mvt.sens === '+' ? m : -m);
+      }
+    });
+  });
+  return Math.round(solde*100)/100;
+}
+
 // Renvoie tous les mois YYYY-MM impliqués sur un locataire (soldes initiaux + affectations), triés du plus ancien au plus récent
 function moisImpliques(loc) {
   ensureLocV2(loc);
@@ -7058,11 +7213,16 @@ function updateMouvementPreview() {
     document.getElementById('mvt-preview-numpiece').textContent = '';
     return;
   }
-  const libelleSaisi = document.getElementById('mvt-libelle').value || '';
-  // Pour l'aperçu, on prend le PREMIER mois affecté (ou celui de saisie si aucun coché)
-  const firstMois = getMouvementAffectations().map(a => a.mois)[0] || document.getElementById('mvt-mois-ref').value;
-  document.getElementById('mvt-preview-libelle').textContent = composerLibelle(t, libelleSaisi, firstMois) || '(vide)';
-  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, firstMois) || '(vide)';
+  const libInput = document.getElementById('mvt-libelle');
+  const affs = getMouvementAffectations();
+  const moisList = affs.map(a => a.mois);
+  const moisPrincipal = moisList[0] || document.getElementById('mvt-mois-ref').value;
+  // Aperçu du libellé : si l'utilisateur a édité manuellement, on affiche son texte ; sinon on affiche la version auto multi-mois
+  const previewLib = (libInput.dataset.userEdited === '1')
+    ? (libInput.value || '(vide)')
+    : (composerLibelleMultiMois(t, '', moisList) || '(vide)');
+  document.getElementById('mvt-preview-libelle').textContent = previewLib;
+  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, moisPrincipal) || '(vide)';
 }
 
 // Rafraîchit la zone d'affectation (les 3 mois candidats avec leurs soldes + cases/montants)
@@ -7136,6 +7296,7 @@ function onAffectationChanged(mois) {
     input.value = '';
   }
   updateMouvementTotal();
+  updateLibelleAutomatique();
   updateMouvementPreview();
 }
 
@@ -7194,6 +7355,10 @@ function openMouvementModal(locId, editId) {
   document.getElementById('mvt-edit-id').value = editId || '';
   document.getElementById('mvt-modal-title').textContent = editId ? '✎ MODIFIER LE MOUVEMENT' : '+ NOUVEAU MOUVEMENT';
 
+  // Reset du flag d'édition manuelle du libellé
+  const libInput = document.getElementById('mvt-libelle');
+  libInput.dataset.userEdited = '';
+
   // Alimente le sélecteur de types
   const typeSel = document.getElementById('mvt-type');
   typeSel.innerHTML = '<option value="">— Choisir un type —</option>' +
@@ -7209,7 +7374,8 @@ function openMouvementModal(locId, editId) {
     }
     typeSel.value = mvt.typeId;
     document.getElementById('mvt-sens').value = mvt.sens;
-    document.getElementById('mvt-libelle').value = mvt.libelle||'';
+    libInput.value = mvt.libelle||'';
+    libInput.dataset.userEdited = '1'; // en édition, on ne réécrase pas ce que l'utilisateur avait mis
     document.getElementById('mvt-mois-ref').value = mvt.affectations?.[0]?.mois || (mvt.dateOperation ? mvt.dateOperation.slice(0,7) : '');
     document.getElementById('mvt-date-operation').value = mvt.dateOperation||'';
     document.getElementById('mvt-montant').value = mvt.montant||'';
@@ -7234,14 +7400,18 @@ function openMouvementModal(locId, editId) {
   } else {
     // Nouveau mouvement : valeurs par défaut
     document.getElementById('mvt-sens').value = '+';
-    document.getElementById('mvt-libelle').value = '';
+    libInput.value = '';
     const today = new Date().toISOString().slice(0,10);
     const mois = today.slice(0,7);
     document.getElementById('mvt-date-operation').value = today;
     document.getElementById('mvt-mois-ref').value = mois;
     document.getElementById('mvt-montant').value = '';
     // Auto-ajuster le sens quand on choisit un type (le type impose son sens)
-    setTimeout(() => refreshMouvementAffectationRows(), 30);
+    setTimeout(() => {
+      refreshMouvementAffectationRows();
+      updateLibelleAutomatique();
+      updateMouvementPreview();
+    }, 30);
   }
 
   document.getElementById('mvt-modal').style.display = 'flex';
@@ -7255,6 +7425,34 @@ function onMouvementTypeChanged() {
   const t = (loc.types||[]).find(x => x.id === typeId);
   if(t) document.getElementById('mvt-sens').value = t.sens;
   refreshMouvementAffectationRows();
+  updateLibelleAutomatique();
+  updateMouvementPreview();
+}
+
+// Prérempli le libellé avec la version composée par le type + mois affecté(s),
+// UNIQUEMENT si le champ est encore en mode "auto" (jamais édité à la main par l'utilisateur).
+function updateLibelleAutomatique() {
+  const libInput = document.getElementById('mvt-libelle');
+  if(!libInput) return;
+  // Si l'utilisateur a édité manuellement, on ne touche à rien
+  if(libInput.dataset.userEdited === '1') return;
+  const locId = document.getElementById('mvt-modal-loc-id').value;
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const typeId = document.getElementById('mvt-type').value;
+  const t = (loc.types||[]).find(x => x.id === typeId);
+  if(!t) { libInput.value = ''; return; }
+  // Récupérer les mois affectés (ou à défaut, le mois de référence)
+  const affs = getMouvementAffectations();
+  const moisList = affs.length ? affs.map(a=>a.mois) : [document.getElementById('mvt-mois-ref').value].filter(Boolean);
+  // Composer le libellé SANS libelleSaisi (vide) — c'est justement pour prérémplir la partie fixe
+  libInput.value = composerLibelleMultiMois(t, '', moisList);
+}
+
+// Marque le champ libellé comme édité manuellement (l'auto-remplissage ne l'écrasera plus)
+function onLibelleEdited() {
+  const libInput = document.getElementById('mvt-libelle');
+  if(libInput) libInput.dataset.userEdited = '1';
   updateMouvementPreview();
 }
 
@@ -7289,6 +7487,9 @@ function saveMouvement() {
   if(sens === '+' && excedent > 0.005) { toast('Pour un +, montant et affectation doivent être identiques', 'error'); return; }
   const creditEnAttente = (sens === '-') ? excedent : 0;
 
+  // Pour la question quittance et suivi : mémorise les mois d'affectation AVANT modification
+  const moisAvantSaisie = editId ? (loc.mouvements.find(m=>m.id===editId)?.affectations||[]).map(a=>a.mois) : [];
+
   // Récupère ou crée le mouvement
   let mvt;
   if(editId) {
@@ -7307,43 +7508,153 @@ function saveMouvement() {
     ecritureId: null
   });
 
-  // Génère la (les) nouvelle(s) écriture(s)
-  const ioGroup = Date.now() + Math.floor(Math.random()*1000);
-  // Une écriture unique par mouvement, quel que soit le nombre d'affectations
-  // (le libellé référence le 1er mois affecté ; le n° de pièce aussi)
-  const moisPrincipal = affectations[0].mois;
-  const libelleFinal = composerLibelle(t, libelle, moisPrincipal);
-  const numDoc = genererNumeroPiece(t, moisPrincipal);
-  DB.ecritures.push({
-    id: crypto.randomUUID(), _io: ioGroup,
-    journal: t.journal, date: dateOperation,
-    compte: t.compteDebit, libelleCompte: getLib(t.compteDebit)||'',
-    libelleEcriture: libelleFinal, numDoc,
-    debit: montant, credit: 0,
-    _mvtLocataireId: mvt.id
-  });
-  DB.ecritures.push({
-    id: crypto.randomUUID(), _io: ioGroup,
-    journal: t.journal, date: dateOperation,
-    compte: t.compteCredit, libelleCompte: getLib(t.compteCredit)||'',
-    libelleEcriture: libelleFinal, numDoc,
-    debit: 0, credit: montant,
-    _mvtLocataireId: mvt.id
-  });
-  mvt.ecritureId = ioGroup;
+  // Génération des lignes comptables du mouvement + regroupement par (date+numDoc+journal)
+  postMouvementEcritures(mvt, t, loc);
 
   renum();
   saveDB();
   closeMouvementModal();
+
+  // ── Après enregistrement : vérifier si un mois est passé à 0 → proposer une quittance ──
+  // Union des mois avant et après (permet de couvrir aussi les changements d'affectation)
+  const moisConcernes = [...new Set([...moisAvantSaisie, ...affectations.map(a=>a.mois)])];
+  const nouveauxMoisSoldes = moisConcernes.filter(m => {
+    if(!m) return false;
+    const s = computeSoldeMoisAvantAppel(loc, m);
+    // Le mois est "soldé" (≤0) ET a reçu au moins un + (loyer/provision — pas juste un solde initial)
+    const aDesPlus = (loc.mouvements||[]).some(mv => mv.sens === '+' && (mv.affectations||[]).some(a=>a.mois===m));
+    return Math.abs(s) < 0.01 && aDesPlus && !aDejaUneQuittanceLegacy(loc, m);
+  });
   renderLocataireDetail();
   updateNavCounts();
   toast(editId ? 'Mouvement modifié' : 'Mouvement enregistré et comptabilisé', 'success');
+  // Enchaîne sur la proposition de quittance si un mois est nouvellement soldé
+  if(nouveauxMoisSoldes.length) {
+    setTimeout(() => proposerQuittanceAuto(loc.id, nouveauxMoisSoldes[0]), 400);
+  }
 }
 
-// Supprime toutes les écritures rattachées à un mouvement donné (via _io ou _mvtLocataireId)
+// Vérifie qu'aucune quittance n'a déjà été générée pour ce mois (dans l'historique legacy)
+function aDejaUneQuittanceLegacy(loc, mois) {
+  return (loc.historique||[]).some(h => h.type === 'quittance' && h.mois === mois);
+}
+
+// Émet les lignes comptables d'un mouvement, en RÉUTILISANT le groupe (_io) d'une écriture
+// existante qui partage : même journal + même date + même n° de pièce. Sinon crée un nouveau groupe.
+// Les lignes de compte identique (débit ou crédit) sont fusionnées (somme des montants).
+function postMouvementEcritures(mvt, t, loc) {
+  // Construction du libellé et du numDoc, avec suffixe multi-mois si le paiement est ventilé sur plusieurs mois
+  const moisAffectes = (mvt.affectations||[]).map(a=>a.mois);
+  const moisPrincipal = moisAffectes[0] || (mvt.dateOperation||'').slice(0,7);
+  const libelleFinal = composerLibelleMultiMois(t, mvt.libelle, moisAffectes);
+  const numDoc = genererNumeroPiece(t, moisPrincipal);
+
+  // Cherche un groupe existant (même journal + date + numDoc) — c'est le mécanisme de regroupement
+  let ioGroup = null;
+  if(numDoc) {
+    const matched = DB.ecritures.find(e => e.journal === t.journal && e.date === mvt.dateOperation && e.numDoc === numDoc);
+    if(matched) ioGroup = matched._io;
+  }
+  if(!ioGroup) ioGroup = Date.now() + Math.floor(Math.random()*1000);
+
+  // Fonction d'ajout d'une ligne au groupe, avec fusion si le compte y est déjà présent (sens équivalent)
+  const addLigne = (compte, debit, credit) => {
+    const existante = DB.ecritures.find(e => e._io === ioGroup && String(e.compte) === String(compte));
+    if(existante) {
+      existante.debit = Math.round(((existante.debit||0) + (debit||0)) * 100) / 100;
+      existante.credit = Math.round(((existante.credit||0) + (credit||0)) * 100) / 100;
+      // Mise à jour du libellé (le dernier ajout au groupe gagne, mais tous se ressemblent en général)
+      existante.libelleEcriture = libelleFinal;
+      // Rattache aussi ce mouvement au tracking
+      existante._mvtLocataireIds = [...new Set([...(existante._mvtLocataireIds||[]), mvt.id])];
+    } else {
+      DB.ecritures.push({
+        id: crypto.randomUUID(), _io: ioGroup,
+        journal: t.journal, date: mvt.dateOperation,
+        compte, libelleCompte: getLib(compte)||'',
+        libelleEcriture: libelleFinal, numDoc,
+        debit: debit||0, credit: credit||0,
+        _mvtLocataireIds: [mvt.id]
+      });
+    }
+  };
+
+  addLigne(t.compteDebit, mvt.montant, 0);
+  addLigne(t.compteCredit, 0, mvt.montant);
+  mvt.ecritureId = ioGroup;
+  // Hook post-it : notifier la pièce à formaliser (seulement lors de la création, pas si l'écriture était déjà groupée avec une existante)
+  notifierPieceGeneree('locative', numDoc, libelleFinal, mvt.dateOperation);
+}
+
+// Version étendue de composerLibelle qui gère le cas multi-mois pour le suffixe.
+// Ex. suffixe "mois_annee" avec mois=[2026-09, 2026-10] → " sept. + oct. 2026"
+function composerLibelleMultiMois(type, libelleSaisi, moisList) {
+  if(!type) return libelleSaisi || '';
+  // Cas simple : 0 ou 1 mois → délègue à composerLibelle standard
+  if(!moisList || moisList.length <= 1) return composerLibelle(type, libelleSaisi, moisList?.[0]);
+  let s = type.libelleBase || '';
+  s = s.replace(/\{mois\}/g, moisLabelFromYYYYMM(moisList[0])); // fallback pour {mois} → prend le 1er
+  s = s.replace(/\{libelle_saisi\}/g, libelleSaisi || '');
+  s = s.replace(/\{libelle\}/g, libelleSaisi || '');
+  s = s.trim();
+  if(type.suffixeLibelle && type.suffixeLibelle !== 'aucun') {
+    s += ' ' + formaterListeMois(moisList, type.suffixeLibelle);
+  }
+  return s.trim();
+}
+
+// Formate une liste de mois YYYY-MM pour un suffixe libellé.
+// Ex. ['2026-09','2026-10'] + 'mois_annee' → "sept. + oct. 2026"
+// Ex. ['2026-09','2027-01'] + 'mois_annee' → "sept. 2026 + janv. 2027"
+// Ex. ['2026-09','2026-10'] + 'mm_aaaa'    → "09 + 10/2026"
+function formaterListeMois(moisList, suffixe) {
+  const MOIS_COURT = ['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const sorted = [...moisList].sort();
+  if(suffixe === 'mm_aaaa') {
+    // Groupe par année : "09 + 10/2026" si même année, sinon "09/2026 + 01/2027"
+    const parAnnee = {};
+    sorted.forEach(m => { const [y, mm] = m.split('-'); if(!parAnnee[y]) parAnnee[y]=[]; parAnnee[y].push(mm); });
+    const annees = Object.keys(parAnnee).sort();
+    if(annees.length === 1) {
+      return parAnnee[annees[0]].join(' + ') + '/' + annees[0];
+    }
+    return annees.map(y => parAnnee[y].join(' + ') + '/' + y).join(' + ');
+  }
+  // suffixe 'mois_annee' : "sept. + oct. 2026" si même année, sinon année pour chaque
+  const parAnnee = {};
+  sorted.forEach(m => { const [y, mm] = m.split('-'); if(!parAnnee[y]) parAnnee[y]=[]; parAnnee[y].push(MOIS_COURT[parseInt(mm,10)-1]); });
+  const annees = Object.keys(parAnnee).sort();
+  if(annees.length === 1) return parAnnee[annees[0]].join(' + ') + ' ' + annees[0];
+  return annees.map(y => parAnnee[y].join(' + ') + ' ' + y).join(' + ');
+}
+
+// Supprime toutes les écritures rattachées à un mouvement donné.
+// Comme les écritures sont désormais partagées (regroupées), on ne supprime pas les LIGNES entières
+// si elles portent aussi d'autres mouvements — on soustrait juste la part de ce mouvement.
 function supprimerEcrituresDuMouvement(mvt) {
   if(!mvt) return;
-  DB.ecritures = DB.ecritures.filter(e => e._mvtLocataireId !== mvt.id);
+  // Toutes les lignes qui référencent ce mouvement (nouveau format _mvtLocataireIds ou ancien _mvtLocataireId)
+  const lignesTouchees = DB.ecritures.filter(e =>
+    (e._mvtLocataireIds && e._mvtLocataireIds.includes(mvt.id)) ||
+    e._mvtLocataireId === mvt.id
+  );
+  lignesTouchees.forEach(e => {
+    const autresIds = (e._mvtLocataireIds||[]).filter(x => x !== mvt.id);
+    if(autresIds.length === 0) {
+      // Cette ligne n'appartient qu'à ce mouvement → suppression totale
+      e._toDelete = true;
+    } else {
+      // Autres mouvements partagent cette ligne → soustraire la part de ce mvt
+      e.debit = Math.round(((e.debit||0) - mvt.montant) * 100) / 100;
+      e.credit = Math.round(((e.credit||0) - mvt.montant) * 100) / 100;
+      if(e.debit < 0) e.debit = 0;
+      if(e.credit < 0) e.credit = 0;
+      e._mvtLocataireIds = autresIds;
+      // Si les deux sont à 0, on supprime aussi (ligne vide)
+      if(Math.abs(e.debit) < 0.005 && Math.abs(e.credit) < 0.005) e._toDelete = true;
+    }
+  });
+  DB.ecritures = DB.ecritures.filter(e => !e._toDelete);
 }
 
 // Suppression d'un mouvement (avec confirmation)
@@ -7359,9 +7670,24 @@ function askDeleteMouvement(mvtId) {
   }
   _mvtDeleteTarget = mvtId;
   const t = (loc.types||[]).find(x => x.id === mvt.typeId);
+  // Identifie les quittances v2 rattachées à un mois d'affectation de ce mouvement
+  const moisAffectes = (mvt.affectations||[]).map(a => a.mois);
+  const quittancesLiees = (loc.historique||[]).filter(h => h.type === 'quittance' && h._v2 && moisAffectes.includes(h.mois));
+  let quittanceBlock = '';
+  if(quittancesLiees.length) {
+    quittanceBlock = `<div style="margin-top:12px;padding:10px;background:rgba(255,168,0,0.10);border:1px solid rgba(255,168,0,0.3);border-radius:var(--radius);font-size:11px;">
+      <div style="margin-bottom:6px;color:var(--amber);"><strong>⚠ Quittance(s) liée(s) à ce mouvement :</strong></div>
+      ${quittancesLiees.map(q => `<div style="font-size:10px;">🧾 ${moisLabelFromYYYYMM(q.mois)}</div>`).join('')}
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;">
+        <input type="checkbox" id="mvt-delete-also-quittances" style="width:14px;height:14px;">
+        <span>Supprimer aussi ces quittances</span>
+      </label>
+    </div>`;
+  }
   document.getElementById('mvt-delete-msg').innerHTML =
     `Supprimer le mouvement <strong>${t ? t.nom : '?'}</strong> du ${mvt.dateOperation} — <strong>${fmt(mvt.montant)}€</strong> ?<br>` +
-    `<span style="color:var(--text2);font-size:11px;">L'écriture comptable correspondante sera également supprimée.</span>`;
+    `<span style="color:var(--text2);font-size:11px;">L'écriture comptable correspondante sera également supprimée.</span>` +
+    quittanceBlock;
   document.getElementById('mvt-delete-modal').style.display = 'flex';
 }
 
@@ -7370,12 +7696,18 @@ function confirmDeleteMouvement() {
   if(loc && _mvtDeleteTarget) {
     const mvt = (loc.mouvements||[]).find(m => m.id === _mvtDeleteTarget);
     if(mvt) {
+      const moisAffectes = (mvt.affectations||[]).map(a => a.mois);
+      const alsoQuittancesEl = document.getElementById('mvt-delete-also-quittances');
+      const alsoQuittances = alsoQuittancesEl && alsoQuittancesEl.checked;
       supprimerEcrituresDuMouvement(mvt);
       loc.mouvements = loc.mouvements.filter(m => m.id !== _mvtDeleteTarget);
+      if(alsoQuittances && moisAffectes.length) {
+        loc.historique = (loc.historique||[]).filter(h => !(h.type === 'quittance' && h._v2 && moisAffectes.includes(h.mois)));
+      }
       renum();
       saveDB();
       updateNavCounts();
-      toast('Mouvement supprimé', 'success');
+      toast(alsoQuittances ? 'Mouvement et quittance(s) supprimés' : 'Mouvement supprimé', 'success');
     }
   }
   _mvtDeleteTarget = null;
@@ -7386,6 +7718,103 @@ function confirmDeleteMouvement() {
 function cancelDeleteMouvement() {
   _mvtDeleteTarget = null;
   document.getElementById('mvt-delete-modal').style.display = 'none';
+}
+
+// ── QUITTANCE v2 : proposition automatique dès qu'un mois passe à solde 0 ────────
+
+// Propose à l'utilisateur de générer une quittance pour un mois qui vient d'être totalement soldé
+function proposerQuittanceAuto(locId, mois) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  document.getElementById('quittance-auto-loc-id').value = locId;
+  document.getElementById('quittance-auto-mois').value = mois;
+  document.getElementById('quittance-auto-msg').innerHTML =
+    `Le solde du mois <strong style="color:var(--cyan);">${moisLabelFromYYYYMM(mois)}</strong> vient de passer à 0 pour <strong>${loc.prenom1||''} ${loc.nom1||''}</strong>.<br><br>` +
+    `Souhaitez-vous générer la <strong>quittance</strong> correspondante ?`;
+  document.getElementById('quittance-auto-modal').style.display = 'flex';
+}
+
+function closeQuittanceAutoModal() {
+  document.getElementById('quittance-auto-modal').style.display = 'none';
+}
+
+function confirmerQuittanceAuto() {
+  const locId = document.getElementById('quittance-auto-loc-id').value;
+  const mois = document.getElementById('quittance-auto-mois').value;
+  closeQuittanceAutoModal();
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc || !mois) return;
+  genererQuittanceV2(loc, mois);
+}
+
+// Génère une quittance à partir des mouvements du mois (pas de l'ancien système)
+function genererQuittanceV2(loc, mois) {
+  ensureLocV2(loc);
+  // Collecte des lignes du mois : + (loyer / provision / régul...) et - (paiements)
+  const plusDuMois = [];
+  const moinsDuMois = [];
+  (loc.mouvements||[]).forEach(mvt => {
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === mois) {
+        const t = (loc.types||[]).find(x => x.id === mvt.typeId);
+        const label = t ? t.nom : '(type supprimé)';
+        if(mvt.sens === '+') plusDuMois.push({ label, montant: a.montant, date: mvt.dateOperation });
+        else moinsDuMois.push({ label, montant: a.montant, date: mvt.dateOperation });
+      }
+    });
+  });
+  const totalDu = Math.round(plusDuMois.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const totalRecu = Math.round(moinsDuMois.reduce((s,x)=>s+x.montant,0)*100)/100;
+
+  const [yy, mm] = mois.split('-');
+  const dd = dernierJourMois(mois);
+  const periodeDebut = '01/'+mm+'/'+yy;
+  const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
+
+  const tableRows = plusDuMois.map(p => docTableRow(p.label, p.montant, false)).join('');
+
+  const paiementDetail = moinsDuMois.length === 1
+    ? `<p>Nous confirmons avoir reçu le paiement de <strong>${fmt(moinsDuMois[0].montant)}€</strong> le ${moinsDuMois[0].date ? fmtDateFr(moinsDuMois[0].date) : ''}.</p>`
+    : `<p>Nous confirmons avoir reçu les paiements suivants pour un total de <strong>${fmt(totalRecu)}€</strong> :</p>
+       <ul>${moinsDuMois.map(m => `<li>${fmt(m.montant)}€ le ${m.date ? fmtDateFr(m.date) : ''} (${m.label})</li>`).join('')}</ul>`;
+
+  const infoHtml = `<p>Bonjour,</p>
+    <p>Veuillez trouver votre quittance pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+    ${paiementDetail}
+    <p>N'hésitez pas à nous envoyer un message pour toute question.</p>
+    <p>Bien cordialement</p>`;
+
+  const dateEmission = new Date();
+  const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
+    ${renderLocDocHeader(loc, dateEmission)}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        QUITTANCE DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}<br><span style="font-weight:400;font-style:italic;font-size:10px;">Période du ${periodeDebut} au ${periodeFin}</span>
+      </td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
+      ${tableRows}
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalDu)}€</td></tr>
+    </table>
+    ${renderLocDocFooter(infoHtml)}
+  </div>`;
+
+  loc.historique = loc.historique || [];
+  loc.historique.push({
+    id: crypto.randomUUID(),
+    type: 'quittance',
+    mois,
+    dateEmission: dateEmission.toISOString().slice(0,10),
+    montantPaye: totalRecu,
+    docHtml: html,
+    docTitle: `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`,
+    _v2: true,
+    _consulted: false // servira à distinguer jaune / vert clair
+  });
+
+  saveDB();
+  updateNavCounts();
+  renderLocataireDetail();
+  toast('Quittance générée', 'success');
 }
 
 // ── SOLDES INITIAUX PAR MOIS (amorce de l'outil) ──────────────────────────────
@@ -7527,7 +7956,7 @@ function renderLocataires() {
   if(needsSave) saveDB();
 
   body2.innerHTML = list.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
-    const solde = computeSoldeLocataire(loc);
+    const solde = computeSoldeGlobalLocataireV2(loc);
     const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
     const mainRow = `<tr>
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
@@ -7539,7 +7968,6 @@ function renderLocataires() {
       <td style="text-align:center;white-space:nowrap;">
         <button class="btn btn-sm btn-primary btn-icon" onclick="openLocataireDetail('${loc.id}')" title="Ouvrir la fiche détaillée" style="padding:1px 7px;font-size:10px;">📊 OUVRIR</button>
         <button class="btn btn-sm btn-icon" onclick="openAppelModal('${loc.id}')" title="Appel de loyer" style="padding:1px 5px;font-size:10px;">📄</button>
-        <button class="btn btn-sm btn-icon" onclick="openQuittanceModal('${loc.id}')" title="Quittance" style="padding:1px 5px;font-size:10px;">🧾</button>
         <button class="btn btn-sm btn-icon" onclick="openLocataireModal('${loc.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteLocataire('${loc.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
       </td>
@@ -7552,13 +7980,30 @@ function renderLocataires() {
         const isAppel = h.type === 'appel';
         const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
         const montant = isAppel ? h.echeance : h.montantPaye;
+        // Couleurs pour les quittances v2 :
+        //   - jaune : jamais consultée
+        //   - vert clair : consultée au moins une fois
+        //   - orange + warning : solde du mois est repassé positif après émission
+        let bgColor = '';
+        let warning = '';
+        if(!isAppel && h._v2) {
+          const soldeMois = computeSoldeMoisAvantAppel(loc, h.mois);
+          if(soldeMois > 0.01) {
+            bgColor = 'background:rgba(255,168,0,0.14);';
+            warning = ` <span style="color:var(--amber);font-weight:600;">⚠ solde repassé à +${fmt(soldeMois)}€</span>`;
+          } else if(h._consulted) {
+            bgColor = 'background:rgba(0,229,160,0.10);';
+          } else {
+            bgColor = 'background:rgba(255,232,0,0.14);';
+          }
+        }
         const checkboxHtml = h.docHtml
           ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
           : `<span style="width:13px;display:inline-block;"></span>`;
         const labelHtml = h.docHtml
-          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}</span>`
-          : `<span style="flex:1;">${label}</span>`;
-        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line1);font-size:10px;">
+          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
+          : `<span style="flex:1;">${label}${warning}</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line1);font-size:10px;${bgColor}">
           ${checkboxHtml}
           ${labelHtml}
           <span style="color:var(--text2);width:70px;text-align:right;">${fmt(montant)} €</span>
@@ -7569,13 +8014,18 @@ function renderLocataires() {
       docsHtml = `<div style="padding:8px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
     }
 
-    const openImp = (loc.impayes||[]).filter(im => im.montantRestant > 0.01).sort((a,b)=>a.mois.localeCompare(b.mois));
-    const impayesHtml = openImp.length
+    // ── Impayés v2 : calculés à partir des soldes mensuels réels (mouvements + soldes initiaux) ──
+    // On affiche les mois dont le solde est strictement positif (le locataire doit encore).
+    const moisAvecSolde = [];
+    moisImpliques(loc).forEach(m => {
+      const s = computeSoldeMoisAvantAppel(loc, m);
+      if(s > 0.01) moisAvecSolde.push({ mois: m, montant: s });
+    });
+    const impayesHtml = moisAvecSolde.length
       ? `<div style="background:rgba(255,107,107,0.1);padding:6px 8px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line1);display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-          <span>⚠ Impayés en cours :</span>
-          ${openImp.map(im => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.15);border-radius:3px;padding:2px 6px;">
-            ${moisLabelFromYYYYMM(im.mois)} (${fmt(im.montantRestant)}€)
-            <span onclick="askDeleteImpaye('${loc.id}','${im.id}')" title="Supprimer cet impayé" style="cursor:pointer;font-weight:700;color:var(--red);">✕</span>
+          <span>⚠ Soldes débiteurs :</span>
+          ${moisAvecSolde.map(item => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.15);border-radius:3px;padding:2px 6px;">
+            ${moisLabelFromYYYYMM(item.mois)} (${fmt(item.montant)}€)
           </span>`).join('')}
         </div>`
       : '';
@@ -7596,32 +8046,6 @@ function renderLocataires() {
 function toggleSecondOccupant() {
   const has = document.getElementById('loc-has-second').checked;
   document.getElementById('loc-second-block').style.display = has ? 'block' : 'none';
-}
-
-function toggleImpayeSection() {
-  const has = document.getElementById('loc-has-impaye').checked;
-  document.getElementById('loc-impaye-section').style.display = has ? 'block' : 'none';
-  if(has && document.getElementById('loc-impaye-rows').children.length === 0) addImpayeRow();
-}
-
-function addImpayeRow(mois, montant) {
-  const container = document.getElementById('loc-impaye-rows');
-  const rowId = 'impayerow-' + crypto.randomUUID();
-  const row = document.createElement('div');
-  row.id = rowId;
-  row.style.cssText = 'display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
-  row.innerHTML = `
-    <div class="form-field" style="flex:1;margin-bottom:0;">
-      <label style="font-size:10px;">Mois concerné</label>
-      <input type="month" class="impaye-row-mois" value="${mois||''}">
-    </div>
-    <div class="form-field" style="flex:1;margin-bottom:0;">
-      <label style="font-size:10px;">Montant impayé (€)</label>
-      <input type="number" step="0.01" class="impaye-row-montant" value="${montant||''}" style="font-family:var(--mono);">
-    </div>
-    <button class="btn btn-sm btn-danger" onclick="document.getElementById('${rowId}').remove()" type="button" style="padding:6px 10px;">✕</button>
-  `;
-  container.appendChild(row);
 }
 
 function openLocataireModal(editId) {
@@ -7653,23 +8077,16 @@ function openLocataireModal(editId) {
     document.getElementById('loc-compte-provision').value = loc.compteProvision||'';
     document.getElementById('loc-compte-client').value = loc.compteClient||'';
     toggleSecondOccupant();
-    document.getElementById('loc-has-impaye').checked = false;
-    document.getElementById('loc-impaye-rows').innerHTML = '';
-    toggleImpayeSection();
   } else {
     document.getElementById('loc-modal-title').textContent = '🔑 NOUVEAU LOCATAIRE';
     ['loc-numclient','loc-adresse1','loc-adresse2','loc-email','loc-nom1','loc-prenom1','loc-nom2','loc-prenom2','loc-loyer','loc-provision','loc-compte-ca','loc-compte-provision','loc-compte-client'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
-    document.getElementById('loc-solde-initial').value = 0;
     document.getElementById('loc-civ1').value = 'Madame';
     document.getElementById('loc-civ2').value = 'Madame';
     document.getElementById('loc-provision-label').value = 'Provision TEOM';
     document.getElementById('loc-has-second').checked = false;
     toggleSecondOccupant();
-    document.getElementById('loc-has-impaye').checked = false;
-    document.getElementById('loc-impaye-rows').innerHTML = '';
-    toggleImpayeSection();
   }
   document.getElementById('loc-modal').style.display = 'flex';
 }
@@ -7678,7 +8095,6 @@ function closeLocataireModal() { document.getElementById('loc-modal').style.disp
 function saveLocataire() {
   const editId = document.getElementById('loc-edit-id').value;
   const numClient = document.getElementById('loc-numclient').value.trim();
-  const soldeInitial = parseFloat(document.getElementById('loc-solde-initial').value) || 0;
   const adresse1 = document.getElementById('loc-adresse1').value.trim();
   const adresse2 = document.getElementById('loc-adresse2').value.trim();
   const email = document.getElementById('loc-email').value.trim();
@@ -7696,19 +8112,6 @@ function saveLocataire() {
   const compteProvision = document.getElementById('loc-compte-provision').value.trim();
   const compteClient = document.getElementById('loc-compte-client').value.trim();
 
-  // Collecte des impayés existants renseignés dans le formulaire
-  const hasImpaye = document.getElementById('loc-has-impaye').checked;
-  const impayesNouveaux = [];
-  if(hasImpaye) {
-    document.querySelectorAll('#loc-impaye-rows > div').forEach(row => {
-      const mois = row.querySelector('.impaye-row-mois')?.value;
-      const montant = parseFloat(row.querySelector('.impaye-row-montant')?.value) || 0;
-      if(mois && montant > 0) {
-        impayesNouveaux.push({id:crypto.randomUUID(), mois, montantInitial:montant, montantRestant:montant, dateConstat:new Date().toISOString().slice(0,10), mouvements:[]});
-      }
-    });
-  }
-
   if(!numClient) { toast('Le N° client est requis','error'); return; }
   if(!adresse1) { toast("L'adresse de location est requise",'error'); return; }
   if(!nom1) { toast('Le nom du locataire principal est requis','error'); return; }
@@ -7721,12 +8124,11 @@ function saveLocataire() {
   if(editId) {
     const loc = list.find(l => l.id === editId);
     if(loc) {
-      Object.assign(loc, {numClient, soldeInitial, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient});
-      if(impayesNouveaux.length) { loc.impayes = loc.impayes || []; loc.impayes.push(...impayesNouveaux); }
+      Object.assign(loc, {numClient, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient});
     }
     toast('Locataire modifié','success');
   } else {
-    list.push({id:crypto.randomUUID(), numClient, soldeInitial, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient, historique:[], impayes: impayesNouveaux});
+    list.push({id:crypto.randomUUID(), numClient, adresse1, adresse2, email, civ1, nom1, prenom1, civ2, nom2, prenom2, loyer, provision, provisionLabel, compteCA, compteProvision, compteClient, historique:[], impayes:[], types:[], mouvements:[], soldesInitiaux:[]});
     toast('Locataire ajouté','success');
   }
   saveDB();
@@ -7809,276 +8211,193 @@ function openAppelModal(locId) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
+  ensureLocV2(loc);
   document.getElementById('appel-loc-id').value = locId;
-  document.getElementById('appel-modal-title').textContent = '📄 APPEL DE LOYER — ' + loc.prenom1 + ' ' + loc.nom1;
+  document.getElementById('appel-modal-title').textContent = '📄 APPEL DE LOYER — ' + (loc.prenom1||'') + ' ' + (loc.nom1||'');
   document.getElementById('appel-mois').value = '';
-  document.getElementById('appel-loyer').value = loc.loyer;
-  document.getElementById('appel-provision').value = loc.provision;
-  document.getElementById('appel-provision-label-txt').textContent = (loc.provisionLabel||'Provision') + ' (€)';
   document.getElementById('appel-apl').value = 0;
   document.getElementById('appel-commentaire').value = '';
-  document.getElementById('appel-prev-block').style.display = 'none';
-  updateAppelEcheance();
   document.getElementById('appel-modal').style.display = 'flex';
 }
 function closeAppelModal() { document.getElementById('appel-modal').style.display = 'none'; }
 
-function updateAppelEcheance() {
-  const loyer = parseFloat(document.getElementById('appel-loyer').value) || 0;
-  const provision = parseFloat(document.getElementById('appel-provision').value) || 0;
-  const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
-  const echeance = Math.round((loyer + provision - apl) * 100) / 100;
-  document.getElementById('appel-echeance-display').value = echeance;
-}
-
-function toggleAppelPrevApl() {
-  const checked = document.getElementById('appel-prev-apl-check').checked;
-  document.getElementById('appel-prev-apl-fields').style.display = checked ? 'block' : 'none';
-  if(!checked) {
-    document.getElementById('appel-prev-apl-montant').value = '';
-    document.getElementById('appel-prev-apl-date').value = '';
-  }
-}
-
-// Impayés antérieurs (mois < moisPrec) encore ouverts pour ce locataire
-function getOpenImpayesAvant(loc, moisPrec) {
-  return (loc.impayes||[]).filter(im => im.montantRestant > 0.01 && im.mois < moisPrec).sort((a,b)=>a.mois.localeCompare(b.mois));
-}
-
-function onAppelMoisChange() {
-  const locId = document.getElementById('appel-loc-id').value;
-  const loc = ensureLocatairesArray().find(l => l.id === locId);
-  const mois = document.getElementById('appel-mois').value;
-  if(!loc || !mois) return;
-  const moisPrec = moisPrecedent(mois);
-  const prevAppel = (loc.historique||[]).slice().reverse().find(h => h.type==='appel' && h.mois===moisPrec);
-
-  // ── Impayés antérieurs à traiter ──
-  const openImpayes = getOpenImpayesAvant(loc, moisPrec);
-  const impayesBlock = document.getElementById('appel-impayes-block');
-  if(openImpayes.length) {
-    impayesBlock.style.display = 'block';
-    impayesBlock.innerHTML = `<div style="background:rgba(255,107,107,0.08);border:1px solid rgba(255,107,107,0.3);border-radius:var(--radius);padding:12px;">
-      <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:8px;">IMPAYÉS ANTÉRIEURS EN COURS</div>
-      ${openImpayes.map(im => `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:11px;">
-          <span style="flex:1;">Impayé de ${moisLabelFromYYYYMM(im.mois)} — solde restant <strong>${fmt(im.montantRestant)}€</strong></span>
-        </div>
-        <div class="form-row c2 mb8">
-          <div class="form-field">
-            <label>Mouvement reçu ce mois (€)</label>
-            <input type="number" step="0.01" class="impaye-mvt-montant" data-impaye-id="${im.id}" value="0" style="font-family:var(--mono);">
-          </div>
-          <div class="form-field">
-            <label>Date du mouvement</label>
-            <input type="date" class="impaye-mvt-date" data-impaye-id="${im.id}">
-          </div>
-        </div>
-      `).join('')}
-    </div>`;
-  } else {
-    impayesBlock.style.display = 'none';
-    impayesBlock.innerHTML = '';
-  }
-
-  document.getElementById('appel-prev-block').style.display = 'block';
-  document.getElementById('appel-prev-mois-label').textContent = moisLabelFromYYYYMM(moisPrec);
-  const prevEcheance = prevAppel ? (prevAppel.totalDu ?? prevAppel.echeance) : 0;
-  document.getElementById('appel-prev-echeance').value = prevEcheance;
-  document.getElementById('appel-prev-paye').value = prevEcheance;
-  document.getElementById('appel-prev-date-paiement').value = '';
-  document.getElementById('appel-prev-apl-check').checked = false;
-  document.getElementById('appel-prev-apl-montant').value = '';
-  document.getElementById('appel-prev-apl-date').value = '';
-  toggleAppelPrevApl();
-
-  // Pré-remplir loyer/provision avec les valeurs du dernier appel s'il existe, sinon fiche
-  document.getElementById('appel-loyer').value = loc.loyer;
-  document.getElementById('appel-provision').value = loc.provision;
-  updateAppelEcheance();
-}
-
-let _pendingAppel = null;
-
-function generateAppelLoyer() {
+// ── APPEL DE LOYER v2 : intégralement alimenté par les mouvements ────────────────
+// Le formalisme et les libellés du document restent identiques à la version précédente,
+// seule la source des données change.
+function generateAppelLoyerV2() {
   const locId = document.getElementById('appel-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
+  ensureLocV2(loc);
   const mois = document.getElementById('appel-mois').value;
   if(!mois) { toast('Choisissez le mois de l\'appel','error'); return; }
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
-
-  const loyer = parseFloat(document.getElementById('appel-loyer').value) || 0;
-  const provision = parseFloat(document.getElementById('appel-provision').value) || 0;
   const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
-  const echeance = Math.round((loyer + provision - apl) * 100) / 100;
   const commentaire = document.getElementById('appel-commentaire').value.trim();
 
-  const prevEcheance = parseFloat(document.getElementById('appel-prev-echeance').value) || 0;
-  const prevPaye = parseFloat(document.getElementById('appel-prev-paye').value) || 0;
-  const prevDatePaiement = document.getElementById('appel-prev-date-paiement').value;
-  const hasApl = document.getElementById('appel-prev-apl-check').checked;
-  const prevAplMontant = hasApl ? (parseFloat(document.getElementById('appel-prev-apl-montant').value) || 0) : 0;
-  const prevAplDate = hasApl ? document.getElementById('appel-prev-apl-date').value : '';
   const moisPrec = moisPrecedent(mois);
 
-  // Mouvements sur les impayés antérieurs
-  const mvtInputs = Array.from(document.querySelectorAll('.impaye-mvt-montant'));
-  const mouvementsImpayes = mvtInputs.map(inp => {
-    const impayeId = inp.dataset.impayeId;
-    const im = (loc.impayes||[]).find(x => x.id === impayeId);
-    return {
-      impayeId,
-      montant: parseFloat(inp.value) || 0,
-      date: document.querySelector(`.impaye-mvt-date[data-impaye-id="${impayeId}"]`)?.value || '',
-      mois: im ? im.mois : null
-    };
+  // ── 1) LOYER DU MOIS : somme des mouvements + affectés à ce mois, ventilé par type ──
+  const lignesMois = [];
+  (loc.mouvements||[]).forEach(mvt => {
+    if(mvt.sens !== '+') return;
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === mois) {
+        const t = (loc.types||[]).find(x => x.id === mvt.typeId);
+        lignesMois.push({ label: t ? t.nom : '(type supprimé)', montant: a.montant });
+      }
+    });
+  });
+  const totalLoyerProvision = Math.round(lignesMois.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const partACharge = Math.round((totalLoyerProvision - apl)*100)/100;
+
+  // ── 2) SITUATION DU MOIS PRÉCÉDENT : solde du mois M-1 (loyers dus - paiements affectés) ──
+  const echeancePrec = (function() {
+    let s = 0;
+    (loc.mouvements||[]).forEach(mvt => {
+      if(mvt.sens !== '+') return;
+      (mvt.affectations||[]).forEach(a => { if(a.mois === moisPrec) s += a.montant; });
+    });
+    (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === moisPrec) s += (parseFloat(si.montant)||0); });
+    return Math.round(s*100)/100;
+  })();
+  const paiementsLocPrec = [];
+  const paiementsAplPrec = [];
+  (loc.mouvements||[]).forEach(mvt => {
+    if(mvt.sens !== '-') return;
+    (mvt.affectations||[]).forEach(a => {
+      if(a.mois === moisPrec) {
+        const t = (loc.types||[]).find(x => x.id === mvt.typeId);
+        const isApl = t && /apl|caf/i.test(t.nom);
+        if(isApl) paiementsAplPrec.push({montant:a.montant, date:mvt.dateOperation});
+        else paiementsLocPrec.push({montant:a.montant, date:mvt.dateOperation});
+      }
+    });
+  });
+  const prevPaye = Math.round(paiementsLocPrec.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const prevAplMontant = Math.round(paiementsAplPrec.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const prevDatePaiement = paiementsLocPrec[0]?.date || '';
+  const prevAplDate = paiementsAplPrec[0]?.date || '';
+  const soldePrec = Math.round((echeancePrec - prevPaye - prevAplMontant)*100)/100;
+
+  // ── 3) ANTÉRIORITÉ : tous les mois plus anciens que moisPrec avec solde non nul ou mouvement ──
+  const moisAnterieurs = moisImpliques(loc).filter(m => m < moisPrec);
+  const impayesAnterieurs = [];
+  moisAnterieurs.forEach(m => {
+    // pour chaque mois antérieur, on décompose loyer/paiements
+    const lignesM = [];
+    (loc.mouvements||[]).forEach(mvt => {
+      if(mvt.sens !== '+') return;
+      (mvt.affectations||[]).forEach(a => { if(a.mois === m) { const t=(loc.types||[]).find(x=>x.id===mvt.typeId); lignesM.push({label: t?t.nom:'?', montant:a.montant}); } });
+    });
+    let soldeInit = 0;
+    (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === m) soldeInit += (parseFloat(si.montant)||0); });
+    const totalPlus = Math.round(lignesM.reduce((s,x)=>s+x.montant,0)*100)/100 + soldeInit;
+    const paiementsLocM = [];
+    const paiementsAplM = [];
+    (loc.mouvements||[]).forEach(mvt => {
+      if(mvt.sens !== '-') return;
+      (mvt.affectations||[]).forEach(a => {
+        if(a.mois === m) {
+          const t = (loc.types||[]).find(x=>x.id===mvt.typeId);
+          const isApl = t && /apl|caf/i.test(t.nom);
+          if(isApl) paiementsAplM.push({montant:a.montant, date:mvt.dateOperation});
+          else paiementsLocM.push({montant:a.montant, date:mvt.dateOperation});
+        }
+      });
+    });
+    const totalMoins = Math.round((paiementsLocM.reduce((s,x)=>s+x.montant,0) + paiementsAplM.reduce((s,x)=>s+x.montant,0))*100)/100;
+    const solde = Math.round((totalPlus - totalMoins)*100)/100;
+    if(Math.abs(solde) > 0.005 || totalPlus > 0.005 || totalMoins > 0.005) {
+      impayesAnterieurs.push({ mois: m, lignes: lignesM, soldeInit, paiementsLoc: paiementsLocM, paiementsApl: paiementsAplM, solde });
+    }
   });
 
-  const totalRecuPrec = Math.round((prevPaye + prevAplMontant) * 100) / 100;
-  const ecart = Math.round((prevEcheance - totalRecuPrec) * 100) / 100;
-
-  const state = {loc, mois, loyer, provision, apl, echeance, commentaire, prevEcheance, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, moisPrec, mouvementsImpayes, ecart};
-
-  if(ecart > 0.01) {
-    _pendingAppel = state;
-    document.getElementById('impaye-confirm-msg').innerHTML = `Un écart de <strong style="color:var(--red);">${fmt(ecart)}€</strong> a été détecté entre l'échéance de ${moisLabelFromYYYYMM(moisPrec)} (${fmt(prevEcheance)}€) et le total reçu (locataire + APL = ${fmt(totalRecuPrec)}€).<br><br>Souhaitez-vous constater un impayé pour ce montant ?`;
-    document.getElementById('impaye-confirm-modal').style.display = 'flex';
-    return;
-  }
-
-  finishAppelGeneration(state, false);
-}
-
-function resolveImpayeChoice(constate) {
-  document.getElementById('impaye-confirm-modal').style.display = 'none';
-  if(!_pendingAppel) return;
-  finishAppelGeneration(_pendingAppel, constate);
-  _pendingAppel = null;
-}
-
-function finishAppelGeneration(state, constaterImpaye) {
-  const {loc, mois, loyer, provision, apl, echeance, commentaire, prevEcheance, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, moisPrec, mouvementsImpayes, ecart} = state;
-  const RED = '#c0392b';
-
-  // Capturer les impayés antérieurs (mois < moisPrec) AVANT application des mouvements de ce tour
-  loc.impayes = loc.impayes || [];
-  const impayesAvantSnap = getOpenImpayesAvant(loc, moisPrec).map(im => ({id: im.id, mois: im.mois, montantAvant: im.montantRestant}));
-
-  // Appliquer les mouvements
-  mouvementsImpayes.forEach(mvt => {
-    if(mvt.montant <= 0) return;
-    const im = loc.impayes.find(x => x.id === mvt.impayeId);
-    if(!im) return;
-    im.montantRestant = Math.round((im.montantRestant - mvt.montant) * 100) / 100;
-    if(im.montantRestant < 0) im.montantRestant = 0;
-    im.mouvements = im.mouvements || [];
-    im.mouvements.push({date: mvt.date, montant: mvt.montant});
-  });
-
-  // Constater un nouvel impayé pour le mois précédent si accepté
-  let nouvelImpayeId = null;
-  if(constaterImpaye && ecart > 0.01) {
-    nouvelImpayeId = crypto.randomUUID();
-    loc.impayes.push({id: nouvelImpayeId, mois: moisPrec, montantInitial: ecart, montantRestant: ecart, dateConstat: new Date().toISOString().slice(0,10), mouvements:[]});
-  }
-
-  const totalLoyerProvision = Math.round((loyer + provision) * 100) / 100; // montant complet, avant déduction APL
-  const partACharge = echeance; // loyer+provision-apl : ce qui est facturé au locataire
-
-  const soldePrec = Math.round((prevEcheance - (prevPaye+prevAplMontant))*100)/100;
-  const soldeCour = totalLoyerProvision; // part à charge + APL à recevoir = montant complet
-  const impayesRestants = getOpenImpayesAvant(loc, moisPrec).reduce((s,im)=>s+im.montantRestant, 0);
-  const totalSolde = Math.round((impayesRestants + soldePrec + soldeCour) * 100) / 100;
-
-  const dateEmission = new Date();
+  // ── 4) Rendu HTML ──
+  const [yy, mm] = mois.split('-');
   const dd = dernierJourMois(mois);
-  const [yy,mm] = mois.split('-');
   const periodeDebut = '01/'+mm+'/'+yy;
   const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
+  const dateEmission = new Date();
 
-  // Date APL du mois en cours : le 5 du mois suivant
-  const moisApl = moisSuivant(mois);
-  const [yyApl, mmApl] = moisApl.split('-');
-  const dateApl = '05/'+mmApl+'/'+yyApl;
+  // Tableau des lignes du mois
+  let tableRows = lignesMois.map(l => docTableRow(l.label, l.montant, false)).join('');
+  if(apl > 0.005) tableRows += docTableRow('APL déduite', -apl, false);
 
-  // ── Impayés encore ouverts après ce tour (inclut l'éventuel nouvel impayé du mois précédent) ──
-  const openImpayesApres = (loc.impayes||[]).filter(im => im.montantRestant > 0.01 && im.mois < mois);
-
-  // ── TABLEAU 1 : MONTANT DE L'ÉCHÉANCE (facturation au locataire) ──
-  let tableRows = docTableRow('Loyer', loyer, false);
-  tableRows += docTableRow(loc.provisionLabel||'Provision', provision, false);
-  if(apl > 0) tableRows += docTableRow(`APL à recevoir le ${dateApl}`, -apl, false);
-  openImpayesApres.forEach(im => {
-    tableRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(im.mois)}`, im.montantRestant, false, RED);
-  });
-  const montantAppelTotal = Math.round((partACharge + openImpayesApres.reduce((s,im)=>s+im.montantRestant,0)) * 100) / 100;
-
-  // ── TABLEAU 2 : SITUATION ──
-  let situationRows = '';
-
-  // Lignes des impayés antérieurs (avant moisPrec) — même structure à 3 lignes que le mois précédent :
-  // montant dû initialement / paiement reçu / solde résultant
-  impayesAvantSnap.forEach(snap => {
-    const mvt = mouvementsImpayes.find(m => m.impayeId === snap.id && m.montant > 0);
-    const imActuel = loc.impayes.find(x => x.id === snap.id);
-    const resteApres = imActuel ? imActuel.montantRestant : snap.montantAvant;
-    if(mvt) {
-      situationRows += docTableRow(`Impayé sur loyer de ${moisLabelFromYYYYMM(snap.mois)}`, snap.montantAvant, false);
-      situationRows += docTableRow(`Votre paiement du ${fmtDateFr(mvt.date)}`, -mvt.montant, false);
-      situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(snap.mois)}`, resteApres, true, resteApres>0.01 ? RED : null);
-    } else {
-      situationRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(snap.mois)} — solde restant`, snap.montantAvant, true, RED);
-    }
-    situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
-  });
-
-  situationRows += docTableRow(`Loyer + ${lowerFirst(loc.provisionLabel||'Provision')} ${moisLabelFromYYYYMM(moisPrec)}`, prevEcheance, false);
-  situationRows += prevDatePaiement ? docTableRow(`Votre paiement du ${fmtDateFr(prevDatePaiement)}`, -prevPaye, false) : docTableRow('Votre paiement', -prevPaye, false);
-  if(hasApl && prevAplMontant > 0) situationRows += docTableRow(`Paiement APL du ${prevAplDate?fmtDateFr(prevAplDate):''}`, -prevAplMontant, false);
-  if(constaterImpaye && ecart > 0.01) {
-    situationRows += docTableRow(`Impayé constaté sur ${moisLabelFromYYYYMM(moisPrec)}`, ecart, true, RED);
-  } else {
-    situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, true);
+  // Bloc situation mois précédent
+  let prevBlock = '';
+  if(echeancePrec > 0.005 || prevPaye > 0.005 || prevAplMontant > 0.005) {
+    let prevRows = docTableRow(`Échéance ${moisLabelFromYYYYMM(moisPrec)}`, echeancePrec, true);
+    if(prevPaye > 0.005) prevRows += docTableRow(`− Payé par le locataire${prevDatePaiement?' le '+fmtDateFr(prevDatePaiement):''}`, -prevPaye, false);
+    if(prevAplMontant > 0.005) prevRows += docTableRow(`− APL reçue${prevAplDate?' le '+fmtDateFr(prevAplDate):''}`, -prevAplMontant, false);
+    prevRows += docTableRow('Solde restant du mois précédent', soldePrec, true, soldePrec > 0.005 ? '#c0392b' : '#27ae60');
+    prevBlock = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+      <tr><td colspan="2" style="background:#f5d060;font-weight:700;text-align:center;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SITUATION DU MOIS PRÉCÉDENT — ${moisLabelFromYYYYMM(moisPrec).toUpperCase()}</td></tr>
+      ${prevRows}
+    </table>`;
   }
-  situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
-  situationRows += docTableRow(`Loyer + ${lowerFirst(loc.provisionLabel||'Provision')} ${moisLabelFromYYYYMM(mois)}`, totalLoyerProvision, false);
-  if(apl > 0) situationRows += docTableRow(`APL à recevoir le ${dateApl}`, apl, false);
-  situationRows += docTableRow('Votre paiement', 0, false);
-  situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true);
 
-  const defaultInfo = `<p>Bonjour,<br>Veuillez trouver votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
-    <p style="font-weight:700;text-decoration:underline;">Le paiement total attendu pour ce début de mois de ${MOIS_LABELS[parseInt(mm)-1]} s'élève à ${fmt(montantAppelTotal)}€.</p>
-    ${commentaire ? '<p>'+commentaire.replace(/\n/g,'<br>')+'</p>' : ''}
-    <p>N'hésitez pas à nous envoyer un message pour toute question.<br>Bien cordialement</p>`;
+  // Bloc antériorité
+  let anterioriteBlock = '';
+  if(impayesAnterieurs.length) {
+    const anteRows = impayesAnterieurs.map(imp => {
+      let lignes = '';
+      if(imp.soldeInit > 0.005) lignes += docTableRow(`Solde initial ${moisLabelFromYYYYMM(imp.mois)}`, imp.soldeInit, false);
+      imp.lignes.forEach(l => lignes += docTableRow(l.label, l.montant, false));
+      imp.paiementsLoc.forEach(p => lignes += docTableRow(`− Payé le ${fmtDateFr(p.date)}`, -p.montant, false));
+      imp.paiementsApl.forEach(p => lignes += docTableRow(`− APL le ${fmtDateFr(p.date)}`, -p.montant, false));
+      lignes += docTableRow(`Solde ${moisLabelFromYYYYMM(imp.mois)}`, imp.solde, true, imp.solde > 0.005 ? '#c0392b' : '#27ae60');
+      return lignes;
+    }).join('');
+    anterioriteBlock = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+      <tr><td colspan="2" style="background:#c0392b;color:#fff;font-weight:700;text-align:center;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">ANTÉRIORITÉ — MOIS ANTÉRIEURS NON SOLDÉS</td></tr>
+      ${anteRows}
+    </table>`;
+  }
+
+  // Total dû (part à charge du mois + soldes antérieurs positifs + solde M-1 positif)
+  const totalAnterieurPositif = impayesAnterieurs.filter(i=>i.solde>0.005).reduce((s,i)=>s+i.solde,0);
+  const totalRestantDu = Math.round((partACharge + (soldePrec>0.005?soldePrec:0) + totalAnterieurPositif) * 100) / 100;
+
+  const commentaireHtml = commentaire ? `<p>${commentaire.replace(/\n/g,'<br>')}</p>` : '';
+  const infoHtml = `<p>Bonjour,</p>
+    <p>Veuillez trouver ci-joint votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+    ${commentaireHtml}
+    <p>Bien cordialement</p>`;
 
   const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
     ${renderLocDocHeader(loc, dateEmission)}
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
-      <tr><td colspan="2" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+    ${anterioriteBlock}
+    ${prevBlock}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
+      <tr><td colspan="2" style="background:#0288d1;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
         APPEL DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}<br><span style="font-weight:400;font-style:italic;font-size:10px;">Période du ${periodeDebut} au ${periodeFin}</span>
       </td></tr>
       <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
       ${tableRows}
-      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(montantAppelTotal)}€</td></tr>
+      <tr><td style="background:#0288d1;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">PART À CHARGE DU MOIS</td><td style="background:#0288d1;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(partACharge)}€</td></tr>
+      <tr><td style="background:#111;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL RESTANT DÛ (avec antériorité)</td><td style="background:#111;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalRestantDu)}€</td></tr>
     </table>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
-      <tr><td colspan="2" style="background:#fde8df;color:#111;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">VOTRE SITUATION AU ${fmtDateFr(dateEmission)}</td></tr>
-      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
-      ${situationRows}
-      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SOLDE A NOTRE CREDIT</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalSolde)}€</td></tr>
-    </table>
-    ${renderLocDocFooter(defaultInfo)}
+    ${renderLocDocFooter(infoHtml)}
   </div>`;
 
-  // Enregistrer dans l'historique — pas de comptabilisation automatique
   loc.historique = loc.historique || [];
-  loc.historique.push({id:crypto.randomUUID(), type:'appel', mois, moisPrec, dateEmission: dateEmission.toISOString().slice(0,10), loyer, provision, apl, echeance:partACharge, totalDu: totalLoyerProvision, commentaire, comptabilise:false, docHtml: html, docTitle: `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, impayeId: nouvelImpayeId, prevPaye, prevDatePaiement, hasApl, prevAplMontant, prevAplDate, mouvementsImpayes});
+  loc.historique.push({
+    id: crypto.randomUUID(),
+    type: 'appel',
+    mois, moisPrec,
+    dateEmission: dateEmission.toISOString().slice(0,10),
+    echeance: partACharge, totalDu: totalLoyerProvision,
+    apl, commentaire,
+    docHtml: html,
+    docTitle: `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`,
+    _v2: true
+  });
   saveDB(); updateNavCounts();
   closeAppelModal();
-  printDoc(html, `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, false);
-  toast(constaterImpaye ? 'Appel de loyer généré — impayé constaté' : 'Appel de loyer généré', 'success');
-  renderLocataires();
+  printDoc(html, `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`, false);
+  toast('Appel de loyer généré','success');
+  if(_locDetailId) renderLocataireDetail(); else renderLocataires();
 }
 
 
@@ -8250,6 +8569,13 @@ function viewHistoriqueDoc(locId, entryId) {
   if(!loc) return;
   const entry = (loc.historique||[]).find(h => h.id === entryId);
   if(!entry || !entry.docHtml) { toast('Document non disponible — générez-le à nouveau','error'); return; }
+  // Marque la quittance v2 comme consultée (jaune → vert clair)
+  if(entry.type === 'quittance' && entry._v2 && !entry._consulted) {
+    entry._consulted = true;
+    saveDB();
+    if(_locDetailId === locId) renderLocataireDetail();
+    else renderLocataires();
+  }
   printDoc(entry.docHtml, entry.docTitle || 'Document', false);
 }
 
@@ -9207,6 +9533,8 @@ function postEcheancierMois(ech, mois) {
 
   ech.moisComptabilises = ech.moisComptabilises || [];
   ech.moisComptabilises.push(mois);
+  // Hook post-it
+  notifierPieceGeneree('echeanciers', numDoc, libelleEcriture, dateEcr);
 }
 
 // Comptabilise un mois précis, individuellement, à la demande
@@ -9619,15 +9947,19 @@ function comptabiliserEmpruntMois(id, mois) {
   const dateEcr = row.dateEcheance || (mois+'-01');
   const libelleEcriture = `${emp.libelle} - ${moisLabelFromYYYYMM(mois)}`;
   const io = Date.now() + Math.floor(Math.random()*1000);
+  const [empYY, empMM] = mois.split('-');
+  const numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`;
 
   emp.moisIo = emp.moisIo || {};
   emp.moisIo[mois] = io;
 
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:'', debit:row.capitalRembourse, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:'', debit:row.interets, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:'', debit:0, credit:row.mensualite});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
 
   emp.moisComptabilises.push(mois);
+  // Hook post-it
+  notifierPieceGeneree('emprunts', numDocEmp, libelleEcriture, dateEcr);
   renum(); saveDB(); updateNavCounts();
   toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
   renderEmprunts();
@@ -9854,6 +10186,8 @@ function confirmerComptabiliserCCInterets() {
     const io = Date.now() + Math.floor(Math.random()*1000);
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'661500', libelleCompte:getLib('661500')||'Intérêts des comptes courants', libelleEcriture, numDoc, debit:l.interet, credit:0});
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:l.compte, libelleCompte:l.libelle, libelleEcriture, numDoc, debit:0, credit:l.interet});
+    // Hook post-it (une entrée par ligne, car chaque associé a sa pièce)
+    notifierPieceGeneree('inventaires', numDoc, libelleEcriture + ' — ' + l.libelle, dateEcr);
   });
 
   renum(); saveDB(); updateNavCounts();
@@ -9935,6 +10269,8 @@ function confirmerConstatationResultat() {
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc:'CLOTURE', debit:Math.abs(resultat), credit:0});
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'800129', libelleCompte:'Contrepartie résultat (perte)', libelleEcriture, numDoc:'CLOTURE', debit:0, credit:Math.abs(resultat)});
   }
+  // Hook post-it
+  notifierPieceGeneree('inventaires', 'CLOTURE', libelleEcriture, dateEcr);
 
   renum(); saveDB(); updateNavCounts();
   closeInventaireModal();
@@ -10057,6 +10393,8 @@ function genererPVApprobation() {
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc, debit:0, credit:montant});
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'119000', libelleCompte:'Report à nouveau (solde débiteur)', libelleEcriture, numDoc, debit:montant, credit:0});
   }
+  // Hook post-it
+  notifierPieceGeneree('approbation', numDoc, libelleEcriture, date);
   renum(); saveDB(); updateNavCounts();
 
   // ── Génération du PV d'AG ──
@@ -10175,6 +10513,8 @@ async function boot() {
   startLiveSync();
   checkMonthlyExport();
   checkWeeklyExport();
+  // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
+  if(sessionStorage.getItem('sci_auth') === '1') renderPostItPieces();
   // L'alerte ne doit jamais apparaître avant que l'utilisateur soit connecté
   if(sessionStorage.getItem('sci_auth') === '1') checkEcheanciersExpirationAuBoot();
 
