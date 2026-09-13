@@ -540,6 +540,10 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
   <div class="hdr-sep"></div>
   <div class="hdr-status"><div class="dot"></div> AUTO-SAVE</div>
   <div class="hdr-actions">
+    <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" style="letter-spacing:0.05em;">
+      <span>📌 PIÈCES À FORMALISER</span>
+      <span id="btn-postit-badge" style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
+    </button>
     <button class="btn btn-sm btn-readonly-ok" onclick="showImportModal()">IMPORT GL</button>
     <button class="btn btn-sm btn-gold btn-readonly-ok" onclick="exportData()">EXPORT</button>
     <button class="btn btn-sm btn-danger" onclick="undoLast()" id="btn-undo" disabled>↩ ANNULER</button>
@@ -2699,15 +2703,31 @@ const POSTIT_MODULE_LABELS = {
   echeanciers: 'Échéanciers',
   emprunts: 'Emprunts',
   inventaires: 'Écritures d\'inventaires',
-  approbation: 'Approbation du résultat'
+  approbation: 'Approbation du résultat',
+  saisie: 'Saisie manuelle'
 };
 
 let _postItFilterModule = 'all';
-let _postItCollapsed = false;
-let _postItPos = null; // { top, left } — position sauvegardée en localStorage
+let _postItOpen = false; // le panneau est fermé au démarrage
 
-function togglePostItCollapsed() {
-  _postItCollapsed = !_postItCollapsed;
+// Clic à l'extérieur du panneau ou du bouton → ferme
+document.addEventListener('click', (e) => {
+  if(!_postItOpen) return;
+  const btn = document.getElementById('btn-postit-toggle');
+  const panel = document.getElementById('postit-pieces');
+  if(btn && btn.contains(e.target)) return; // clic sur le bouton d'ouverture
+  if(panel && panel.contains(e.target)) return; // clic dans le panneau lui-même
+  closePostItPieces();
+});
+window.addEventListener('resize', () => { if(_postItOpen) renderPostItPieces(); });
+
+function togglePostItPieces() {
+  _postItOpen = !_postItOpen;
+  renderPostItPieces();
+}
+
+function closePostItPieces() {
+  _postItOpen = false;
   renderPostItPieces();
 }
 
@@ -2727,44 +2747,49 @@ function togglePieceFormalisee(id) {
   renderPostItPieces();
 }
 
-// Rendu du post-it (fixed, déplaçable). Idempotent.
+// Rendu du post-it : (a) met à jour le badge du bouton en haut à droite,
+// (b) affiche/masque le panneau ancré sous ce bouton selon _postItOpen.
 function renderPostItPieces() {
   purgerPostItPieces();
+  const list = ensurePiecesAFormaliser();
+  const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
+  const nbNonCocheesToutes = list.filter(p => !p.coche).length;
+  const nbNonCochees = filtered.filter(p => !p.coche).length;
+
+  // 1) Mise à jour du badge du bouton d'entête (compteur toutes pièces, indépendant du filtre)
+  const badge = document.getElementById('btn-postit-badge');
+  if(badge) {
+    if(nbNonCocheesToutes > 0) { badge.textContent = nbNonCocheesToutes; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+
+  // 2) Panneau : créé à la volée et positionné sous le bouton d'entête
   let el = document.getElementById('postit-pieces');
+  if(!_postItOpen) {
+    if(el) el.style.display = 'none';
+    return;
+  }
   if(!el) {
     el = document.createElement('div');
     el.id = 'postit-pieces';
     document.body.appendChild(el);
   }
-  // Position sauvegardée (localStorage)
-  if(!_postItPos) {
-    try {
-      const saved = localStorage.getItem('postit_pieces_pos');
-      if(saved) _postItPos = JSON.parse(saved);
-    } catch(e) {}
-  }
-  const pos = _postItPos || { top: 90, left: window.innerWidth - 340 };
-  el.style.cssText = `position:fixed;top:${pos.top}px;left:${pos.left}px;width:340px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid var(--cyan);user-select:none;`;
-
-  const list = ensurePiecesAFormaliser();
-  const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
-  const nbNonCochees = filtered.filter(p => !p.coche).length;
+  const btn = document.getElementById('btn-postit-toggle');
+  const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
+  const top = rect.bottom + 6;
+  // Ancré à droite pour rester visible même si le bouton est à droite de l'écran
+  const right = Math.max(10, window.innerWidth - rect.right);
+  el.style.cssText = `position:fixed;top:${top}px;right:${right}px;width:360px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid var(--cyan);display:block;`;
 
   const options = ['<option value="all">Tous modules</option>']
     .concat(Object.keys(POSTIT_MODULE_LABELS).map(k => `<option value="${k}" ${_postItFilterModule===k?'selected':''}>${POSTIT_MODULE_LABELS[k]}</option>`))
     .join('');
 
-  const headerHtml = `<div id="postit-header" style="padding:8px 10px;cursor:move;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
+  const headerHtml = `<div style="padding:8px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
     <span style="font-size:14px;">📌</span>
     <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">Pièces à formaliser${nbNonCochees > 0 ? ` <span style="background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:4px;letter-spacing:0;">${nbNonCochees}</span>` : ''}</strong>
-    <span style="cursor:pointer;font-size:14px;padding:0 4px;color:var(--text2);" onclick="togglePostItCollapsed()" title="${_postItCollapsed?'Déplier':'Replier'}">${_postItCollapsed?'▲':'▼'}</span>
+    <span style="cursor:pointer;font-size:16px;padding:0 4px;color:var(--text2);" onclick="closePostItPieces()" title="Fermer">✕</span>
   </div>`;
-
-  if(_postItCollapsed) {
-    el.innerHTML = headerHtml;
-    activatePostItDrag();
-    return;
-  }
 
   const filterHtml = `<div style="padding:6px 10px;border-bottom:1px solid var(--line2);background:var(--bg2);">
     <select onchange="setPostItFilter(this.value)" style="width:100%;font-size:10px;padding:4px;border:1px solid var(--line2);border-radius:3px;background:var(--bg0);color:var(--text0);">${options}</select>
@@ -2779,7 +2804,7 @@ function renderPostItPieces() {
       if(a.coche !== b.coche) return a.coche ? 1 : -1;
       return (b.dateAjout||'').localeCompare(a.dateAjout||'');
     });
-    bodyHtml = `<div style="max-height:340px;overflow-y:auto;padding:4px 6px;">
+    bodyHtml = `<div style="max-height:400px;overflow-y:auto;padding:4px 6px;">
       ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
         <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
         <div style="flex:1;font-size:11px;line-height:1.35;min-width:0;">
@@ -2792,41 +2817,6 @@ function renderPostItPieces() {
   }
 
   el.innerHTML = headerHtml + filterHtml + bodyHtml;
-  activatePostItDrag();
-}
-
-// Rend l'en-tête déplaçable à la souris (drag & drop)
-function activatePostItDrag() {
-  const el = document.getElementById('postit-pieces');
-  const header = document.getElementById('postit-header');
-  if(!el || !header) return;
-  let dragOffsetX = 0, dragOffsetY = 0, dragging = false;
-  header.onmousedown = (e) => {
-    if(e.target.tagName === 'SPAN' && e.target.onclick) return; // ignore clic bouton replier
-    dragging = true;
-    const rect = el.getBoundingClientRect();
-    dragOffsetX = e.clientX - rect.left;
-    dragOffsetY = e.clientY - rect.top;
-    document.body.style.cursor = 'move';
-    e.preventDefault();
-  };
-  document.addEventListener('mousemove', (e) => {
-    if(!dragging) return;
-    let left = e.clientX - dragOffsetX;
-    let top = e.clientY - dragOffsetY;
-    left = Math.max(0, Math.min(window.innerWidth - el.offsetWidth, left));
-    top = Math.max(0, Math.min(window.innerHeight - 40, top));
-    el.style.left = left + 'px';
-    el.style.top = top + 'px';
-    _postItPos = { top, left };
-  });
-  document.addEventListener('mouseup', () => {
-    if(dragging) {
-      dragging = false;
-      document.body.style.cursor = '';
-      try { localStorage.setItem('postit_pieces_pos', JSON.stringify(_postItPos)); } catch(e) {}
-    }
-  });
 }
 
 
@@ -3314,6 +3304,7 @@ function getLines() {
 }
 // ── ÉDITION D'UNE ÉCRITURE EXISTANTE ──
 let editingNum = null, editingIO = null, editingOrigGroup = undefined;
+let editingOrigNumDoc = '', editingOrigDate = ''; // pour synchroniser le post-it si l'utilisateur modifie une écriture
 
 function editEcriture(id) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — modification impossible','error'); return; }
@@ -3329,6 +3320,9 @@ function editEcriture(id) {
   editingNum = e.num;
   editingIO = e._io;
   editingOrigGroup = e._origGroup;
+  // Contexte original pour synchronisation du post-it (au cas où l'utilisateur modifierait le numDoc, la date ou le libellé)
+  editingOrigNumDoc = e.numDoc || '';
+  editingOrigDate = e.date || '';
 
   // Remplir l'en-tête
   document.getElementById('s-journal').value = e.journal || '';
@@ -3385,7 +3379,7 @@ function editEcriture(id) {
 function resetSaisieForm() {
   // Si on était en mode édition, on annule aussi l'édition
   if(editingNum !== null) {
-    editingNum = null; editingIO = null; editingOrigGroup = undefined;
+    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
     document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
     document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
     document.getElementById('edit-banner').style.display = 'none';
@@ -3403,7 +3397,7 @@ function resetSaisieForm() {
 }
 
 function cancelEditEcriture() {
-  editingNum = null; editingIO = null; editingOrigGroup = undefined;
+  editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
   document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
   document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
   document.getElementById('edit-banner').style.display = 'none';
@@ -3457,16 +3451,46 @@ function saveEcriture() {
   }
 
   const separateur = (document.getElementById('s-numdoc-sep')||{}).value || '/';
+  const newNumDoc = typedoc + (refdoc ? separateur + refdoc : '');
   lines.forEach(l=>{
-    const entry = {id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:typedoc+(refdoc?separateur+refdoc:''),debit:l.debit,credit:l.credit};
+    const entry = {id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:newNumDoc,debit:l.debit,credit:l.credit};
     if(origGroup !== undefined) entry._origGroup = origGroup;
     DB.ecritures.push(entry);
   });
+
+  // ── Synchronisation post-it à la modification d'écriture ──
+  // Règle : seul un changement de n° de pièce impacte le post-it. Un changement de date ou de
+  // libellé sur la même pièce ne change rien côté papier — on laisse la ligne du post-it intacte.
+  if(isEditing) {
+    const numDocChanged = editingOrigNumDoc !== newNumDoc;
+    if(numDocChanged && newNumDoc) {
+      const list = ensurePiecesAFormaliser();
+      // Cherche l'entrée pré-existante correspondant à l'ancien n° (mise à jour "en place")
+      const anciennePiece = editingOrigNumDoc
+        ? list.find(p => p.numDoc === editingOrigNumDoc && p.date === editingOrigDate)
+        : null;
+      if(anciennePiece) {
+        // Le numéro a changé → cette pièce papier est à refaire, on décoche et met à jour ses champs
+        anciennePiece.numDoc = newNumDoc;
+        anciennePiece.date = date;
+        anciennePiece.libelle = lines[0]?.libelleEcriture || anciennePiece.libelle;
+        anciennePiece.coche = false;
+        anciennePiece.dateCochage = null;
+      } else {
+        // Aucune pièce pré-existante (ex. vieille écriture sans entrée post-it) : on en crée une nouvelle
+        // Module 'saisie' pour les écritures modifiées manuellement (distinct des 5 modules automatiques)
+        notifierPieceGeneree('saisie', newNumDoc, lines[0]?.libelleEcriture || '', date);
+      }
+      renderPostItPieces();
+    }
+    // Si le numDoc n'a pas changé, on ne touche à rien (changements de date/libellé neutres pour le post-it)
+  }
+
   renum(); saveDB(); updateNavCounts();
 
   if(isEditing) {
     toast('Écriture #'+editingNum+' mise à jour','success');
-    editingNum = null; editingIO = null; editingOrigGroup = undefined;
+    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
     document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
     document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
     document.getElementById('edit-banner').style.display = 'none';
@@ -3527,9 +3551,26 @@ function confirmDelete() {
   if(!deleteTargetId) return;
   const e=DB.ecritures.find(x=>x.id===deleteTargetId); if(!e) return;
   const numToDelete = e.num;
+  // Mémorise les triplets (journal + date + numDoc) des lignes supprimées pour synchro post-it
+  const piecesCandidates = new Set();
+  DB.ecritures.filter(x => x.num === numToDelete).forEach(x => {
+    if(x.numDoc) piecesCandidates.add(x.journal + '||' + x.date + '||' + x.numDoc);
+  });
   undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
   redoStack = []; updUndoRedo();
   DB.ecritures=DB.ecritures.filter(x=>x.num!==numToDelete);
+  // Synchronisation post-it : si plus aucune écriture ne partage un triplet, on retire la pièce
+  piecesCandidates.forEach(key => {
+    const [journal, date, numDoc] = key.split('||');
+    const encoreUtilisee = DB.ecritures.some(x => x.journal === journal && x.date === date && x.numDoc === numDoc);
+    if(!encoreUtilisee) {
+      // On ne connaît pas le module d'origine → on retire toute pièce avec ce (numDoc, date) quel que soit le module
+      const list = ensurePiecesAFormaliser();
+      const avant = list.length;
+      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
+      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
+    }
+  });
   renum(); saveDB(); closeDeleteModal(); updateNavCounts();
   toast(`Écriture #${numToDelete} supprimée (toutes les lignes)`, 'warn');
   renderGL(); renderBalance();
@@ -8281,10 +8322,36 @@ function renderLocataires() {
     const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
     const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
     const rowOpacity = loc.actif ? '' : 'opacity:0.5;';
+
+    // ── Alertes compactes ──
+    // Impayés : nombre de mois avec solde débiteur + total
+    let nbMoisImpayes = 0, totalImpayes = 0;
+    moisImpliques(loc).forEach(m => {
+      const s = computeSoldeMoisAvantAppel(loc, m);
+      if(s > 0.01) { nbMoisImpayes++; totalImpayes += s; }
+    });
+    const alertImpayes = nbMoisImpayes > 0
+      ? `<span title="${nbMoisImpayes} mois avec solde débiteur pour un total de ${fmt(totalImpayes)}€" style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.12);color:var(--red);border:1px solid rgba(255,107,107,0.35);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">⚠ ${nbMoisImpayes} mois · ${fmt(totalImpayes)}€</span>`
+      : '';
+    // Quittances en attente d'ouverture (jaune) : quittances v2 pas encore consultées
+    const historique = loc.historique||[];
+    const quittancesAOuvrir = historique.filter(h => h.type === 'quittance' && h._v2 && !h._consulted).length;
+    const alertQuittances = quittancesAOuvrir > 0
+      ? `<span title="${quittancesAOuvrir} quittance(s) à ouvrir/imprimer" style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,232,0,0.10);color:var(--amber);border:1px solid rgba(255,232,0,0.30);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">🧾 ${quittancesAOuvrir} à imprimer</span>`
+      : '';
+    // Compteur discret de documents totaux
+    const nbDocs = historique.length;
+    const badgeDocs = nbDocs > 0
+      ? `<span title="${nbDocs} document(s) au total (voir dans la fiche détaillée)" style="display:inline-flex;align-items:center;gap:4px;color:var(--text2);border:1px solid var(--line2);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">📄 ${nbDocs}</span>`
+      : '';
+    const alertesHtml = (alertImpayes || alertQuittances || badgeDocs)
+      ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">${alertImpayes}${alertQuittances}${badgeDocs}</div>`
+      : '';
+
     const mainRow = `<tr style="${rowOpacity}">
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
       <td style="font-size:11px;">${loc.adresse1||''}<br><span style="color:var(--text2);font-size:9px;">${loc.adresse2||''}</span></td>
-      <td style="font-size:11px;">${noms}${inactifBadge}</td>
+      <td style="font-size:11px;">${noms}${inactifBadge}${alertesHtml}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
       <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
@@ -8297,71 +8364,7 @@ function renderLocataires() {
       </td>
     </tr>`;
 
-    const historique = (loc.historique||[]).slice().sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
-    let docsHtml = '';
-    if(historique.length) {
-      docsHtml = historique.map(h => {
-        const isAppel = h.type === 'appel';
-        const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
-        const montant = isAppel ? h.echeance : h.montantPaye;
-        // Couleurs pour les quittances v2 :
-        //   - jaune : jamais consultée
-        //   - vert clair : consultée au moins une fois
-        //   - orange + warning : solde du mois est repassé positif après émission
-        let bgColor = '';
-        let warning = '';
-        if(!isAppel && h._v2) {
-          const soldeMois = computeSoldeMoisAvantAppel(loc, h.mois);
-          if(soldeMois > 0.01) {
-            bgColor = 'background:rgba(255,168,0,0.14);';
-            warning = ` <span style="color:var(--amber);font-weight:600;">⚠ solde repassé à +${fmt(soldeMois)}€</span>`;
-          } else if(h._consulted) {
-            bgColor = 'background:rgba(0,229,160,0.10);';
-          } else {
-            bgColor = 'background:rgba(255,232,0,0.14);';
-          }
-        }
-        const checkboxHtml = h.docHtml
-          ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
-          : `<span style="width:13px;display:inline-block;"></span>`;
-        const labelHtml = h.docHtml
-          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
-          : `<span style="flex:1;">${label}${warning}</span>`;
-        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 8px;border-bottom:1px solid var(--line1);font-size:10px;${bgColor}">
-          ${checkboxHtml}
-          ${labelHtml}
-          <span style="color:var(--text2);width:70px;text-align:right;">${fmt(montant)} €</span>
-          <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
-        </div>`;
-      }).join('');
-    } else {
-      docsHtml = `<div style="padding:8px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
-    }
-
-    // ── Impayés v2 : calculés à partir des soldes mensuels réels (mouvements + soldes initiaux) ──
-    // On affiche les mois dont le solde est strictement positif (le locataire doit encore).
-    const moisAvecSolde = [];
-    moisImpliques(loc).forEach(m => {
-      const s = computeSoldeMoisAvantAppel(loc, m);
-      if(s > 0.01) moisAvecSolde.push({ mois: m, montant: s });
-    });
-    const impayesHtml = moisAvecSolde.length
-      ? `<div style="background:rgba(255,107,107,0.1);padding:6px 8px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line1);display:flex;flex-wrap:wrap;align-items:center;gap:6px;">
-          <span>⚠ Soldes débiteurs :</span>
-          ${moisAvecSolde.map(item => `<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.15);border-radius:3px;padding:2px 6px;">
-            ${moisLabelFromYYYYMM(item.mois)} (${fmt(item.montant)}€)
-          </span>`).join('')}
-        </div>`
-      : '';
-
-    const subRow = `<tr><td colspan="7" style="padding:0 0 10px 0;background:var(--bg1);">
-      <div style="margin:0 8px;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
-        ${impayesHtml}
-        ${docsHtml}
-      </div>
-    </td></tr>`;
-
-    return mainRow + subRow;
+    return mainRow;
   }).join('');
 
   updateNavCounts();
