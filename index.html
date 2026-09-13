@@ -612,6 +612,10 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="nav-item" onclick="showTab('approbation')" id="nav-approbation">
       <span class="ni-icon">📜</span> Approbation du résultat
     </div>
+    <div style="flex:1;"></div>
+    <div class="nav-item" onclick="showTab('parametres')" id="nav-parametres" style="border-top:1px solid var(--line2);">
+      <span class="ni-icon">⚙</span> Paramètres
+    </div>
     <div class="nav-version">Designed and developed by Clément Maufroy</div>
   </nav>
 
@@ -1253,7 +1257,67 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
     </div>
 
+    <!-- ══════════════ PARAMÈTRES ══════════════ -->
+    <div class="tab-content" id="tab-parametres">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">PARAMÈTRES</div>
+          <div class="page-sub">Configuration générale de l'outil</div>
+        </div>
+      </div>
+
+      <div style="max-width:900px;">
+        <!-- Section : Types de pièces comptables -->
+        <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line2);">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">📎 TYPES DE PIÈCES COMPTABLES</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:2px;">Utilisés dans les menus déroulants de n° de pièce (saisie manuelle, types de mouvements locataire, échéanciers…)</div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="openPiecesTypeModal()">+ Ajouter un type</button>
+          </div>
+          <div id="params-piecestypes-list"></div>
+        </div>
+      </div>
+    </div>
+
   </main>
+</div>
+
+<!-- Modale de création/édition d'un type de pièce -->
+<div id="piecestype-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title" id="piecestype-modal-title">+ NOUVEAU TYPE DE PIÈCE</div>
+    <input type="hidden" id="piecestype-edit-code">
+    <div class="form-row mb8">
+      <div class="form-field">
+        <label>Code (préfixe utilisé dans le n° de pièce) *</label>
+        <input type="text" id="piecestype-code" placeholder="ex. QUIT, RB..." style="font-family:var(--mono);text-transform:uppercase;" maxlength="12">
+      </div>
+    </div>
+    <div class="form-row mb8">
+      <div class="form-field">
+        <label>Libellé descriptif *</label>
+        <input type="text" id="piecestype-label" placeholder="ex. Quittance, Relevé bancaire...">
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:16px;">
+      <button class="btn btn-primary" onclick="savePiecesType()">💾 ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="closePiecesTypeModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirmation suppression d'un type de pièce -->
+<div id="piecestype-delete-modal" class="modal-overlay">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title">Supprimer ce type ?</div>
+    <p id="piecestype-delete-msg" style="font-size:12px;margin-bottom:14px;"></p>
+    <div class="flex gap8">
+      <button class="btn btn-danger" onclick="confirmDeletePiecesType()">SUPPRIMER</button>
+      <button class="btn ml-auto" onclick="closePiecesTypeDeleteModal()">ANNULER</button>
+    </div>
+  </div>
 </div>
 
 <!-- IMPORT MODAL -->
@@ -2863,7 +2927,7 @@ function startLiveSync() {
       Object.assign(DB, remote);
       renum(); updateNavCounts();
       const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation};
+      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
       if(active && renders[active]) renders[active]();
     }
   });
@@ -2890,7 +2954,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -4251,7 +4315,9 @@ const JOURNALS_LIST = [
   {code:'OD', label:'Opérations Diverses'},
   {code:'TRESO', label:'Trésorerie'},
 ];
-const TYPEDOC_LIST = [
+// Valeurs par défaut si aucun paramétrage utilisateur n'existe encore.
+// Ne pas modifier ces valeurs après déploiement : elles servent de graine à la première utilisation.
+const TYPEDOC_DEFAULTS = [
   {code:'FA', label:'Facture'},
   {code:'OD', label:'Opérations diverses'},
   {code:'QUIT', label:'Quittance'},
@@ -4262,6 +4328,143 @@ const TYPEDOC_LIST = [
   {code:'DP', label:'Dossier Permanent'},
   {code:'CAF', label:'Bordereau CAF'},
 ];
+
+// Source unique et dynamique des types de pièces, utilisée partout dans l'app.
+// Lit depuis DB.piecesTypes (paramétrable par l'utilisateur) avec fallback vers les défauts.
+function getTypedocList() {
+  if(Array.isArray(DB.piecesTypes) && DB.piecesTypes.length) return DB.piecesTypes;
+  return TYPEDOC_DEFAULTS;
+}
+// Alias pour la compatibilité avec le code existant qui référence TYPEDOC_LIST
+// (via getter — permet de garder la syntaxe TYPEDOC_LIST.map(...) partout sans refactor)
+Object.defineProperty(window, 'TYPEDOC_LIST', { get: () => getTypedocList() });
+
+// ══════════════════════════════════════════════
+// MODULE PARAMÈTRES
+// ══════════════════════════════════════════════
+function renderParametres() {
+  renderPiecesTypesList();
+}
+
+// Rendu de la liste des types de pièces dans le module Paramètres
+function renderPiecesTypesList() {
+  const container = document.getElementById('params-piecestypes-list');
+  if(!container) return;
+  const list = getTypedocList();
+  const usingDefaults = !Array.isArray(DB.piecesTypes) || !DB.piecesTypes.length;
+  const note = usingDefaults
+    ? '<div style="padding:8px 14px;font-size:10px;color:var(--text2);font-style:italic;border-bottom:1px solid var(--line1);">Liste par défaut. Vos modifications créeront une liste personnalisée qui remplacera intégralement ces valeurs.</div>'
+    : '';
+  container.innerHTML = note + `<table style="width:100%;font-size:11px;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="width:120px;padding:6px 14px;text-align:left;">Code</th>
+        <th style="padding:6px 14px;text-align:left;">Libellé</th>
+        <th style="width:100px;text-align:center;padding:6px 14px;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      ${list.map(t => `<tr>
+        <td style="padding:5px 14px;font-family:var(--mono);color:var(--amber);font-weight:600;">${t.code}</td>
+        <td style="padding:5px 14px;">${t.label}</td>
+        <td style="padding:5px 14px;text-align:center;white-space:nowrap;">
+          <button class="btn btn-sm btn-icon" onclick="editPiecesType('${t.code.replace(/'/g,"\\'")}')" title="Modifier" style="padding:1px 6px;font-size:10px;">✎</button>
+          <button class="btn btn-sm btn-danger btn-icon" onclick="askDeletePiecesType('${t.code.replace(/'/g,"\\'")}')" title="Supprimer" style="padding:1px 6px;font-size:10px;">✕</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// Bascule DB.piecesTypes vers une liste personnalisée si on est encore sur les défauts
+function ensurePiecesTypesInitialized() {
+  if(!Array.isArray(DB.piecesTypes) || !DB.piecesTypes.length) {
+    // On copie les défauts pour que l'utilisateur les modifie librement
+    DB.piecesTypes = TYPEDOC_DEFAULTS.map(t => ({code:t.code, label:t.label}));
+  }
+}
+
+function openPiecesTypeModal() {
+  document.getElementById('piecestype-edit-code').value = '';
+  document.getElementById('piecestype-modal-title').textContent = '+ NOUVEAU TYPE DE PIÈCE';
+  document.getElementById('piecestype-code').value = '';
+  document.getElementById('piecestype-label').value = '';
+  document.getElementById('piecestype-code').disabled = false;
+  document.getElementById('piecestype-modal').style.display = 'flex';
+}
+
+function editPiecesType(code) {
+  ensurePiecesTypesInitialized();
+  const t = DB.piecesTypes.find(x => x.code === code);
+  if(!t) return;
+  document.getElementById('piecestype-edit-code').value = t.code;
+  document.getElementById('piecestype-modal-title').textContent = 'Modifier le type';
+  document.getElementById('piecestype-code').value = t.code;
+  // Le code sert de clé (utilisé comme n° de pièce dans les écritures existantes) — on ne l'édite pas
+  document.getElementById('piecestype-code').disabled = true;
+  document.getElementById('piecestype-label').value = t.label;
+  document.getElementById('piecestype-modal').style.display = 'flex';
+}
+
+function closePiecesTypeModal() {
+  document.getElementById('piecestype-modal').style.display = 'none';
+}
+
+function savePiecesType() {
+  const editCode = document.getElementById('piecestype-edit-code').value;
+  const code = document.getElementById('piecestype-code').value.trim().toUpperCase();
+  const label = document.getElementById('piecestype-label').value.trim();
+  if(!code) { toast('Le code est requis','error'); return; }
+  if(!label) { toast('Le libellé est requis','error'); return; }
+  if(!/^[A-Z0-9_]+$/.test(code)) { toast('Le code ne doit contenir que lettres, chiffres et _','error'); return; }
+  ensurePiecesTypesInitialized();
+  if(editCode) {
+    // Modification : seul le libellé peut changer (le code est verrouillé)
+    const t = DB.piecesTypes.find(x => x.code === editCode);
+    if(t) t.label = label;
+  } else {
+    // Création : vérifier l'unicité du code
+    if(DB.piecesTypes.some(x => x.code === code)) { toast('Ce code existe déjà','error'); return; }
+    DB.piecesTypes.push({code, label});
+  }
+  saveDB();
+  closePiecesTypeModal();
+  renderPiecesTypesList();
+  toast('Type enregistré','success');
+}
+
+let _piecestypeDeleteCode = null;
+function askDeletePiecesType(code) {
+  ensurePiecesTypesInitialized();
+  const t = DB.piecesTypes.find(x => x.code === code);
+  if(!t) return;
+  // Vérifie si ce type est utilisé quelque part (types locataire, écritures existantes, échéanciers)
+  let usages = [];
+  (DB.locataires||[]).forEach(loc => {
+    (loc.types||[]).forEach(lt => { if(lt.prefixePiece === code) usages.push('type "'+lt.nom+'" du locataire '+(loc.nom1||'')); });
+  });
+  (DB.echeanciers||[]).forEach(ech => { if(ech.typePiece === code) usages.push('échéancier "'+(ech.libelle||'')+'"'); });
+  const usagesTxt = usages.length ? `<div style="margin-top:10px;padding:8px;background:rgba(255,168,0,0.1);border:1px solid rgba(255,168,0,0.3);border-radius:var(--radius);font-size:10px;color:var(--amber);"><strong>⚠ Attention :</strong> ce type est actuellement utilisé par ${usages.length} élément(s) :<br>${usages.slice(0,5).map(u=>'• '+u).join('<br>')}${usages.length>5?'<br>… et '+(usages.length-5)+' autres':''}<br><br>La suppression laissera ces éléments avec un code invalide.</div>` : '';
+  _piecestypeDeleteCode = code;
+  document.getElementById('piecestype-delete-msg').innerHTML = `Supprimer le type <strong style="color:var(--amber);font-family:var(--mono);">${code}</strong> — ${t.label} ?` + usagesTxt;
+  document.getElementById('piecestype-delete-modal').style.display = 'flex';
+}
+
+function closePiecesTypeDeleteModal() {
+  _piecestypeDeleteCode = null;
+  document.getElementById('piecestype-delete-modal').style.display = 'none';
+}
+
+function confirmDeletePiecesType() {
+  if(!_piecestypeDeleteCode) return;
+  ensurePiecesTypesInitialized();
+  DB.piecesTypes = DB.piecesTypes.filter(x => x.code !== _piecestypeDeleteCode);
+  saveDB();
+  closePiecesTypeDeleteModal();
+  renderPiecesTypesList();
+  toast('Type supprimé','success');
+}
+
 let simpleAcIdxMap = {};
 // ── Autocomplétion de compte générique, réutilisable sur n'importe quel champ ──
 // (fiches immobilisations, locataires, emprunts, échéanciers...)
@@ -10601,7 +10804,7 @@ async function boot() {
   // vers un onglet pendant ce chargement, celui-ci peut s'être affiché avec des données
   // encore vides. On force ici un nouveau rendu de l'onglet actif, maintenant que tout est chargé.
   const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation};
+  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
   if(activeTabId && allRenders[activeTabId]) allRenders[activeTabId]();
 }
 // ══════════════════════════════════════════════
