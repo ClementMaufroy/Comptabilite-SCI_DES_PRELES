@@ -655,6 +655,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <div class="form-field">
             <label>Réf. document</label>
             <input type="text" id="s-refdoc">
+            <input type="hidden" id="s-numdoc-sep" value="/">
           </div>
         </div>
         <div class="form-row c2 mt8">
@@ -3333,12 +3334,26 @@ function editEcriture(id) {
   document.getElementById('s-journal').value = e.journal || '';
   document.getElementById('s-date').value = e.date || '';
   const numDoc = e.numDoc || '';
-  let typedoc = numDoc, refdoc = '';
-  if(numDoc.includes('/')) {
+  // Parser le n° de pièce en (typedoc, refdoc). Deux formats coexistent :
+  //   - Modules automatiques (locative, emprunts) : "PREFIXE_MM/AA" — le "_" sépare préfixe et ref
+  //   - Saisie manuelle et échéanciers : "TYPE/REF" — le "/" sépare type et ref
+  // Règle : si "_" présent → split au "_" ; sinon si "/" présent → split au premier "/".
+  // Le séparateur détecté est mémorisé pour être réutilisé à la sauvegarde (préserve le format d'origine).
+  let typedoc = numDoc, refdoc = '', separateur = '/';
+  if(numDoc.includes('_')) {
+    const idx = numDoc.indexOf('_');
+    typedoc = numDoc.slice(0, idx);
+    refdoc = numDoc.slice(idx+1);
+    separateur = '_';
+  } else if(numDoc.includes('/')) {
     const idx = numDoc.indexOf('/');
     typedoc = numDoc.slice(0, idx);
     refdoc = numDoc.slice(idx+1);
+    separateur = '/';
   }
+  // Mémorise le séparateur d'origine dans un input caché pour la sauvegarde
+  const sepEl = document.getElementById('s-numdoc-sep');
+  if(sepEl) sepEl.value = separateur;
   document.getElementById('s-typedoc').value = typedoc;
   document.getElementById('s-refdoc').value = refdoc;
   document.getElementById('s-num').value = '#'+e.num;
@@ -3377,7 +3392,7 @@ function resetSaisieForm() {
     const btn = document.getElementById('save-ecriture-btn');
     if(btn) btn.textContent = '▶ ENREGISTRER L\'ÉCRITURE';
   }
-  document.getElementById('s-refdoc').value='';
+  document.getElementById('s-refdoc').value='';document.getElementById('s-numdoc-sep').value='/';
   document.getElementById('s-typedoc').value='';
   document.getElementById('s-date').value='';
   document.getElementById('s-journal').value='';
@@ -3394,7 +3409,7 @@ function cancelEditEcriture() {
   document.getElementById('edit-banner').style.display = 'none';
   const btn = document.getElementById('save-ecriture-btn');
   if(btn) btn.textContent = '▶ ENREGISTRER L\'ÉCRITURE';
-  document.getElementById('s-refdoc').value='';
+  document.getElementById('s-refdoc').value='';document.getElementById('s-numdoc-sep').value='/';
   document.getElementById('s-typedoc').value='';
   document.getElementById('s-date').value='';
   document.getElementById('s-journal').value='';
@@ -3441,8 +3456,9 @@ function saveEcriture() {
     origGroup = undefined;
   }
 
+  const separateur = (document.getElementById('s-numdoc-sep')||{}).value || '/';
   lines.forEach(l=>{
-    const entry = {id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:typedoc+(refdoc?'/'+refdoc:''),debit:l.debit,credit:l.credit};
+    const entry = {id:crypto.randomUUID(),_io:io,journal,date,compte:l.compte,libelleCompte:l.libelle||getLib(l.compte),libelleEcriture:l.libelleEcriture,numDoc:typedoc+(refdoc?separateur+refdoc:''),debit:l.debit,credit:l.credit};
     if(origGroup !== undefined) entry._origGroup = origGroup;
     DB.ecritures.push(entry);
   });
@@ -3460,7 +3476,7 @@ function saveEcriture() {
     toast('Écriture #'+(DB.nextGlobalNum-1)+' enregistrée','success');
   }
 
-  document.getElementById('s-refdoc').value='';
+  document.getElementById('s-refdoc').value='';document.getElementById('s-numdoc-sep').value='/';
   document.getElementById('s-typedoc').value='';
   document.getElementById('s-date').value='';
   document.getElementById('s-journal').value='';
