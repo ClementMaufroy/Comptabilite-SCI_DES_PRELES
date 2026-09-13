@@ -1960,8 +1960,18 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <select id="ech-type-piece" onchange="toggleEcheancierNomPieceLock()" style="font-family:var(--mono);"></select>
       </div>
     </div>
-    <div class="form-row mb8">
-      <div class="form-field" style="grid-column:1/-1;">
+    <div class="form-row c2 mb8">
+      <div class="form-field">
+        <label>Journal *</label>
+        <select id="ech-journal">
+          <option value="OD">OD — Opérations diverses</option>
+          <option value="VE">VE — Ventes</option>
+          <option value="HA">HA — Achats</option>
+          <option value="IMMO">IMMO — Immobilisations</option>
+          <option value="TRESO">TRESO — Trésorerie</option>
+        </select>
+      </div>
+      <div class="form-field">
         <label>Nom de pièce</label>
         <input type="text" id="ech-nom-piece" placeholder="Référence libre de la pièce justificative" style="font-family:var(--mono);">
       </div>
@@ -2095,6 +2105,42 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         <input type="text" id="emp-compte-credit" placeholder="512000" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('emp-compte-credit')" onkeydown="genAcKey(event,'emp-compte-credit')" onblur="genAcBlur('emp-compte-credit')" autocomplete="off">
       </div>
     </div>
+
+    <!-- Paramétrage de l'écriture comptable générée à chaque comptabilisation -->
+    <div style="border:1px solid var(--line2);border-radius:var(--radius);padding:10px;margin-bottom:8px;background:var(--bg2);">
+      <div style="font-size:10px;color:var(--text2);letter-spacing:0.05em;text-transform:uppercase;margin-bottom:8px;">Paramétrage de l'écriture</div>
+      <div class="form-row c3 mb8">
+        <div class="form-field">
+          <label>Journal *</label>
+          <select id="emp-journal">
+            <option value="OD">OD — Opérations diverses</option>
+            <option value="VE">VE — Ventes</option>
+            <option value="HA">HA — Achats</option>
+            <option value="IMMO">IMMO — Immobilisations</option>
+            <option value="TRESO">TRESO — Trésorerie</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label>Type de pièce *</label>
+          <select id="emp-type-piece"><option value="">—</option></select>
+        </div>
+        <div class="form-field">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="checkbox" id="emp-num-auto" style="width:14px;height:14px;">
+            <span>Numéro auto (incrémenté)</span>
+          </label>
+          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Sinon format PREFIXE_MM/AA</div>
+        </div>
+      </div>
+      <div class="form-row mb8">
+        <div class="form-field">
+          <label>Nom de pièce personnalisé (optionnel)</label>
+          <input type="text" id="emp-nom-piece" placeholder="Laisser vide pour utiliser le format standard">
+          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Si renseigné, remplace la génération automatique. Sinon : PREFIXE_MM/AA (ou incrémenté).</div>
+        </div>
+      </div>
+    </div>
+
     <div class="alert alert-warn mb8" style="font-size:10px;">Le tableau d'amortissement doit être importé séparément après création via le bouton "IMPORTER" sur la ligne de l'emprunt (téléchargez d'abord le modèle Excel à remplir).</div>
     <div class="flex gap8" style="margin-top:16px;">
       <button class="btn btn-primary" onclick="saveEmprunt()">✓ ENREGISTRER</button>
@@ -8323,35 +8369,10 @@ function renderLocataires() {
     const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
     const rowOpacity = loc.actif ? '' : 'opacity:0.5;';
 
-    // ── Alertes compactes ──
-    // Impayés : nombre de mois avec solde débiteur + total
-    let nbMoisImpayes = 0, totalImpayes = 0;
-    moisImpliques(loc).forEach(m => {
-      const s = computeSoldeMoisAvantAppel(loc, m);
-      if(s > 0.01) { nbMoisImpayes++; totalImpayes += s; }
-    });
-    const alertImpayes = nbMoisImpayes > 0
-      ? `<span title="${nbMoisImpayes} mois avec solde débiteur pour un total de ${fmt(totalImpayes)}€" style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,107,107,0.12);color:var(--red);border:1px solid rgba(255,107,107,0.35);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">⚠ ${nbMoisImpayes} mois · ${fmt(totalImpayes)}€</span>`
-      : '';
-    // Quittances en attente d'ouverture (jaune) : quittances v2 pas encore consultées
-    const historique = loc.historique||[];
-    const quittancesAOuvrir = historique.filter(h => h.type === 'quittance' && h._v2 && !h._consulted).length;
-    const alertQuittances = quittancesAOuvrir > 0
-      ? `<span title="${quittancesAOuvrir} quittance(s) à ouvrir/imprimer" style="display:inline-flex;align-items:center;gap:4px;background:rgba(255,232,0,0.10);color:var(--amber);border:1px solid rgba(255,232,0,0.30);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">🧾 ${quittancesAOuvrir} à imprimer</span>`
-      : '';
-    // Compteur discret de documents totaux
-    const nbDocs = historique.length;
-    const badgeDocs = nbDocs > 0
-      ? `<span title="${nbDocs} document(s) au total (voir dans la fiche détaillée)" style="display:inline-flex;align-items:center;gap:4px;color:var(--text2);border:1px solid var(--line2);border-radius:3px;padding:2px 7px;font-size:10px;white-space:nowrap;font-family:var(--mono);">📄 ${nbDocs}</span>`
-      : '';
-    const alertesHtml = (alertImpayes || alertQuittances || badgeDocs)
-      ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:3px;">${alertImpayes}${alertQuittances}${badgeDocs}</div>`
-      : '';
-
     const mainRow = `<tr style="${rowOpacity}">
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
       <td style="font-size:11px;">${loc.adresse1||''}<br><span style="color:var(--text2);font-size:9px;">${loc.adresse2||''}</span></td>
-      <td style="font-size:11px;">${noms}${inactifBadge}${alertesHtml}</td>
+      <td style="font-size:11px;">${noms}${inactifBadge}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
       <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
@@ -8364,7 +8385,69 @@ function renderLocataires() {
       </td>
     </tr>`;
 
-    return mainRow;
+    // ── Sous-ligne : impayés (une seule ligne discrète) + liste des docs (barre latérale colorée) ──
+    // Impayés : mois avec solde débiteur, listés en texte sobre (pas de fond coloré dense)
+    const moisAvecSolde = [];
+    moisImpliques(loc).forEach(m => {
+      const s = computeSoldeMoisAvantAppel(loc, m);
+      if(s > 0.01) moisAvecSolde.push({ mois: m, montant: s });
+    });
+    const impayesHtml = moisAvecSolde.length
+      ? `<div style="padding:5px 10px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line1);display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+          <span style="color:var(--text1);">⚠ Impayés :</span>
+          ${moisAvecSolde.map(item => `<span style="color:var(--red);font-family:var(--mono);">${moisLabelFromYYYYMM(item.mois)} · ${fmt(item.montant)}€</span>`).join('<span style="color:var(--text2);">·</span>')}
+        </div>`
+      : '';
+
+    // Documents : chaque doc a une petite barre verticale à gauche indiquant son statut (jaune / vert / orange / gris)
+    const historique = (loc.historique||[]).slice().sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
+    let docsHtml = '';
+    if(historique.length) {
+      docsHtml = historique.map(h => {
+        const isAppel = h.type === 'appel';
+        const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
+        const montant = isAppel ? h.echeance : h.montantPaye;
+        // Barre latérale gauche selon le statut du document (subtle, pas de fond global)
+        let barColor = 'var(--line2)';
+        let warning = '';
+        if(!isAppel && h._v2) {
+          const soldeMois = computeSoldeMoisAvantAppel(loc, h.mois);
+          if(soldeMois > 0.01) {
+            barColor = 'var(--amber)';
+            warning = ` <span style="color:var(--amber);font-weight:600;">⚠ solde repassé à +${fmt(soldeMois)}€</span>`;
+          } else if(h._consulted) {
+            barColor = 'var(--green)';
+          } else {
+            barColor = '#e5c800'; // jaune vif = à imprimer
+          }
+        } else if(isAppel) {
+          barColor = 'var(--cyan)';
+        }
+        const checkboxHtml = h.docHtml
+          ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
+          : `<span style="width:13px;display:inline-block;"></span>`;
+        const labelHtml = h.docHtml
+          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
+          : `<span style="flex:1;color:var(--text1);">${label}${warning}</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:4px 10px 4px 6px;border-bottom:1px solid var(--line1);font-size:10px;border-left:3px solid ${barColor};">
+          ${checkboxHtml}
+          ${labelHtml}
+          <span style="color:var(--text2);width:70px;text-align:right;font-family:var(--mono);">${fmt(montant)} €</span>
+          <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
+        </div>`;
+      }).join('');
+    } else {
+      docsHtml = `<div style="padding:6px 10px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
+    }
+
+    const subRow = `<tr><td colspan="7" style="padding:0 0 8px 0;background:var(--bg1);">
+      <div style="margin:0 8px;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
+        ${impayesHtml}
+        ${docsHtml}
+      </div>
+    </td></tr>`;
+
+    return mainRow + subRow;
   }).join('');
 
   updateNavCounts();
@@ -9697,6 +9780,7 @@ function openEcheancierModal(editId) {
     document.getElementById('ech-periode-fin').value = ech.periodeFin||'';
     document.getElementById('ech-suffixe-type').value = ech.suffixeType||'aucun';
     document.getElementById('ech-suffixe-perso').value = ech.suffixePerso||'';
+    document.getElementById('ech-journal').value = ech.journal||'OD';
   } else {
     document.getElementById('echeancier-modal-title').textContent = '🔁 NOUVEL ÉCHÉANCIER';
     ['ech-libelle','ech-categorie','ech-montant','ech-type-piece','ech-nom-piece','ech-compte-debit','ech-compte-credit','ech-compte-credit2','ech-periode-debut','ech-periode-fin','ech-suffixe-perso'].forEach(id => {
@@ -9705,6 +9789,7 @@ function openEcheancierModal(editId) {
     document.getElementById('ech-suffixe-type').value = 'aucun';
     document.getElementById('ech-num-auto').checked = false;
     document.getElementById('ech-credit-double').checked = false;
+    document.getElementById('ech-journal').value = 'OD';
   }
   toggleEcheancierNomPieceLock();
   toggleEcheancierNumAuto();
@@ -9722,6 +9807,7 @@ function saveEcheancier() {
   const typePiece = document.getElementById('ech-type-piece').value.trim();
   const nomPiece = document.getElementById('ech-nom-piece').value.trim();
   const numeroAuto = document.getElementById('ech-num-auto').checked;
+  const journal = document.getElementById('ech-journal').value || 'OD';
   const compteDebit = document.getElementById('ech-compte-debit').value.trim();
   const compteCredit = document.getElementById('ech-compte-credit').value.trim();
   const crediteDouble = document.getElementById('ech-credit-double').checked;
@@ -9743,10 +9829,10 @@ function saveEcheancier() {
   const list = ensureEcheanciersArray();
   if(editId) {
     const ech = list.find(e => e.id === editId);
-    if(ech) Object.assign(ech, {libelle, categorie, montant, typePiece, nomPiece, numeroAuto, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso});
+    if(ech) Object.assign(ech, {libelle, categorie, montant, typePiece, nomPiece, numeroAuto, journal, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso});
     toast('Échéancier modifié','success');
   } else {
-    list.push({id:crypto.randomUUID(), libelle, categorie, montant, typePiece, nomPiece, numeroAuto, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso, moisComptabilises:[]});
+    list.push({id:crypto.randomUUID(), libelle, categorie, montant, typePiece, nomPiece, numeroAuto, journal, compteDebit, compteCredit, crediteDouble, compteCredit2, periodeDebut, periodeFin, suffixeType, suffixePerso, moisComptabilises:[]});
     toast('Échéancier ajouté','success');
   }
   saveDB();
@@ -9832,21 +9918,22 @@ function postEcheancierMois(ech, mois) {
   const numDoc = ech.numeroAuto ? getNextAutoPieceNumber(ech.typePiece) : (ech.nomPiece ? ech.nomPiece : (ech.typePiece ? `${ech.typePiece}/${mm}/${yy.slice(-2)}` : ''));
   const libelleEcriture = buildLibelleEcheance(ech, mois);
   const io = Date.now() + Math.floor(Math.random()*1000);
+  const journal = ech.journal || 'OD';
 
   ech.moisIo = ech.moisIo || {};
   ech.moisIo[mois] = io;
 
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
 
   if(ech.crediteDouble && ech.compteCredit2) {
     // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur,
     // le 2e le solde exact (jamais plus de 2 décimales, jamais d'écart sur le total).
     const part1 = Math.ceil(ech.montant * 50) / 100;
     const part2 = Math.round((ech.montant - part1) * 100) / 100;
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit2, libelleCompte:getLib(ech.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit2, libelleCompte:getLib(ech.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
   } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:ech.montant});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:ech.montant});
   }
 
   ech.moisComptabilises = ech.moisComptabilises || [];
@@ -9862,9 +9949,9 @@ function comptabiliserEcheancierMoisIndividuel(id, mois) {
   if(!ech) return;
   if((ech.moisComptabilises||[]).includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
   postEcheancierMois(ech, mois);
-  renum(); saveDB(); updateNavCounts();
+  renum(); saveDB();
+  renderEcheanciers(); updateNavCounts();
   toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
-  renderEcheanciers();
 }
 
 // Annule la comptabilisation d'un mois : supprime l'écriture correspondante et repasse la case en orange
@@ -9917,16 +10004,32 @@ function decomptabiliserEcheancierMois(id, mois) {
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
   const io = ech.moisIo && ech.moisIo[mois];
+  // Mémoriser les pièces à nettoyer du post-it
+  const piecesCandidates = new Set();
   if(io !== undefined) {
+    DB.ecritures.filter(e => e._io === io).forEach(e => {
+      if(e.numDoc) piecesCandidates.add(e.journal + '||' + e.date + '||' + e.numDoc);
+    });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete ech.moisIo[mois];
   } else {
     toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
   }
   ech.moisComptabilises = (ech.moisComptabilises||[]).filter(m => m !== mois);
-  renum(); saveDB(); updateNavCounts();
+  // Cleanup post-it : si plus aucune écriture ne partage un triplet, retirer la pièce
+  piecesCandidates.forEach(key => {
+    const [journal, date, numDoc] = key.split('||');
+    const encoreUtilisee = DB.ecritures.some(e => e.journal === journal && e.date === date && e.numDoc === numDoc);
+    if(!encoreUtilisee) {
+      const list = ensurePiecesAFormaliser();
+      const avant = list.length;
+      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
+      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
+    }
+  });
+  renum(); saveDB();
+  renderEcheanciers(); updateNavCounts();
   toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
-  renderEcheanciers();
 }
 
 // Rattrape tous les mois en retard (jusqu'au mois actuel inclus) d'un échéancier
@@ -10148,6 +10251,9 @@ function renderEmprunts() {
 
 function openEmpruntModal(editId) {
   document.getElementById('emp-edit-id').value = editId || '';
+  // Peupler le dropdown des types de pièces à chaque ouverture (dynamique — reflète les paramètres)
+  const typeSel = document.getElementById('emp-type-piece');
+  if(typeSel) typeSel.innerHTML = '<option value="">—</option>' + getTypedocList().map(t => `<option value="${t.code}">${t.code} — ${t.label}</option>`).join('');
   if(editId) {
     const emp = ensureEmpruntsArray().find(e => e.id === editId);
     if(!emp) return;
@@ -10159,11 +10265,18 @@ function openEmpruntModal(editId) {
     document.getElementById('emp-compte-emprunt').value = emp.compteEmprunt||'';
     document.getElementById('emp-compte-interets').value = emp.compteInterets||'';
     document.getElementById('emp-compte-credit').value = emp.compteCredit||'';
+    document.getElementById('emp-journal').value = emp.journal||'OD';
+    document.getElementById('emp-type-piece').value = emp.typePiece||'';
+    document.getElementById('emp-nom-piece').value = emp.nomPiece||'';
+    document.getElementById('emp-num-auto').checked = !!emp.numeroAuto;
   } else {
     document.getElementById('emprunt-modal-title').textContent = '🏦 NOUVEL EMPRUNT';
-    ['emp-libelle','emp-banque','emp-date-debut','emp-montant-initial','emp-compte-emprunt','emp-compte-interets','emp-compte-credit'].forEach(id => {
+    ['emp-libelle','emp-banque','emp-date-debut','emp-montant-initial','emp-compte-emprunt','emp-compte-interets','emp-compte-credit','emp-nom-piece'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
+    document.getElementById('emp-journal').value = 'OD';
+    document.getElementById('emp-type-piece').value = '';
+    document.getElementById('emp-num-auto').checked = false;
   }
   document.getElementById('emprunt-modal').style.display = 'flex';
 }
@@ -10178,19 +10291,24 @@ function saveEmprunt() {
   const compteEmprunt = document.getElementById('emp-compte-emprunt').value.trim();
   const compteInterets = document.getElementById('emp-compte-interets').value.trim();
   const compteCredit = document.getElementById('emp-compte-credit').value.trim();
+  const journal = document.getElementById('emp-journal').value || 'OD';
+  const typePiece = document.getElementById('emp-type-piece').value.trim();
+  const nomPiece = document.getElementById('emp-nom-piece').value.trim();
+  const numeroAuto = document.getElementById('emp-num-auto').checked;
 
   if(!libelle) { toast('Le libellé est requis','error'); return; }
   if(!compteEmprunt || compteEmprunt.length!==6) { toast('Compte d\'emprunt invalide (6 chiffres)','error'); return; }
   if(!compteInterets || compteInterets.length!==6) { toast('Compte d\'intérêts invalide (6 chiffres)','error'); return; }
   if(!compteCredit || compteCredit.length!==6) { toast('Compte à créditer invalide (6 chiffres)','error'); return; }
+  if(!typePiece && !nomPiece) { toast('Renseignez un type de pièce OU un nom de pièce personnalisé','error'); return; }
 
   const list = ensureEmpruntsArray();
   if(editId) {
     const emp = list.find(e => e.id === editId);
-    if(emp) Object.assign(emp, {libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit});
+    if(emp) Object.assign(emp, {libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit, journal, typePiece, nomPiece, numeroAuto});
     toast('Emprunt modifié','success');
   } else {
-    list.push({id:crypto.randomUUID(), libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit, tableau:[], moisComptabilises:[]});
+    list.push({id:crypto.randomUUID(), libelle, banque, dateDebut, montantInitial, compteEmprunt, compteInterets, compteCredit, journal, typePiece, nomPiece, numeroAuto, tableau:[], moisComptabilises:[]});
     toast('Emprunt ajouté — pensez à importer son tableau d\'amortissement','success');
   }
   saveDB();
@@ -10263,24 +10381,32 @@ function comptabiliserEmpruntMois(id, mois) {
   if(emp.moisComptabilises.includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
 
   const dateEcr = row.dateEcheance || (mois+'-01');
-  const libelleEcriture = `${emp.libelle} - ${moisLabelFromYYYYMM(mois)}`;
+  const libEmp = emp.libelle || 'Emprunt';
+  const libelleEcriture = `${libEmp} - ${moisLabelFromYYYYMM(mois)}`;
   const io = Date.now() + Math.floor(Math.random()*1000);
   const [empYY, empMM] = mois.split('-');
-  const numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`;
+  const journal = emp.journal || 'OD';
+  // Format n° de pièce : (a) nomPiece si personnalisé, (b) auto incrémenté si numeroAuto, (c) PREFIXE_MM/AA par défaut
+  let numDocEmp;
+  if(emp.nomPiece) numDocEmp = emp.nomPiece;
+  else if(emp.numeroAuto && emp.typePiece) numDocEmp = getNextAutoPieceNumber(emp.typePiece);
+  else if(emp.typePiece) numDocEmp = `${emp.typePiece}_${empMM}/${empYY.slice(-2)}`;
+  else numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`; // fallback rétrocompatible
 
   emp.moisIo = emp.moisIo || {};
   emp.moisIo[mois] = io;
 
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
 
   emp.moisComptabilises.push(mois);
-  // Hook post-it
+  // Hook post-it (n° pièce potentiellement paramétré)
   notifierPieceGeneree('emprunts', numDocEmp, libelleEcriture, dateEcr);
-  renum(); saveDB(); updateNavCounts();
+  renum(); saveDB();
+  // Refresh complet : le DOM doit refléter l'état APRÈS attribution des num par renum
+  renderEmprunts(); updateNavCounts();
   toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
-  renderEmprunts();
 }
 
 // Annule la comptabilisation d'un mois pour un emprunt : supprime l'écriture et repasse la case en orange
@@ -10289,16 +10415,32 @@ function decomptabiliserEmpruntMois(id, mois) {
   const emp = ensureEmpruntsArray().find(e => e.id === id);
   if(!emp) return;
   const io = emp.moisIo && emp.moisIo[mois];
+  // Mémoriser les triplets (journal, date, numDoc) des écritures à supprimer pour cleanup post-it
+  const piecesCandidates = new Set();
   if(io !== undefined) {
+    DB.ecritures.filter(e => e._io === io).forEach(e => {
+      if(e.numDoc) piecesCandidates.add(e.journal + '||' + e.date + '||' + e.numDoc);
+    });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete emp.moisIo[mois];
   } else {
     toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
   }
   emp.moisComptabilises = (emp.moisComptabilises||[]).filter(m => m !== mois);
-  renum(); saveDB(); updateNavCounts();
+  // Cleanup post-it : si plus aucune écriture ne partage un triplet, retirer la pièce
+  piecesCandidates.forEach(key => {
+    const [journal, date, numDoc] = key.split('||');
+    const encoreUtilisee = DB.ecritures.some(e => e.journal === journal && e.date === date && e.numDoc === numDoc);
+    if(!encoreUtilisee) {
+      const list = ensurePiecesAFormaliser();
+      const avant = list.length;
+      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
+      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
+    }
+  });
+  renum(); saveDB();
+  renderEmprunts(); updateNavCounts();
   toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
-  renderEmprunts();
 }
 
 // ══════════════════════════════════════════════
