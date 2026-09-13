@@ -2679,7 +2679,7 @@ function renderPostItPieces() {
     } catch(e) {}
   }
   const pos = _postItPos || { top: 90, left: window.innerWidth - 340 };
-  el.style.cssText = `position:fixed;top:${pos.top}px;left:${pos.left}px;width:320px;background:linear-gradient(135deg,#fff3a3 0%,#ffe968 100%);color:#222;border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.35);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid rgba(0,0,0,0.15);user-select:none;`;
+  el.style.cssText = `position:fixed;top:${pos.top}px;left:${pos.left}px;width:340px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid var(--cyan);user-select:none;`;
 
   const list = ensurePiecesAFormaliser();
   const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
@@ -2689,10 +2689,10 @@ function renderPostItPieces() {
     .concat(Object.keys(POSTIT_MODULE_LABELS).map(k => `<option value="${k}" ${_postItFilterModule===k?'selected':''}>${POSTIT_MODULE_LABELS[k]}</option>`))
     .join('');
 
-  const headerHtml = `<div id="postit-header" style="padding:8px 10px;cursor:move;display:flex;align-items:center;gap:8px;border-bottom:1px solid rgba(0,0,0,0.12);background:rgba(0,0,0,0.05);border-radius:6px 6px 0 0;">
+  const headerHtml = `<div id="postit-header" style="padding:8px 10px;cursor:move;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
     <span style="font-size:14px;">📌</span>
-    <strong style="flex:1;font-size:11px;">Pièces à formaliser${nbNonCochees > 0 ? ` <span style="background:#c0392b;color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:4px;">${nbNonCochees}</span>` : ''}</strong>
-    <span style="cursor:pointer;font-size:14px;padding:0 4px;" onclick="togglePostItCollapsed()" title="${_postItCollapsed?'Déplier':'Replier'}">${_postItCollapsed?'▲':'▼'}</span>
+    <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">Pièces à formaliser${nbNonCochees > 0 ? ` <span style="background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:4px;letter-spacing:0;">${nbNonCochees}</span>` : ''}</strong>
+    <span style="cursor:pointer;font-size:14px;padding:0 4px;color:var(--text2);" onclick="togglePostItCollapsed()" title="${_postItCollapsed?'Déplier':'Replier'}">${_postItCollapsed?'▲':'▼'}</span>
   </div>`;
 
   if(_postItCollapsed) {
@@ -2701,26 +2701,26 @@ function renderPostItPieces() {
     return;
   }
 
-  const filterHtml = `<div style="padding:6px 10px;border-bottom:1px solid rgba(0,0,0,0.1);">
-    <select onchange="setPostItFilter(this.value)" style="width:100%;font-size:10px;padding:3px;border:1px solid rgba(0,0,0,0.2);border-radius:3px;background:#fffde5;">${options}</select>
+  const filterHtml = `<div style="padding:6px 10px;border-bottom:1px solid var(--line2);background:var(--bg2);">
+    <select onchange="setPostItFilter(this.value)" style="width:100%;font-size:10px;padding:4px;border:1px solid var(--line2);border-radius:3px;background:var(--bg0);color:var(--text0);">${options}</select>
   </div>`;
 
   let bodyHtml;
   if(!filtered.length) {
-    bodyHtml = '<div style="padding:14px 10px;text-align:center;color:#666;font-style:italic;font-size:10px;">Aucune pièce à formaliser.</div>';
+    bodyHtml = '<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à formaliser.</div>';
   } else {
     // Non cochées d'abord (par date décroissante), puis cochées
     const sorted = filtered.slice().sort((a,b) => {
       if(a.coche !== b.coche) return a.coche ? 1 : -1;
       return (b.dateAjout||'').localeCompare(a.dateAjout||'');
     });
-    bodyHtml = `<div style="max-height:320px;overflow-y:auto;padding:4px 6px;">
-      ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:6px;padding:5px 6px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,180,80,0.15)':'transparent'};margin-bottom:2px;">
-        <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:13px;height:13px;margin-top:2px;cursor:pointer;">
-        <div style="flex:1;font-size:10px;line-height:1.3;${p.coche?'text-decoration:line-through;color:#666;':''}">
-          <div style="font-family:var(--mono);font-weight:600;">${p.numDoc}</div>
-          <div style="color:#555;">${p.libelle||''}</div>
-          <div style="color:#888;font-size:9px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>
+    bodyHtml = `<div style="max-height:340px;overflow-y:auto;padding:4px 6px;">
+      ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
+        <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
+        <div style="flex:1;font-size:11px;line-height:1.35;min-width:0;">
+          <div style="font-family:var(--mono);font-weight:600;color:${p.coche?'var(--text2)':'var(--amber)'};${p.coche?'text-decoration:line-through;':''}">${p.numDoc}</div>
+          <div style="color:${p.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;${p.coche?'text-decoration:line-through;':''}">${p.libelle||''}</div>
+          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>
         </div>
       </label>`).join('')}
     </div>`;
@@ -2884,6 +2884,8 @@ function toast(msg, type='', dur=3000) {
 // NAV
 // ══════════════════════════════════════════════
 function showTab(name) {
+  // Quand on quitte l'onglet locataires (ou qu'on y revient), on repart toujours de la liste
+  if(name !== 'locataires') _locDetailId = null;
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
@@ -6885,10 +6887,10 @@ function renderLocataireDetail() {
     ? `<table style="width:100%;font-size:11px;">
         <thead>
           <tr>
-            <th style="width:80px;">Date opé.</th>
-            <th style="width:120px;">Type</th>
+            <th style="width:105px;white-space:nowrap;">Date opé.</th>
+            <th style="width:180px;white-space:nowrap;">Type</th>
             <th>Libellé</th>
-            <th style="width:140px;">Affectation(s)</th>
+            <th style="width:170px;">Affectation(s)</th>
             <th class="td-num" style="width:90px;">Montant</th>
             <th style="width:70px;text-align:center;">Statut</th>
             <th style="width:70px;text-align:center;"></th>
@@ -6899,13 +6901,14 @@ function renderLocataireDetail() {
             const t = loc.types.find(x => x.id === mvt.typeId);
             const sens = mvt.sens;
             const color = sens === '+' ? 'var(--amber)' : 'var(--green)';
-            const affLabels = (mvt.affectations||[]).map(a => `${moisLabelFromYYYYMM(a.mois)} (${fmt(a.montant)}€)`).join('<br>');
+            // Affectations : uniquement le mois (le montant est déjà dans la colonne suivante)
+            const affLabels = (mvt.affectations||[]).map(a => moisLabelFromYYYYMM(a.mois)).join('<br>');
             const statut = mvt.ecritureId
               ? '<span style="color:var(--green);font-size:9px;">✓ comptabilisé</span>'
               : '<span style="color:var(--amber);font-size:9px;">non compta.</span>';
             return `<tr>
-              <td style="font-family:var(--mono);font-size:10px;">${mvt.dateOperation||''}</td>
-              <td><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
+              <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">${mvt.dateOperation||''}</td>
+              <td style="white-space:nowrap;"><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
               <td>${mvt.libelle||''}</td>
               <td style="font-size:10px;">${affLabels}${mvt.creditEnAttente>0.005?`<br><span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)}€ en attente</span>`:''}</td>
               <td class="td-num" style="color:${color};font-weight:600;">${fmt(mvt.montant)}</td>
@@ -6960,10 +6963,6 @@ function renderLocataireDetail() {
         <button class="btn btn-sm btn-primary" onclick="openMouvementModal('${loc.id}')" style="padding:3px 10px;font-size:10px;">+ Nouveau mouvement</button>
       </div>
       ${mvtsHtml}
-    </div>
-
-    <div style="margin-top:14px;padding:10px 14px;background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.2);border-radius:var(--radius);font-size:10px;color:var(--text2);">
-      <strong style="color:var(--cyan);">Refonte en cours (V41) :</strong> les mouvements ci-dessus <strong>génèrent maintenant les écritures comptables</strong> automatiquement. Étape 4 restante : refonte des appels de loyer / quittances pour qu'ils s'alimentent des mouvements (aujourd'hui, ce sont encore les anciens formulaires).
     </div>
   `;
   updateNavCounts();
@@ -7282,7 +7281,8 @@ function computeSoldeMoisExcluant(loc, yyyymm, excludeMvtId) {
 }
 
 function onAffectationChanged(mois) {
-  // Active/désactive le champ montant + auto-remplit avec le solde dû si possible
+  // Active/désactive le champ montant + auto-remplit avec le solde dû si possible,
+  // MAIS jamais plus que le montant du mouvement restant à affecter.
   const check = document.querySelector(`.mvt-aff-check[data-mois="${mois}"]`);
   const input = document.querySelector(`.mvt-aff-montant[data-mois="${mois}"]`);
   if(!check || !input) return;
@@ -7290,8 +7290,19 @@ function onAffectationChanged(mois) {
   if(check.checked && !input.value) {
     const locId = document.getElementById('mvt-modal-loc-id').value;
     const loc = ensureLocatairesArray().find(l => l.id === locId);
-    const s = computeSoldeMoisExcluant(loc, mois, document.getElementById('mvt-edit-id').value);
-    if(s > 0.005) input.value = s.toFixed(2);
+    const soldeDu = computeSoldeMoisExcluant(loc, mois, document.getElementById('mvt-edit-id').value);
+    // Montant total du mouvement moins ce qui est déjà affecté ailleurs
+    const montantMvt = parseFloat(document.getElementById('mvt-montant').value) || 0;
+    let dejaAffecte = 0;
+    document.querySelectorAll('.mvt-aff-check:checked').forEach(cb => {
+      if(cb.dataset.mois !== mois) {
+        const inp = document.querySelector(`.mvt-aff-montant[data-mois="${cb.dataset.mois}"]`);
+        dejaAffecte += parseFloat(inp?.value)||0;
+      }
+    });
+    const restant = Math.max(0, Math.round((montantMvt - dejaAffecte)*100)/100);
+    const proposition = Math.min(Math.max(soldeDu, 0), restant);
+    if(proposition > 0.005) input.value = proposition.toFixed(2);
   } else if(!check.checked) {
     input.value = '';
   }
@@ -8058,7 +8069,6 @@ function openLocataireModal(editId) {
     if(!loc) return;
     document.getElementById('loc-modal-title').textContent = '🔑 MODIFIER LE LOCATAIRE';
     document.getElementById('loc-numclient').value = loc.numClient||'';
-    document.getElementById('loc-solde-initial').value = loc.soldeInitial||0;
     document.getElementById('loc-adresse1').value = loc.adresse1||'';
     document.getElementById('loc-adresse2').value = loc.adresse2||'';
     document.getElementById('loc-email').value = loc.email||'';
@@ -8236,149 +8246,136 @@ function generateAppelLoyerV2() {
   const commentaire = document.getElementById('appel-commentaire').value.trim();
 
   const moisPrec = moisPrecedent(mois);
+  const RED = '#c0392b';
 
-  // ── 1) LOYER DU MOIS : somme des mouvements + affectés à ce mois, ventilé par type ──
-  const lignesMois = [];
-  (loc.mouvements||[]).forEach(mvt => {
-    if(mvt.sens !== '+') return;
-    (mvt.affectations||[]).forEach(a => {
-      if(a.mois === mois) {
-        const t = (loc.types||[]).find(x => x.id === mvt.typeId);
-        lignesMois.push({ label: t ? t.nom : '(type supprimé)', montant: a.montant });
-      }
-    });
-  });
-  const totalLoyerProvision = Math.round(lignesMois.reduce((s,x)=>s+x.montant,0)*100)/100;
-  const partACharge = Math.round((totalLoyerProvision - apl)*100)/100;
-
-  // ── 2) SITUATION DU MOIS PRÉCÉDENT : solde du mois M-1 (loyers dus - paiements affectés) ──
-  const echeancePrec = (function() {
-    let s = 0;
-    (loc.mouvements||[]).forEach(mvt => {
-      if(mvt.sens !== '+') return;
-      (mvt.affectations||[]).forEach(a => { if(a.mois === moisPrec) s += a.montant; });
-    });
-    (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === moisPrec) s += (parseFloat(si.montant)||0); });
-    return Math.round(s*100)/100;
-  })();
-  const paiementsLocPrec = [];
-  const paiementsAplPrec = [];
-  (loc.mouvements||[]).forEach(mvt => {
-    if(mvt.sens !== '-') return;
-    (mvt.affectations||[]).forEach(a => {
-      if(a.mois === moisPrec) {
-        const t = (loc.types||[]).find(x => x.id === mvt.typeId);
-        const isApl = t && /apl|caf/i.test(t.nom);
-        if(isApl) paiementsAplPrec.push({montant:a.montant, date:mvt.dateOperation});
-        else paiementsLocPrec.push({montant:a.montant, date:mvt.dateOperation});
-      }
-    });
-  });
-  const prevPaye = Math.round(paiementsLocPrec.reduce((s,x)=>s+x.montant,0)*100)/100;
-  const prevAplMontant = Math.round(paiementsAplPrec.reduce((s,x)=>s+x.montant,0)*100)/100;
-  const prevDatePaiement = paiementsLocPrec[0]?.date || '';
-  const prevAplDate = paiementsAplPrec[0]?.date || '';
-  const soldePrec = Math.round((echeancePrec - prevPaye - prevAplMontant)*100)/100;
-
-  // ── 3) ANTÉRIORITÉ : tous les mois plus anciens que moisPrec avec solde non nul ou mouvement ──
-  const moisAnterieurs = moisImpliques(loc).filter(m => m < moisPrec);
-  const impayesAnterieurs = [];
-  moisAnterieurs.forEach(m => {
-    // pour chaque mois antérieur, on décompose loyer/paiements
-    const lignesM = [];
-    (loc.mouvements||[]).forEach(mvt => {
-      if(mvt.sens !== '+') return;
-      (mvt.affectations||[]).forEach(a => { if(a.mois === m) { const t=(loc.types||[]).find(x=>x.id===mvt.typeId); lignesM.push({label: t?t.nom:'?', montant:a.montant}); } });
-    });
+  // ── Helper : décompose un mois en (loyer, paiements loc, paiements APL, solde initial) ──
+  // isApl(t) : un type est considéré APL si son nom contient "apl" ou "caf" (insensible casse)
+  const isAplType = (t) => t && /apl|caf/i.test(t.nom||'');
+  function decomposerMois(m) {
+    let loyerLignes = []; // [{label, montant}]
+    let paiementsLoc = []; // [{montant, date}]
+    let paiementsApl = []; // [{montant, date}]
     let soldeInit = 0;
     (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === m) soldeInit += (parseFloat(si.montant)||0); });
-    const totalPlus = Math.round(lignesM.reduce((s,x)=>s+x.montant,0)*100)/100 + soldeInit;
-    const paiementsLocM = [];
-    const paiementsAplM = [];
     (loc.mouvements||[]).forEach(mvt => {
-      if(mvt.sens !== '-') return;
+      const t = (loc.types||[]).find(x => x.id === mvt.typeId);
       (mvt.affectations||[]).forEach(a => {
-        if(a.mois === m) {
-          const t = (loc.types||[]).find(x=>x.id===mvt.typeId);
-          const isApl = t && /apl|caf/i.test(t.nom);
-          if(isApl) paiementsAplM.push({montant:a.montant, date:mvt.dateOperation});
-          else paiementsLocM.push({montant:a.montant, date:mvt.dateOperation});
+        if(a.mois !== m) return;
+        if(mvt.sens === '+') {
+          loyerLignes.push({ label: t ? t.nom : '(type supprimé)', montant: a.montant });
+        } else {
+          if(isAplType(t)) paiementsApl.push({ montant: a.montant, date: mvt.dateOperation });
+          else paiementsLoc.push({ montant: a.montant, date: mvt.dateOperation });
         }
       });
     });
-    const totalMoins = Math.round((paiementsLocM.reduce((s,x)=>s+x.montant,0) + paiementsAplM.reduce((s,x)=>s+x.montant,0))*100)/100;
-    const solde = Math.round((totalPlus - totalMoins)*100)/100;
-    if(Math.abs(solde) > 0.005 || totalPlus > 0.005 || totalMoins > 0.005) {
-      impayesAnterieurs.push({ mois: m, lignes: lignesM, soldeInit, paiementsLoc: paiementsLocM, paiementsApl: paiementsAplM, solde });
-    }
-  });
+    const totalLoyer = Math.round((soldeInit + loyerLignes.reduce((s,x)=>s+x.montant,0)) * 100) / 100;
+    const totalPaye = Math.round((paiementsLoc.reduce((s,x)=>s+x.montant,0) + paiementsApl.reduce((s,x)=>s+x.montant,0)) * 100) / 100;
+    const solde = Math.round((totalLoyer - totalPaye) * 100) / 100;
+    return { loyerLignes, paiementsLoc, paiementsApl, soldeInit, totalLoyer, totalPaye, solde };
+  }
 
-  // ── 4) Rendu HTML ──
-  const [yy, mm] = mois.split('-');
+  // ── Mois en cours (M) ──
+  const dM = decomposerMois(mois);
+  const totalLoyerProvision = Math.round(dM.loyerLignes.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const partACharge = Math.round((totalLoyerProvision - apl)*100)/100;
+
+  // ── Mois précédent (M-1) ──
+  const dPrec = decomposerMois(moisPrec);
+  const prevEcheance = dPrec.totalLoyer;
+  const prevPaye = Math.round(dPrec.paiementsLoc.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const prevAplMontant = Math.round(dPrec.paiementsApl.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const prevDatePaiement = dPrec.paiementsLoc[0]?.date || '';
+  const prevAplDate = dPrec.paiementsApl[0]?.date || '';
+  const soldePrec = Math.round((prevEcheance - prevPaye - prevAplMontant)*100)/100;
+
+  // ── Mois antérieurs à M-1, avec un impayé ou une activité — triés du plus ancien au plus récent ──
+  const moisAnterieurs = moisImpliques(loc).filter(m => m < moisPrec).sort();
+
+  const dateEmission = new Date();
   const dd = dernierJourMois(mois);
+  const [yy,mm] = mois.split('-');
   const periodeDebut = '01/'+mm+'/'+yy;
   const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
-  const dateEmission = new Date();
 
-  // Tableau des lignes du mois
-  let tableRows = lignesMois.map(l => docTableRow(l.label, l.montant, false)).join('');
-  if(apl > 0.005) tableRows += docTableRow('APL déduite', -apl, false);
+  // APL du mois en cours : reçue au plus tard le 5 du mois M+1
+  const moisApl = moisSuivant(mois);
+  const [yyApl, mmApl] = moisApl.split('-');
+  const dateApl = '05/'+mmApl+'/'+yyApl;
 
-  // Bloc situation mois précédent
-  let prevBlock = '';
-  if(echeancePrec > 0.005 || prevPaye > 0.005 || prevAplMontant > 0.005) {
-    let prevRows = docTableRow(`Échéance ${moisLabelFromYYYYMM(moisPrec)}`, echeancePrec, true);
-    if(prevPaye > 0.005) prevRows += docTableRow(`− Payé par le locataire${prevDatePaiement?' le '+fmtDateFr(prevDatePaiement):''}`, -prevPaye, false);
-    if(prevAplMontant > 0.005) prevRows += docTableRow(`− APL reçue${prevAplDate?' le '+fmtDateFr(prevAplDate):''}`, -prevAplMontant, false);
-    prevRows += docTableRow('Solde restant du mois précédent', soldePrec, true, soldePrec > 0.005 ? '#c0392b' : '#27ae60');
-    prevBlock = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <tr><td colspan="2" style="background:#f5d060;font-weight:700;text-align:center;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SITUATION DU MOIS PRÉCÉDENT — ${moisLabelFromYYYYMM(moisPrec).toUpperCase()}</td></tr>
-      ${prevRows}
-    </table>`;
+  // ── TABLEAU 1 : APPEL DE LOYER — orange (#e84b0f) ──
+  let tableRows = '';
+  dM.loyerLignes.forEach(l => { tableRows += docTableRow(l.label, l.montant, false); });
+  if(apl > 0) tableRows += docTableRow(`APL à recevoir le ${dateApl}`, -apl, false);
+  // Impayés du mois précédent (solde M-1 > 0)
+  if(soldePrec > 0.005) tableRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, false, RED);
+  // Impayés antérieurs (mois < M-1)
+  moisAnterieurs.forEach(m => {
+    const d = decomposerMois(m);
+    if(d.solde > 0.005) tableRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(m)}`, d.solde, false, RED);
+  });
+  const totalImpayesAnterieurs = moisAnterieurs.reduce((s, m) => { const d=decomposerMois(m); return d.solde>0.005?s+d.solde:s; }, 0);
+  const montantAppelTotal = Math.round((partACharge + Math.max(soldePrec,0) + totalImpayesAnterieurs) * 100) / 100;
+
+  // ── TABLEAU 2 : VOTRE SITUATION AU JJ/MM/AAAA — pêche (#fde8df) ──
+  let situationRows = '';
+  // Impayés antérieurs à M-1 : détaillés avec paiements éventuels
+  moisAnterieurs.forEach(m => {
+    const d = decomposerMois(m);
+    if(d.totalLoyer < 0.005 && d.totalPaye < 0.005) return; // rien à afficher pour ce mois
+    if(d.soldeInit > 0.005) situationRows += docTableRow(`Solde initial ${moisLabelFromYYYYMM(m)}`, d.soldeInit, false);
+    d.loyerLignes.forEach(l => { situationRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(m), l.montant, false); });
+    d.paiementsLoc.forEach(p => { situationRows += docTableRow(`Votre paiement du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+    d.paiementsApl.forEach(p => { situationRows += docTableRow(`Paiement APL du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+    situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(m)}`, d.solde, true, d.solde>0.005?RED:null);
+    situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
+  });
+
+  // Mois précédent (M-1)
+  if(prevEcheance > 0.005 || prevPaye > 0.005 || prevAplMontant > 0.005) {
+    dPrec.loyerLignes.forEach(l => { situationRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(moisPrec), l.montant, false); });
+    if(dPrec.soldeInit > 0.005) situationRows += docTableRow(`Solde initial ${moisLabelFromYYYYMM(moisPrec)}`, dPrec.soldeInit, false);
+    if(prevPaye > 0.005) situationRows += (prevDatePaiement ? docTableRow(`Votre paiement du ${fmtDateFr(prevDatePaiement)}`, -prevPaye, false) : docTableRow('Votre paiement', -prevPaye, false));
+    if(prevAplMontant > 0.005) situationRows += docTableRow(`Paiement APL du ${prevAplDate?fmtDateFr(prevAplDate):''}`, -prevAplMontant, false);
+    situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, true, soldePrec>0.005?RED:null);
+    situationRows += `<tr><td colspan="2" style="height:6px;border:none;"></td></tr>`;
   }
 
-  // Bloc antériorité
-  let anterioriteBlock = '';
-  if(impayesAnterieurs.length) {
-    const anteRows = impayesAnterieurs.map(imp => {
-      let lignes = '';
-      if(imp.soldeInit > 0.005) lignes += docTableRow(`Solde initial ${moisLabelFromYYYYMM(imp.mois)}`, imp.soldeInit, false);
-      imp.lignes.forEach(l => lignes += docTableRow(l.label, l.montant, false));
-      imp.paiementsLoc.forEach(p => lignes += docTableRow(`− Payé le ${fmtDateFr(p.date)}`, -p.montant, false));
-      imp.paiementsApl.forEach(p => lignes += docTableRow(`− APL le ${fmtDateFr(p.date)}`, -p.montant, false));
-      lignes += docTableRow(`Solde ${moisLabelFromYYYYMM(imp.mois)}`, imp.solde, true, imp.solde > 0.005 ? '#c0392b' : '#27ae60');
-      return lignes;
-    }).join('');
-    anterioriteBlock = `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <tr><td colspan="2" style="background:#c0392b;color:#fff;font-weight:700;text-align:center;padding:6px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">ANTÉRIORITÉ — MOIS ANTÉRIEURS NON SOLDÉS</td></tr>
-      ${anteRows}
-    </table>`;
-  }
+  // Mois en cours (M)
+  dM.loyerLignes.forEach(l => { situationRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false); });
+  if(apl > 0) situationRows += docTableRow(`APL à recevoir le ${dateApl}`, apl, false);
+  // Paiements déjà reçus pour M (rare mais possible)
+  dM.paiementsLoc.forEach(p => { situationRows += docTableRow(`Votre paiement du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+  dM.paiementsApl.forEach(p => { situationRows += docTableRow(`Paiement APL du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+  if(dM.paiementsLoc.length === 0 && dM.paiementsApl.length === 0) situationRows += docTableRow('Votre paiement', 0, false);
+  // Solde du mois en cours : (loyer total - apl à recevoir - paiements déjà encaissés)
+  const soldeCour = Math.round((totalLoyerProvision - apl - dM.totalPaye) * 100) / 100;
+  situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true);
 
-  // Total dû (part à charge du mois + soldes antérieurs positifs + solde M-1 positif)
-  const totalAnterieurPositif = impayesAnterieurs.filter(i=>i.solde>0.005).reduce((s,i)=>s+i.solde,0);
-  const totalRestantDu = Math.round((partACharge + (soldePrec>0.005?soldePrec:0) + totalAnterieurPositif) * 100) / 100;
+  const totalSolde = Math.round((totalImpayesAnterieurs + Math.max(soldePrec,0) + soldeCour) * 100) / 100;
 
-  const commentaireHtml = commentaire ? `<p>${commentaire.replace(/\n/g,'<br>')}</p>` : '';
-  const infoHtml = `<p>Bonjour,</p>
-    <p>Veuillez trouver ci-joint votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
-    ${commentaireHtml}
-    <p>Bien cordialement</p>`;
+  const defaultInfo = `<p>Bonjour,<br>Veuillez trouver votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+    <p style="font-weight:700;text-decoration:underline;">Le paiement total attendu pour ce début de mois de ${MOIS_LABELS[parseInt(mm)-1]} s'élève à ${fmt(montantAppelTotal)}€.</p>
+    ${commentaire ? '<p>'+commentaire.replace(/\n/g,'<br>')+'</p>' : ''}
+    <p>N'hésitez pas à nous envoyer un message pour toute question.<br>Bien cordialement</p>`;
 
   const html = `<div style="font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:24px;color:#111;">
     ${renderLocDocHeader(loc, dateEmission)}
-    ${anterioriteBlock}
-    ${prevBlock}
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:14px;">
-      <tr><td colspan="2" style="background:#0288d1;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
         APPEL DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}<br><span style="font-weight:400;font-style:italic;font-size:10px;">Période du ${periodeDebut} au ${periodeFin}</span>
       </td></tr>
       <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
       ${tableRows}
-      <tr><td style="background:#0288d1;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">PART À CHARGE DU MOIS</td><td style="background:#0288d1;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(partACharge)}€</td></tr>
-      <tr><td style="background:#111;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL RESTANT DÛ (avec antériorité)</td><td style="background:#111;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalRestantDu)}€</td></tr>
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(montantAppelTotal)}€</td></tr>
     </table>
-    ${renderLocDocFooter(infoHtml)}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+      <tr><td colspan="2" style="background:#fde8df;color:#111;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">VOTRE SITUATION AU ${fmtDateFr(dateEmission)}</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
+      ${situationRows}
+      <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SOLDE A NOTRE CREDIT</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalSolde)}€</td></tr>
+    </table>
+    ${renderLocDocFooter(defaultInfo)}
   </div>`;
 
   loc.historique = loc.historique || [];
@@ -8614,7 +8611,7 @@ function askArchiveHistoriqueEntry(locId, entryId) {
   if(!entry) return;
   archiveTarget = {locId, entryId};
   const label = entry.type==='appel' ? `Appel de loyer ${moisLabelFromYYYYMM(entry.mois)}` : `Quittance ${moisLabelFromYYYYMM(entry.mois)}`;
-  document.getElementById('loc-delete-msg').innerHTML = `Archiver <strong style="color:var(--cyan)">${label}</strong> ?<br>Le document sera retiré de la liste (le solde du locataire reste inchangé).`;
+  document.getElementById('loc-delete-msg').innerHTML = `Archiver <strong style="color:var(--cyan)">${label}</strong> ?<br>Le document sera retiré de la liste. Aucun impact sur les mouvements ni les soldes comptables.`;
   document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '📦 ARCHIVER LE DOCUMENT';
   const btn = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
   btn.textContent = 'ARCHIVER';
@@ -8627,10 +8624,6 @@ function confirmArchiveHistoriqueEntry() {
   if(!loc) { closeLocataireDeleteModal(); return; }
   const idx = (loc.historique||[]).findIndex(h => h.id === archiveTarget.entryId);
   if(idx === -1) { closeLocataireDeleteModal(); return; }
-  const entry = loc.historique[idx];
-  // Compenser l'effet du document sur le solde en l'intégrant au solde initial de la fiche
-  if(entry.type === 'appel') loc.soldeInitial = Math.round(((loc.soldeInitial||0) + entry.echeance)*100)/100;
-  else if(entry.type === 'quittance') loc.soldeInitial = Math.round(((loc.soldeInitial||0) - entry.montantPaye)*100)/100;
   loc.historique.splice(idx, 1);
   saveDB();
   closeLocataireDeleteModal();
@@ -8640,7 +8633,7 @@ function confirmArchiveHistoriqueEntry() {
   btn2.textContent = 'SUPPRIMER';
   btn2.setAttribute('onclick', 'confirmDeleteLocataire()');
   toast('Document archivé','success');
-  renderLocataires();
+  if(_locDetailId) renderLocataireDetail(); else renderLocataires();
 }
 
 // ══════════════════════════════════════════════
