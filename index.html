@@ -1011,7 +1011,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 
     <!-- ══════════════ GESTION LOCATIVE ══════════════ -->
     <div class="tab-content" id="tab-locataires">
-      <div class="page-hdr">
+      <div class="page-hdr" id="loc-page-hdr">
         <div>
           <div class="page-title">GESTION LOCATIVE</div>
           <div class="page-sub">Fiches locataires, appels de loyer et quittances</div>
@@ -6834,6 +6834,18 @@ function composerLibelle(type, libelleSaisi, moisAffectation) {
 
 // ── Écran détail d'un locataire (vue plein écran, alternative à la liste) ────────
 let _locDetailId = null; // id du locataire actuellement ouvert en détail, ou null
+let _afficherInactifs = false; // affiche aussi les locataires désactivés (partis du logement)
+
+// Bascule le statut actif/inactif d'un locataire (départ du logement / retour)
+// Le locataire est masqué de la vue par défaut mais toutes ses données restent intactes.
+function toggleLocataireActif(locId) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  loc.actif = !loc.actif;
+  saveDB();
+  toast(loc.actif ? 'Locataire réactivé' : 'Locataire désactivé (données conservées)', 'success');
+  renderLocataires();
+}
 
 function openLocataireDetail(locId) {
   const loc = ensureLocatairesArray().find(l => l.id === locId);
@@ -6853,6 +6865,8 @@ function renderLocataireDetail() {
   const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
   const wrap = document.getElementById('locataires-list-wrap');
   const empty = document.getElementById('locataires-empty');
+  const pageHdr = document.getElementById('loc-page-hdr');
+  if(pageHdr) pageHdr.style.display = 'none';
   if(empty) empty.style.display = 'none';
   if(!loc) { _locDetailId = null; wrap.innerHTML = ''; return; }
   ensureLocV2(loc);
@@ -6867,9 +6881,18 @@ function renderLocataireDetail() {
     ? moisList.map(m => {
         const s = computeSoldeMois(loc, m);
         const color = s > 0.005 ? 'var(--amber)' : (s < -0.005 ? 'var(--green)' : 'var(--text2)');
-        return `<div style="display:flex;justify-content:space-between;padding:4px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+        // Bouton "générer quittance" : si le mois est soldé (à 1 centime près) ET qu'aucune quittance n'existe encore
+        // ET qu'il y avait quelque chose à devoir (mouvement + ou solde initial)
+        const dejaQuittance = (loc.historique||[]).some(h => h.type === 'quittance' && h.mois === m);
+        const aDesPlusMois = (loc.mouvements||[]).some(mv => mv.sens === '+' && (mv.affectations||[]).some(a=>a.mois===m));
+        const aSoldeInitial = (loc.soldesInitiaux||[]).some(si => si.mois === m && (parseFloat(si.montant)||0) > 0.005);
+        const solde = Math.abs(s) < 0.01 && (aDesPlusMois || aSoldeInitial) && !dejaQuittance;
+        const quittanceBtn = solde
+          ? `<button class="btn btn-sm btn-icon" onclick="proposerQuittanceAuto('${loc.id}','${m}')" title="Générer la quittance pour ce mois" style="padding:0 6px;font-size:11px;margin-left:6px;">🧾</button>`
+          : '';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
           <span>${moisLabelFromYYYYMM(m)}</span>
-          <span style="font-family:var(--mono);color:${color};font-weight:600;">${fmt(s)} €</span>
+          <span style="display:flex;align-items:center;"><span style="font-family:var(--mono);color:${color};font-weight:600;">${fmt(s)} €</span>${quittanceBtn}</span>
         </div>`;
       }).join('')
     : '<div style="padding:10px;color:var(--text2);font-size:11px;font-style:italic;">Aucun mois n\'a encore de solde ou de mouvement.</div>';
@@ -6884,16 +6907,16 @@ function renderLocataireDetail() {
   // Mouvements — tableau chronologique (plus récents en premier)
   const mvts = (loc.mouvements||[]).slice().sort((a,b) => (b.dateOperation||'').localeCompare(a.dateOperation||''));
   const mvtsHtml = mvts.length
-    ? `<table style="width:100%;font-size:11px;">
+    ? `<table style="width:100%;font-size:11px;border-collapse:collapse;">
         <thead>
           <tr>
-            <th style="width:105px;white-space:nowrap;">Date opé.</th>
-            <th style="width:180px;white-space:nowrap;">Type</th>
-            <th>Libellé</th>
-            <th style="width:170px;">Affectation(s)</th>
-            <th class="td-num" style="width:90px;">Montant</th>
-            <th style="width:70px;text-align:center;">Statut</th>
-            <th style="width:70px;text-align:center;"></th>
+            <th style="width:90px;white-space:nowrap;padding:4px 6px;">Date opé.</th>
+            <th style="width:180px;white-space:nowrap;padding:4px 6px;">Type</th>
+            <th style="padding:4px 6px;">Libellé</th>
+            <th style="width:140px;padding:4px 6px;">Affectation(s)</th>
+            <th class="td-num" style="width:80px;padding:4px 6px;">Montant</th>
+            <th style="width:120px;text-align:center;padding:4px 6px;">Statut</th>
+            <th style="width:60px;text-align:center;padding:4px 6px;"></th>
           </tr>
         </thead>
         <tbody>
@@ -6901,19 +6924,19 @@ function renderLocataireDetail() {
             const t = loc.types.find(x => x.id === mvt.typeId);
             const sens = mvt.sens;
             const color = sens === '+' ? 'var(--amber)' : 'var(--green)';
-            // Affectations : uniquement le mois (le montant est déjà dans la colonne suivante)
             const affLabels = (mvt.affectations||[]).map(a => moisLabelFromYYYYMM(a.mois)).join('<br>');
+            // Statut : tick + libellé sur une même ligne (nowrap)
             const statut = mvt.ecritureId
-              ? '<span style="color:var(--green);font-size:9px;">✓ comptabilisé</span>'
-              : '<span style="color:var(--amber);font-size:9px;">non compta.</span>';
-            return `<tr>
-              <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">${mvt.dateOperation||''}</td>
-              <td style="white-space:nowrap;"><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
-              <td>${mvt.libelle||''}</td>
-              <td style="font-size:10px;">${affLabels}${mvt.creditEnAttente>0.005?`<br><span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)}€ en attente</span>`:''}</td>
-              <td class="td-num" style="color:${color};font-weight:600;">${fmt(mvt.montant)}</td>
-              <td style="text-align:center;">${statut}</td>
-              <td style="text-align:center;white-space:nowrap;">
+              ? '<span style="color:var(--green);font-size:9px;white-space:nowrap;">✓ comptabilisé</span>'
+              : '<span style="color:var(--amber);font-size:9px;white-space:nowrap;">◯ non compta.</span>';
+            return `<tr style="line-height:1.2;">
+              <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;padding:3px 6px;">${fmtDateFr(mvt.dateOperation)}</td>
+              <td style="white-space:nowrap;padding:3px 6px;"><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
+              <td style="padding:3px 6px;">${mvt.libelle||''}</td>
+              <td style="font-size:10px;padding:3px 6px;">${affLabels}${mvt.creditEnAttente>0.005?`<br><span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)}€ en attente</span>`:''}</td>
+              <td class="td-num" style="color:${color};font-weight:600;padding:3px 6px;">${fmt(mvt.montant)}</td>
+              <td style="text-align:center;padding:3px 6px;">${statut}</td>
+              <td style="text-align:center;white-space:nowrap;padding:3px 6px;">
                 <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
                 <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
               </td>
@@ -7532,9 +7555,11 @@ function saveMouvement() {
   const nouveauxMoisSoldes = moisConcernes.filter(m => {
     if(!m) return false;
     const s = computeSoldeMoisAvantAppel(loc, m);
-    // Le mois est "soldé" (≤0) ET a reçu au moins un + (loyer/provision — pas juste un solde initial)
+    // Le mois est "soldé" (≤ 1 centime) ET il y avait quelque chose à devoir sur ce mois
+    // (au moins un mouvement + OU un solde initial > 0)
     const aDesPlus = (loc.mouvements||[]).some(mv => mv.sens === '+' && (mv.affectations||[]).some(a=>a.mois===m));
-    return Math.abs(s) < 0.01 && aDesPlus && !aDejaUneQuittanceLegacy(loc, m);
+    const aSoldeInitial = (loc.soldesInitiaux||[]).some(si => si.mois === m && (parseFloat(si.montant)||0) > 0.005);
+    return Math.abs(s) < 0.01 && (aDesPlus || aSoldeInitial) && !aDejaUneQuittanceLegacy(loc, m);
   });
   renderLocataireDetail();
   updateNavCounts();
@@ -7921,6 +7946,9 @@ function renderLocataires() {
   const list = ensureLocatairesArray();
   const wrap = document.getElementById('locataires-list-wrap');
   if(!wrap) return; // on n'est pas sur l'onglet locataires
+  // Réafficher la barre d'entête (elle est cachée en vue détail)
+  const pageHdr = document.getElementById('loc-page-hdr');
+  if(pageHdr) pageHdr.style.display = '';
   // Restaurer l'affichage normal (au cas où la vue détail l'aurait remplacé)
   wrap.innerHTML = `
     <table>
@@ -7963,16 +7991,40 @@ function renderLocataires() {
     if(!Array.isArray(loc.types)) { loc.types = []; needsSave = true; }
     if(!Array.isArray(loc.mouvements)) { loc.mouvements = []; needsSave = true; }
     if(!Array.isArray(loc.soldesInitiaux)) { loc.soldesInitiaux = []; needsSave = true; }
+    // Rattrapage v2 : flag actif par défaut à true
+    if(loc.actif === undefined) { loc.actif = true; needsSave = true; }
   });
   if(needsSave) saveDB();
 
-  body2.innerHTML = list.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
+  // Filtre actif / inactif : par défaut on masque les inactifs (partis du logement)
+  const nbInactifs = list.filter(l => !l.actif).length;
+  const visible = list.filter(l => _afficherInactifs || l.actif);
+
+  // Petit bandeau au-dessus du tableau : compteur d'inactifs + toggle
+  const wrapEl = document.getElementById('locataires-list-wrap');
+  let filterBar = document.getElementById('loc-filter-bar');
+  if(!filterBar) {
+    filterBar = document.createElement('div');
+    filterBar.id = 'loc-filter-bar';
+    filterBar.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:11px;color:var(--text2);';
+    wrapEl.insertBefore(filterBar, wrapEl.firstChild);
+  }
+  filterBar.innerHTML = nbInactifs > 0
+    ? `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" ${_afficherInactifs?'checked':''} onchange="_afficherInactifs=this.checked;renderLocataires();" style="width:14px;height:14px;cursor:pointer;">
+        <span>Afficher aussi les locataires inactifs (${nbInactifs})</span>
+      </label>`
+    : '';
+
+  body2.innerHTML = visible.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
     const solde = computeSoldeGlobalLocataireV2(loc);
     const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
-    const mainRow = `<tr>
+    const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
+    const rowOpacity = loc.actif ? '' : 'opacity:0.5;';
+    const mainRow = `<tr style="${rowOpacity}">
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
       <td style="font-size:11px;">${loc.adresse1||''}<br><span style="color:var(--text2);font-size:9px;">${loc.adresse2||''}</span></td>
-      <td style="font-size:11px;">${noms}</td>
+      <td style="font-size:11px;">${noms}${inactifBadge}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
       <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
@@ -7980,6 +8032,7 @@ function renderLocataires() {
         <button class="btn btn-sm btn-primary btn-icon" onclick="openLocataireDetail('${loc.id}')" title="Ouvrir la fiche détaillée" style="padding:1px 7px;font-size:10px;">📊 OUVRIR</button>
         <button class="btn btn-sm btn-icon" onclick="openAppelModal('${loc.id}')" title="Appel de loyer" style="padding:1px 5px;font-size:10px;">📄</button>
         <button class="btn btn-sm btn-icon" onclick="openLocataireModal('${loc.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-icon" onclick="toggleLocataireActif('${loc.id}')" title="${loc.actif?'Désactiver (départ du logement)':'Réactiver'}" style="padding:1px 5px;font-size:10px;">${loc.actif?'🚪':'↩'}</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteLocataire('${loc.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
       </td>
     </tr>`;
@@ -8305,7 +8358,7 @@ function generateAppelLoyerV2() {
 
   // ── TABLEAU 1 : APPEL DE LOYER — orange (#e84b0f) ──
   let tableRows = '';
-  dM.loyerLignes.forEach(l => { tableRows += docTableRow(l.label, l.montant, false); });
+  dM.loyerLignes.forEach(l => { tableRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false); });
   if(apl > 0) tableRows += docTableRow(`APL à recevoir le ${dateApl}`, -apl, false);
   // Impayés du mois précédent (solde M-1 > 0)
   if(soldePrec > 0.005) tableRows += docTableRow(`Impayé de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, false, RED);
@@ -8345,9 +8398,18 @@ function generateAppelLoyerV2() {
   dM.loyerLignes.forEach(l => { situationRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false); });
   if(apl > 0) situationRows += docTableRow(`APL à recevoir le ${dateApl}`, apl, false);
   // Paiements déjà reçus pour M (rare mais possible)
-  dM.paiementsLoc.forEach(p => { situationRows += docTableRow(`Votre paiement du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
-  dM.paiementsApl.forEach(p => { situationRows += docTableRow(`Paiement APL du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
-  if(dM.paiementsLoc.length === 0 && dM.paiementsApl.length === 0) situationRows += docTableRow('Votre paiement', 0, false);
+  const totalPaieLoc = Math.round(dM.paiementsLoc.reduce((s,x)=>s+x.montant,0)*100)/100;
+  const totalPaieApl = Math.round(dM.paiementsApl.reduce((s,x)=>s+x.montant,0)*100)/100;
+  if(totalPaieLoc > 0.005) {
+    dM.paiementsLoc.forEach(p => { situationRows += docTableRow(`Paiement de votre part à charge du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+  } else {
+    situationRows += docTableRow('Paiement de votre part à charge', 0, false);
+  }
+  if(totalPaieApl > 0.005) {
+    dM.paiementsApl.forEach(p => { situationRows += docTableRow(`APL reçue du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false); });
+  } else {
+    situationRows += docTableRow('APL reçues', 0, false);
+  }
   // Solde du mois en cours : (loyer total - apl à recevoir - paiements déjà encaissés)
   const soldeCour = Math.round((totalLoyerProvision - apl - dM.totalPaye) * 100) / 100;
   situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true);
@@ -8370,7 +8432,7 @@ function generateAppelLoyerV2() {
       <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">MONTANT DE L'ECHEANCE</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(montantAppelTotal)}€</td></tr>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
-      <tr><td colspan="2" style="background:#fde8df;color:#111;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">VOTRE SITUATION AU ${fmtDateFr(dateEmission)}</td></tr>
+      <tr><td colspan="2" style="background:#fde8df;color:#111;font-weight:700;padding:8px;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;">VOTRE SITUATION AU ${fmtDateFr(dateEmission)}</td></tr>
       <tr><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;">LIBELLE</td><td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#f5f5f5;text-align:right;">MONTANT</td></tr>
       ${situationRows}
       <tr><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">SOLDE A NOTRE CREDIT</td><td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(totalSolde)}€</td></tr>
