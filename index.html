@@ -7674,6 +7674,11 @@ function supprimerEcrituresDuMouvement(mvt) {
     (e._mvtLocataireIds && e._mvtLocataireIds.includes(mvt.id)) ||
     e._mvtLocataireId === mvt.id
   );
+  // Mémorise les combos (journal + date + numDoc) potentiellement à retirer du post-it
+  const piecesCandidates = new Set();
+  lignesTouchees.forEach(e => {
+    if(e.numDoc) piecesCandidates.add(e.journal + '||' + e.date + '||' + e.numDoc);
+  });
   lignesTouchees.forEach(e => {
     const autresIds = (e._mvtLocataireIds||[]).filter(x => x !== mvt.id);
     if(autresIds.length === 0) {
@@ -7691,6 +7696,25 @@ function supprimerEcrituresDuMouvement(mvt) {
     }
   });
   DB.ecritures = DB.ecritures.filter(e => !e._toDelete);
+  // Nettoyage post-it : pour chaque pièce candidate, si plus aucune écriture ne subsiste
+  // pour ce triplet (journal + date + numDoc), on retire la pièce correspondante du post-it.
+  piecesCandidates.forEach(key => {
+    const [journal, date, numDoc] = key.split('||');
+    const encoreUtilisee = DB.ecritures.some(e => e.journal === journal && e.date === date && e.numDoc === numDoc);
+    if(!encoreUtilisee) retirerPieceDuPostIt('locative', numDoc, date);
+  });
+}
+
+// Retire une pièce du post-it (miroir de notifierPieceGeneree). Silencieux si introuvable.
+function retirerPieceDuPostIt(module, numDoc, date) {
+  if(!numDoc) return;
+  const list = ensurePiecesAFormaliser();
+  const avant = list.length;
+  DB.piecesAFormaliser = list.filter(p => !(p.module === module && p.numDoc === numDoc && p.date === date));
+  if(DB.piecesAFormaliser.length !== avant) {
+    saveDB();
+    renderPostItPieces();
+  }
 }
 
 // Suppression d'un mouvement (avec confirmation)
