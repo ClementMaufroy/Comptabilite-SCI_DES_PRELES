@@ -7467,7 +7467,7 @@ function refreshMouvementAffectationRows() {
       const soldeTxt = s > 0.005 ? `Solde : <span style="color:var(--amber);font-weight:600;">+${fmt(s)}€</span>` : (s < -0.005 ? `Solde : <span style="color:var(--green);font-weight:600;">${fmt(s)}€</span>` : `<span style="color:var(--text2);">Solde : 0</span>`);
       const checked = (i === mois3.length - 1) ? 'checked' : '';
       return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);cursor:pointer;">
-        <input type="radio" name="mvt-aff-mois" value="${m}" ${checked} onchange="updateMouvementPreview()" style="width:14px;height:14px;">
+        <input type="radio" name="mvt-aff-mois" value="${m}" ${checked} onchange="updateLibelleAutomatique();updateMouvementPreview()" style="width:14px;height:14px;">
         <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
         <span style="font-size:10px;">${soldeTxt}</span>
       </label>`;
@@ -7679,9 +7679,20 @@ function updateLibelleAutomatique() {
   const typeId = document.getElementById('mvt-type').value;
   const t = (loc.types||[]).find(x => x.id === typeId);
   if(!t) { libInput.value = ''; return; }
-  // Récupérer les mois affectés (ou à défaut, le mois de référence)
-  const affs = getMouvementAffectations();
-  const moisList = affs.length ? affs.map(a=>a.mois) : [document.getElementById('mvt-mois-ref').value].filter(Boolean);
+  // Récupérer les mois cochés — indépendamment des montants (qui peuvent être encore vides)
+  const sens = document.getElementById('mvt-sens').value;
+  const moisList = [];
+  if(sens === '+') {
+    const chosen = document.querySelector('input[name="mvt-aff-mois"]:checked');
+    if(chosen) moisList.push(chosen.value);
+  } else {
+    document.querySelectorAll('.mvt-aff-check:checked').forEach(cb => moisList.push(cb.dataset.mois));
+  }
+  // À défaut d'aucun mois coché, on utilise le mois de référence (celui de la saisie initiale)
+  if(!moisList.length) {
+    const ref = document.getElementById('mvt-mois-ref').value;
+    if(ref) moisList.push(ref);
+  }
   // Composer le libellé SANS libelleSaisi (vide) — c'est justement pour prérémplir la partie fixe
   libInput.value = composerLibelleMultiMois(t, '', moisList);
 }
@@ -7802,8 +7813,13 @@ function postMouvementEcritures(mvt, t, loc) {
     if(existante) {
       existante.debit = Math.round(((existante.debit||0) + (debit||0)) * 100) / 100;
       existante.credit = Math.round(((existante.credit||0) + (credit||0)) * 100) / 100;
-      // Mise à jour du libellé (le dernier ajout au groupe gagne, mais tous se ressemblent en général)
-      existante.libelleEcriture = libelleFinal;
+      // Libellé : on garde celui du mouvement ayant contribué le plus gros montant.
+      // Ainsi, loyer + provision → libellé "Loyer", pas "Provision".
+      const contribution = Math.max(debit||0, credit||0);
+      if((existante._libelleContribution||0) < contribution) {
+        existante.libelleEcriture = libelleFinal;
+        existante._libelleContribution = contribution;
+      }
       // Rattache aussi ce mouvement au tracking
       existante._mvtLocataireIds = [...new Set([...(existante._mvtLocataireIds||[]), mvt.id])];
     } else {
@@ -7813,7 +7829,8 @@ function postMouvementEcritures(mvt, t, loc) {
         compte, libelleCompte: getLib(compte)||'',
         libelleEcriture: libelleFinal, numDoc,
         debit: debit||0, credit: credit||0,
-        _mvtLocataireIds: [mvt.id]
+        _mvtLocataireIds: [mvt.id],
+        _libelleContribution: Math.max(debit||0, credit||0)
       });
     }
   };
