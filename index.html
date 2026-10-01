@@ -2379,62 +2379,10 @@ if(sessionStorage.getItem('sci_auth') === '1') {
   document.getElementById('app-wrapper').style.display = 'flex';
 }
 
-// ── MONTHLY AUTO-EXPORT (CSV) ──
-function checkMonthlyExport() {
-  if(isTestExercise(CURRENT_YEAR)) return;
-  const key = 'last_monthly_export';
-  const lastExport = localStorage.getItem(key) || '';
-  const now = new Date();
-  const thisMonth = now.getFullYear() + '-' + (now.getMonth()+1);
-  if(lastExport !== thisMonth && DB.ecritures.length > 0) {
-    localStorage.setItem(key, thisMonth);
-    setTimeout(() => {
-      exportMonthlyCSV();
-      showMonthlyExportModal();
-    }, 2000);
-  }
-}
-
-function showMonthlyExportModal() {
-  const existing = document.getElementById('monthly-export-modal');
-  if(existing) existing.remove();
-  const overlay = document.createElement('div');
-  overlay.id = 'monthly-export-modal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:28px 32px;max-width:480px;text-align:center;font-family:var(--mono);">
-    <div style="font-size:28px;margin-bottom:12px;">💾</div>
-    <div style="font-size:14px;font-weight:700;color:var(--text0);margin-bottom:10px;letter-spacing:0.04em;">SAUVEGARDE MENSUELLE AUTOMATIQUE</div>
-    <div style="font-size:11px;color:var(--text1);line-height:1.7;margin-bottom:20px;">
-      Un fichier de sauvegarde de vos données a été téléchargé automatiquement.<br>
-      <span style="color:var(--amber);">Merci de conserver ce fichier en lieu sûr</span> (disque externe, cloud personnel…)<br>
-      afin de pouvoir restaurer vos données en cas de besoin.
-    </div>
-    <button class="btn btn-primary" onclick="document.getElementById('monthly-export-modal').remove()" style="padding:8px 24px;font-size:12px;letter-spacing:0.06em;">✓ OK, J'AI BIEN NOTÉ</button>
-  </div>`;
-  document.body.appendChild(overlay);
-}
-function exportMonthlyCSV() {
-  const now = new Date();
-  const month = now.toISOString().slice(0,7);
-  // Build CSV
-  let csv = '\uFEFF'; // BOM for Excel
-  csv += 'N°;Journal;Date;N° Compte;Libellé Compte;Libellé Écriture;N° Document;Débit;Crédit\n';
-  [...DB.ecritures].sort((a,b)=>a.num-b.num).forEach(e => {
-    csv += [e.num, e.journal, e.date, e.compte,
-      (e.libelleCompte||'').replace(/;/g,','),
-      (e.libelleEcriture||'').replace(/;/g,','),
-      (e.numDoc||'').replace(/;/g,','),
-      String(e.debit).replace('.',','),
-      String(e.credit).replace('.',',')
-    ].join(';') + '\n';
-  });
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'SCI_Preles_sauvegarde_' + month + '.csv';
-  a.click();
-  toast('Sauvegarde mensuelle téléchargée', 'success');
-}
+// ── EXPORT CSV MENSUEL AUTOMATIQUE : SUPPRIMÉ ──
+// L'export automatique en début de mois (CSV) a été retiré : la sauvegarde
+// hebdomadaire JSON complète est plus complète et suffit largement.
+function checkMonthlyExport() { /* no-op */ }
 
 // ══════════════════════════════════════════════
 // SAUVEGARDE COMPLÈTE (JSON) — hebdomadaire automatique + manuelle
@@ -2871,19 +2819,24 @@ function renderPostItPieces() {
 // ══════════════════════════════════════════════
 let _saveTimeout = null;
 let _pendingSave = null; // { db, year } — sauvegarde différée en attente, ou null
+// Flag anti-écho : quand on save vers Firestore, la notification onSnapshot revient
+// avec l'état qu'on vient d'envoyer. Si le listener applique cet écho pendant qu'on
+// est encore en train de modifier DB localement, il peut écraser nos changements
+// intermédiaires (nouveau moisComptabilises, num d'écriture, pièce post-it, etc.).
+// On suspend le listener pendant 3 secondes après chaque save local.
+let _suspendListenerUntil = 0;
+function markLocalWrite() { _suspendListenerUntil = Date.now() + 3000; }
 function saveDB() {
   if(window._saveSuspended) return; // DB/CURRENT_YEAR temporairement basculés sur un autre exercice (ex. bilan N-1)
   if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
   window._exerciseStatuses[String(CURRENT_YEAR)] = EXERCISE_STATUS;
+  // Marque cet instant comme une écriture locale — le listener ignorera les échos
+  // Firestore reçus dans les 3 secondes qui suivent (le save Firebase lui-même est
+  // débouncé de 800ms, l'écho revient donc ~1-1.5s après cet appel).
+  markLocalWrite();
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
-  // IMPORTANT: capturer DB et CURRENT_YEAR MAINTENANT (au moment de l'appel),
-  // pas au moment où le setTimeout s'exécutera 800ms plus tard.
-  // Sans ça, un changement d'exercice pendant cette fenêtre de 800ms fait
-  // sauvegarder le contenu du NOUVEL exercice sous le nom de L'ANCIEN
-  // (DB et CURRENT_YEAR sont des variables globales mutables lues au moment
-  // de l'exécution du callback, pas au moment de sa planification).
   _pendingSave = { db: DB, year: CURRENT_YEAR };
   _saveTimeout = setTimeout(flushPendingSave, 800);
 }
@@ -2905,10 +2858,11 @@ async function flushPendingSave() {
 }
 async function saveDBNow(force) {
   if(EXERCISE_STATUS === 'closed' && !force) return;
+  markLocalWrite();
   const lsKey = 'ledger_' + CURRENT_YEAR;
   try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
   clearTimeout(_saveTimeout);
-  _pendingSave = null; // cette sauvegarde immédiate rend l'éventuelle sauvegarde différée obsolète
+  _pendingSave = null;
   if(window._fbReady && window._fbSave) {
     await window._fbSave(DB, CURRENT_YEAR);
     const dot = document.querySelector('.dot');
@@ -2953,20 +2907,25 @@ async function loadDBAndRenum() {
 function startLiveSync() {
   if(_unsubscribeListen) { try { _unsubscribeListen(); } catch(e) {} }
   if(!window._fbReady || !window._fbListen) return;
-  const listenedYear = CURRENT_YEAR; // figé à l'inscription
+  const listenedYear = CURRENT_YEAR;
   _unsubscribeListen = window._fbListen(CURRENT_YEAR, (remote) => {
-    // Garde-fou : si CURRENT_YEAR a changé entre l'inscription et la réception
-    // de cet événement (ex. changement d'exercice pas encore suivi d'un
-    // réabonnement), on ignore — sinon on écraserait le DB du nouvel
-    // exercice avec les données de l'ancien.
     if(String(listenedYear) !== String(CURRENT_YEAR)) return;
-    if(remote && JSON.stringify(remote.ecritures) !== JSON.stringify(DB.ecritures)) {
-      Object.assign(DB, remote);
-      renum(); updateNavCounts();
-      const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-      const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
-      if(active && renders[active]) renders[active]();
-    }
+    if(!remote) return;
+    // Anti-écho : on vient de sauvegarder localement, ignore les notifs du snapshot
+    // Firestore qui vont revenir avec ce qu'on a envoyé (au risque d'écraser des
+    // modifs intermédiaires en cours dans DB local).
+    if(Date.now() < _suspendListenerUntil) return;
+    // Comparaison de signature complète : ne réagit qu'à un VRAI changement provenant
+    // d'un autre client (ou un rechargement initial).
+    const keys = ['ecritures','emprunts','echeanciers','locataires','immobilisations','pvApprobations','piecesAFormaliser','piecesTypes','km'];
+    const sig = obj => JSON.stringify(keys.reduce((a,k)=>{a[k]=obj?.[k];return a;},{}));
+    if(sig(remote) === sig(DB)) return;
+    Object.assign(DB, remote);
+    renum(); updateNavCounts();
+    const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+    const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
+    if(active && renders[active]) renders[active]();
+    renderPostItPieces();
   });
 }
 
@@ -3058,8 +3017,27 @@ function renum() { // BUILD-20260803-v4
   // Normaliser toutes les dates en YYYY-MM-DD
   DB.ecritures.forEach(e => {
     if(!e.date) return;
-    const d = e.date;
-    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) return; // déjà bon
+    let d = e.date;
+    // Cas 1 : la date est un nombre (sérialisé Excel importé par un module) → conversion
+    // Excel serial : 25569 = 1970-01-01 (époque Unix). 86400 sec = 1 jour.
+    if(typeof d === 'number') {
+      const ms = (d - 25569) * 86400 * 1000;
+      const dt = new Date(ms);
+      if(!isNaN(dt.getTime())) {
+        e.date = dt.toISOString().slice(0,10);
+      } else {
+        e.date = ''; // date invalide, on la vide plutôt que faire planter renum
+      }
+      return;
+    }
+    // Cas 2 : la date est une Date JS
+    if(d instanceof Date) {
+      e.date = isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+      return;
+    }
+    // Force en string pour toutes les autres opérations
+    d = String(d);
+    if(/^\d{4}-\d{2}-\d{2}$/.test(d)) { e.date = d; return; } // déjà bon
     if(/^\d{2}\/\d{2}\/\d{4}$/.test(d)) {
       const [dd,mm,yyyy] = d.split('/');
       e.date = `${yyyy}-${mm}-${dd}`;
@@ -3067,6 +3045,8 @@ function renum() { // BUILD-20260803-v4
       const [day, mon] = d.split('-');
       const m = MONTHS[mon?.toLowerCase()] || '01';
       e.date = `${yr}-${m}-${day.padStart(2,'0')}`;
+    } else {
+      e.date = d; // format non reconnu, on garde tel quel
     }
   });
 
@@ -3659,7 +3639,7 @@ function showJnlDetail(j,year) {
             <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th>
           </tr></thead>
           <tbody>${lines.map(e=>`<tr>
-            <td><span class="npill">${e.num}</span></td>
+            <td><span class="npill">${e.num??""}</span></td>
             <td><span class="npill">${j}-${e.numJ}</span></td>
             <td style="font-family:var(--mono);font-size:11px;">${e.date}</td>
             <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
@@ -3781,7 +3761,7 @@ function renderGL() {
       : `<td style="width:28px;display:none;"></td>`;
     return `<tr>
       ${checkCell}
-      <td><span class="npill">${e.num}</span></td>
+      <td><span class="npill">${e.num??""}</span></td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;">${fmtDateGL(e.date)}</td>
       <td><span class="jbadge j-${e.journal}">${e.journal}</span></td>
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap;">${e.compte}</td>
@@ -6928,6 +6908,19 @@ function printDoc(html, title, autoprint, landscape) {
   // Le logo n'est jamais stocké tel quel dans les documents (trop volumineux pour Firebase) :
   // on le réinjecte ici, au moment de l'affichage, qu'il vienne d'être généré ou relu depuis une sauvegarde.
   if(html && html.includes(LOGO_PLACEHOLDER)) html = html.split(LOGO_PLACEHOLDER).join(LOGO_SRC);
+  // Documents de gestion locative (appel, quittance…) : repérés par le bloc "N° CLIENT",
+  // y compris les documents déjà enregistrés dans l'historique.
+  const isLocDoc = !!(html && html.includes('N° CLIENT :'));
+  // @page margin:0 => le navigateur n'imprime plus son en-tête/pied (date, heure, titre, URL).
+  // Les marges sont recréées par le padding du body. Lignes de tableaux resserrées (taille de police inchangée).
+  const locDocCss = isLocDoc ? `
+      @page { margin: 0 !important; size: A4 portrait; }
+      body { padding: 10mm 12mm !important; }
+      body > div { padding: 0 !important; }
+      table { line-height: 1.2; margin-bottom: 10px !important; }
+      table td { padding-top: 2px !important; padding-bottom: 2px !important; }
+      table tr:first-child td, table tr:last-child td { padding-top: 4px !important; padding-bottom: 4px !important; }
+      table td[colspan="2"][style*="height:6px"] { height: 3px !important; padding: 0 !important; }` : '';
   const win = window.open('', '_blank', 'width=900,height=700');
   if(!win) { toast('Autorisez les popups pour imprimer', 'error'); return; }
   win.document.write(`<!DOCTYPE html><html><head>
@@ -6955,7 +6948,7 @@ function printDoc(html, title, autoprint, landscape) {
       .r-neg { color:#991b1b; }
       .rpt-2col { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
       .rpt-col-title { font-size:10px; font-weight:700; color:#111; border-bottom:2px solid #111; padding-bottom:4px; margin-bottom:0; letter-spacing:0.06em; text-transform:uppercase; }
-      .rpt-footer { font-size:8.5px; color:#999; border-top:1px solid #ddd; padding-top:6px; margin-top:16px; text-align:center; }
+      .rpt-footer { font-size:8.5px; color:#999; border-top:1px solid #ddd; padding-top:6px; margin-top:16px; text-align:center; }${locDocCss}
     </style>
   </head><body>${html}</body></html>`);
   win.document.close();
@@ -9915,7 +9908,17 @@ function getNextAutoPieceNumber(prefix) {
 function postEcheancierMois(ech, mois) {
   const [yy, mm] = mois.split('-');
   const dateEcr = dateEcheancePourMois(ech, mois);
-  const numDoc = ech.numeroAuto ? getNextAutoPieceNumber(ech.typePiece) : (ech.nomPiece ? ech.nomPiece : (ech.typePiece ? `${ech.typePiece}/${mm}/${yy.slice(-2)}` : ''));
+  // Format n° pièce (mêmes règles que le module Emprunts) :
+  //   1) type + numeroAuto  → PREFIXE/NNN
+  //   2) type + nomPiece    → PREFIXE_nomPiece
+  //   3) type seul          → PREFIXE/MM/AA (historique — conserve le format existant)
+  //   4) nomPiece seul      → nomPiece
+  let numDoc;
+  if(ech.typePiece && ech.numeroAuto) numDoc = getNextAutoPieceNumber(ech.typePiece);
+  else if(ech.typePiece && ech.nomPiece) numDoc = `${ech.typePiece}_${ech.nomPiece}`;
+  else if(ech.typePiece) numDoc = `${ech.typePiece}/${mm}/${yy.slice(-2)}`;
+  else if(ech.nomPiece) numDoc = ech.nomPiece;
+  else numDoc = '';
   const libelleEcriture = buildLibelleEcheance(ech, mois);
   const io = Date.now() + Math.floor(Math.random()*1000);
   const journal = ech.journal || 'OD';
@@ -9926,8 +9929,6 @@ function postEcheancierMois(ech, mois) {
   DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
 
   if(ech.crediteDouble && ech.compteCredit2) {
-    // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur,
-    // le 2e le solde exact (jamais plus de 2 décimales, jamais d'écart sur le total).
     const part1 = Math.ceil(ech.montant * 50) / 100;
     const part2 = Math.round((ech.montant - part1) * 100) / 100;
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
@@ -9938,7 +9939,7 @@ function postEcheancierMois(ech, mois) {
 
   ech.moisComptabilises = ech.moisComptabilises || [];
   ech.moisComptabilises.push(mois);
-  // Hook post-it
+  // Hook post-it (le renum sera fait par l'appelant après l'ensemble des postEcheancierMois)
   notifierPieceGeneree('echeanciers', numDoc, libelleEcriture, dateEcr);
 }
 
@@ -10004,11 +10005,10 @@ function decomptabiliserEcheancierMois(id, mois) {
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
   const io = ech.moisIo && ech.moisIo[mois];
-  // Mémoriser les pièces à nettoyer du post-it
-  const piecesCandidates = new Set();
+  const numDocsSupprimes = new Set();
   if(io !== undefined) {
     DB.ecritures.filter(e => e._io === io).forEach(e => {
-      if(e.numDoc) piecesCandidates.add(e.journal + '||' + e.date + '||' + e.numDoc);
+      if(e.numDoc) numDocsSupprimes.add(e.numDoc);
     });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete ech.moisIo[mois];
@@ -10016,19 +10016,16 @@ function decomptabiliserEcheancierMois(id, mois) {
     toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
   }
   ech.moisComptabilises = (ech.moisComptabilises||[]).filter(m => m !== mois);
-  // Cleanup post-it : si plus aucune écriture ne partage un triplet, retirer la pièce
-  piecesCandidates.forEach(key => {
-    const [journal, date, numDoc] = key.split('||');
-    const encoreUtilisee = DB.ecritures.some(e => e.journal === journal && e.date === date && e.numDoc === numDoc);
-    if(!encoreUtilisee) {
+  numDocsSupprimes.forEach(numDoc => {
+    const encoreUtilise = DB.ecritures.some(e => e.numDoc === numDoc);
+    if(!encoreUtilise) {
       const list = ensurePiecesAFormaliser();
-      const avant = list.length;
-      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
-      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
+      DB.piecesAFormaliser = list.filter(p => p.numDoc !== numDoc);
     }
   });
   renum(); saveDB();
   renderEcheanciers(); updateNavCounts();
+  renderPostItPieces();
   toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
 }
 
@@ -10371,42 +10368,68 @@ function confirmMarquerEmpruntFait() {
   renderEmprunts();
 }
 
+// Convertit une date (nombre Excel, Date JS, string variable) en YYYY-MM-DD.
+// Retourne '' si non parseable.
+function normalizeDate(d) {
+  if(!d) return '';
+  if(typeof d === 'number') {
+    const ms = (d - 25569) * 86400 * 1000;
+    const dt = new Date(ms);
+    return isNaN(dt.getTime()) ? '' : dt.toISOString().slice(0,10);
+  }
+  if(d instanceof Date) return isNaN(d.getTime()) ? '' : d.toISOString().slice(0,10);
+  const s = String(d);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if(/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [dd,mm,yyyy] = s.split('/');
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  return s; // format inconnu, laissé tel quel
+}
+
 function comptabiliserEmpruntMois(id, mois) {
-  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
-  const emp = ensureEmpruntsArray().find(e => e.id === id);
-  if(!emp) return;
-  const row = (emp.tableau||[]).find(r => r.mois === mois);
-  if(!row) { toast('Aucune ligne trouvée pour ce mois dans le tableau','error'); return; }
-  emp.moisComptabilises = emp.moisComptabilises || [];
-  if(emp.moisComptabilises.includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
+  try {
+    if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+    const emp = ensureEmpruntsArray().find(e => e.id === id);
+    if(!emp) return;
+    const row = (emp.tableau||[]).find(r => r.mois === mois);
+    if(!row) { toast('Aucune ligne trouvée pour ce mois dans le tableau','error'); return; }
+    emp.moisComptabilises = emp.moisComptabilises || [];
+    if(emp.moisComptabilises.includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
 
-  const dateEcr = row.dateEcheance || (mois+'-01');
-  const libEmp = emp.libelle || 'Emprunt';
-  const libelleEcriture = `${libEmp} - ${moisLabelFromYYYYMM(mois)}`;
-  const io = Date.now() + Math.floor(Math.random()*1000);
-  const [empYY, empMM] = mois.split('-');
-  const journal = emp.journal || 'OD';
-  // Format n° de pièce : (a) nomPiece si personnalisé, (b) auto incrémenté si numeroAuto, (c) PREFIXE_MM/AA par défaut
-  let numDocEmp;
-  if(emp.nomPiece) numDocEmp = emp.nomPiece;
-  else if(emp.numeroAuto && emp.typePiece) numDocEmp = getNextAutoPieceNumber(emp.typePiece);
-  else if(emp.typePiece) numDocEmp = `${emp.typePiece}_${empMM}/${empYY.slice(-2)}`;
-  else numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`; // fallback rétrocompatible
+    // Normalise la date : le tableau d'amortissement importé peut contenir
+    // un nombre Excel, une Date JS, ou une string variable — on force en YYYY-MM-DD.
+    const dateEcr = normalizeDate(row.dateEcheance) || (mois+'-01');
+    const libEmp = emp.libelle || 'Emprunt';
+    const libelleEcriture = `${libEmp} - ${moisLabelFromYYYYMM(mois)}`;
+    const io = Date.now() + Math.floor(Math.random()*1000);
+    const [empYY, empMM] = mois.split('-');
+    const journal = emp.journal || 'OD';
+    let numDocEmp;
+    if(emp.typePiece && emp.numeroAuto) numDocEmp = getNextAutoPieceNumber(emp.typePiece);
+    else if(emp.typePiece && emp.nomPiece) numDocEmp = `${emp.typePiece}_${emp.nomPiece}`;
+    else if(emp.typePiece) numDocEmp = `${emp.typePiece}_${empMM}/${empYY.slice(-2)}`;
+    else if(emp.nomPiece) numDocEmp = emp.nomPiece;
+    else numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`;
 
-  emp.moisIo = emp.moisIo || {};
-  emp.moisIo[mois] = io;
+    emp.moisIo = emp.moisIo || {};
+    emp.moisIo[mois] = io;
 
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
 
-  emp.moisComptabilises.push(mois);
-  // Hook post-it (n° pièce potentiellement paramétré)
-  notifierPieceGeneree('emprunts', numDocEmp, libelleEcriture, dateEcr);
-  renum(); saveDB();
-  // Refresh complet : le DOM doit refléter l'état APRÈS attribution des num par renum
-  renderEmprunts(); updateNavCounts();
-  toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+    emp.moisComptabilises.push(mois);
+    renum();
+    notifierPieceGeneree('emprunts', numDocEmp, libelleEcriture, dateEcr);
+    saveDB();
+    renderEmprunts();
+    updateNavCounts();
+    toast(`Écriture comptabilisée pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  } catch(err) {
+    toast('Erreur : ' + err.message, 'error', 6000);
+    console.error('Erreur comptabiliserEmpruntMois:', err);
+  }
 }
 
 // Annule la comptabilisation d'un mois pour un emprunt : supprime l'écriture et repasse la case en orange
@@ -10415,11 +10438,11 @@ function decomptabiliserEmpruntMois(id, mois) {
   const emp = ensureEmpruntsArray().find(e => e.id === id);
   if(!emp) return;
   const io = emp.moisIo && emp.moisIo[mois];
-  // Mémoriser les triplets (journal, date, numDoc) des écritures à supprimer pour cleanup post-it
-  const piecesCandidates = new Set();
+  // Mémoriser les n° pièce des écritures supprimées pour cleanup post-it
+  const numDocsSupprimes = new Set();
   if(io !== undefined) {
     DB.ecritures.filter(e => e._io === io).forEach(e => {
-      if(e.numDoc) piecesCandidates.add(e.journal + '||' + e.date + '||' + e.numDoc);
+      if(e.numDoc) numDocsSupprimes.add(e.numDoc);
     });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete emp.moisIo[mois];
@@ -10427,19 +10450,17 @@ function decomptabiliserEmpruntMois(id, mois) {
     toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
   }
   emp.moisComptabilises = (emp.moisComptabilises||[]).filter(m => m !== mois);
-  // Cleanup post-it : si plus aucune écriture ne partage un triplet, retirer la pièce
-  piecesCandidates.forEach(key => {
-    const [journal, date, numDoc] = key.split('||');
-    const encoreUtilisee = DB.ecritures.some(e => e.journal === journal && e.date === date && e.numDoc === numDoc);
-    if(!encoreUtilisee) {
+  // Cleanup post-it : pour chaque numDoc supprimé, si plus aucune écriture ne l'utilise, retirer la ou les pièces
+  numDocsSupprimes.forEach(numDoc => {
+    const encoreUtilise = DB.ecritures.some(e => e.numDoc === numDoc);
+    if(!encoreUtilise) {
       const list = ensurePiecesAFormaliser();
-      const avant = list.length;
-      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
-      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
+      DB.piecesAFormaliser = list.filter(p => p.numDoc !== numDoc);
     }
   });
   renum(); saveDB();
   renderEmprunts(); updateNavCounts();
+  renderPostItPieces(); // toujours re-render (badge + panneau si ouvert)
   toast(`Comptabilisation annulée pour ${moisLabelFromYYYYMM(mois)}`,'success');
 }
 
