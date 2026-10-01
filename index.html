@@ -8681,8 +8681,16 @@ function generateAppelLoyerV2() {
   const prevAplDate = dPrec.paiementsApl[0]?.date || '';
   const soldePrec = Math.round((prevEcheance - prevPaye - prevAplMontant)*100)/100;
 
-  // ── Mois antérieurs à M-1, avec un impayé ou une activité — triés du plus ancien au plus récent ──
-  const moisAnterieurs = moisImpliques(loc).filter(m => m < moisPrec).sort();
+  // ── Mois antérieurs à M-1 ──
+  // Règle : si aucun impayé avant M-1, on ne présente que M-1 et M.
+  // Sinon, on remonte jusqu'au plus ancien mois encore impayé, et on présente
+  // tous les mois de celui-ci jusqu'à M-2 inclus (puis M-1 et M).
+  const premierImpaye = moisImpliques(loc).filter(m => m < moisPrec).sort()
+    .find(m => decomposerMois(m).solde > 0.005);
+  const moisAnterieurs = [];
+  if(premierImpaye) {
+    for(let m = premierImpaye; m < moisPrec; m = moisSuivant(m)) moisAnterieurs.push(m);
+  }
 
   const dateEmission = new Date();
   const dd = dernierJourMois(mois);
@@ -8735,7 +8743,7 @@ function generateAppelLoyerV2() {
 
   // Mois en cours (M)
   dM.loyerLignes.forEach(l => { situationRows += docTableRow(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false); });
-  if(apl > 0) situationRows += docTableRow(`APL à recevoir le ${dateApl}`, apl, false);
+  // L'APL à recevoir n'est PAS déduite ici : tant qu'elle n'est pas encaissée, 100 % du loyer reste dû.
   // Paiements déjà reçus pour M (rare mais possible)
   const totalPaieLoc = Math.round(dM.paiementsLoc.reduce((s,x)=>s+x.montant,0)*100)/100;
   const totalPaieApl = Math.round(dM.paiementsApl.reduce((s,x)=>s+x.montant,0)*100)/100;
@@ -8749,8 +8757,8 @@ function generateAppelLoyerV2() {
   } else {
     situationRows += docTableRow('APL reçues', 0, false);
   }
-  // Solde du mois en cours : (loyer total - apl à recevoir - paiements déjà encaissés)
-  const soldeCour = Math.round((totalLoyerProvision - apl - dM.totalPaye) * 100) / 100;
+  // Solde du mois en cours : loyer + provisions - paiements réellement encaissés (APL à venir non déduite)
+  const soldeCour = Math.round((totalLoyerProvision - dM.totalPaye) * 100) / 100;
   situationRows += docTableRow(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true);
 
   const totalSolde = Math.round((totalImpayesAnterieurs + Math.max(soldePrec,0) + soldeCour) * 100) / 100;
