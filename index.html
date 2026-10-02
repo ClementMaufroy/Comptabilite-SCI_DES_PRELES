@@ -1122,76 +1122,39 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div class="page-hdr">
         <div>
           <div class="page-title">FRAIS KILOMÉTRIQUES</div>
-          <div class="page-sub">Saisie mensuelle des déplacements, édition des fiches et comptabilisation</div>
+          <div class="page-sub">Une fiche par mois — saisie des trajets, comptabilisation et fiches papier</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="openKmParamsModal()">⚙ PARAMÈTRES</button>
         </div>
       </div>
+
+      <!-- ① SUIVI DE L'EXERCICE -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-title">① Suivi <span id="km-suivi-annee"></span></div>
+        <div id="km-suivi-strip"></div>
+        <div style="font-size:10px;color:var(--text2);margin-top:8px;">
+          <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--amber);vertical-align:middle;"></span> cliquer pour comptabiliser le mois
+          &nbsp;·&nbsp; <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--green);vertical-align:middle;"></span> comptabilisé (cliquer pour annuler)
+          &nbsp;·&nbsp; <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--line2);vertical-align:middle;"></span> à venir
+        </div>
+      </div>
+
+      <!-- ② SAISIE DES TRAJETS -->
+      <div class="card" style="margin-bottom:18px;">
+        <div class="card-title" style="display:flex;align-items:center;gap:12px;">
+          <span style="white-space:nowrap;">② Saisie des trajets</span>
+          <span style="font-weight:400;font-size:11px;color:var(--text2);white-space:nowrap;margin-left:12px;">Mois</span>
+          <select id="km-saisie-mois-sel" onchange="_kmEditingTrajetId=null;renderKmSaisieMois()" style="height:30px;width:180px;flex:0 0 auto;"></select>
+          <span id="km-saisie-statut" style="font-weight:400;font-size:11px;"></span>
+        </div>
+        <div id="km-saisie-body"></div>
+      </div>
+
+      <!-- ③ FICHES KILOMÉTRIQUES -->
       <div class="card" style="margin-bottom:22px;">
-        <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
-          <span>🚗 Frais kilométriques</span>
-          <button class="btn btn-sm" onclick="toggleKmParams()" id="km-params-toggle-btn">⚙ Paramètres</button>
-        </div>
-
-        <div id="km-params-block" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line2);">
-          <div style="font-size:10px;color:var(--text2);margin-bottom:12px;">Configuration à faire une seule fois — elle reste ensuite valable tous les mois. Le barème (€/km) dépend de la puissance fiscale : réglez-le pour chaque véhicule.</div>
-          <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:8px;">
-            <div style="flex:2;min-width:340px;">
-              <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">VÉHICULES ET BARÈME</div>
-              <div id="km-vehicules-list" style="margin-bottom:8px;"></div>
-              <div style="display:flex;gap:6px;">
-                <input type="text" id="km-new-vehicule" placeholder="Nom du véhicule" style="flex:1;height:30px;">
-                <button class="btn btn-sm" onclick="addKmVehicule()">+ AJOUTER</button>
-              </div>
-            </div>
-            <div style="flex:1;min-width:260px;">
-              <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">COMPTES COMPTABLES</div>
-              <div class="form-row c2 mb8">
-                <div class="form-field">
-                  <label>Compte à débiter</label>
-                  <input type="text" id="km-compte-debit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-debit')" onkeydown="genAcKey(event,'km-compte-debit')" onblur="genAcBlur('km-compte-debit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
-                </div>
-                <div class="form-field">
-                  <label>Compte à créditer</label>
-                  <input type="text" id="km-compte-credit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit')" onkeydown="genAcKey(event,'km-compte-credit')" onblur="genAcBlur('km-compte-credit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
-                </div>
-              </div>
-              <div class="form-row mb8">
-                <div class="form-field" style="grid-column:1/-1;">
-                  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
-                    <input type="checkbox" id="km-credit-double" onchange="toggleKmCreditDouble()" style="width:14px;height:14px;cursor:pointer;margin:0;">
-                    Répartir le crédit sur 2 comptes (50/50)
-                  </label>
-                </div>
-              </div>
-              <div class="form-row mb8" id="km-credit2-field" style="display:none;">
-                <div class="form-field" style="grid-column:1/-1;">
-                  <label>2ᵉ compte à créditer (50%)</label>
-                  <input type="text" id="km-compte-credit2" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit2')" onkeydown="genAcKey(event,'km-compte-credit2')" onblur="genAcBlur('km-compte-credit2');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line2);">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-            <label style="font-size:11px;font-weight:700;color:var(--text2);">SAISIE DU MOIS :</label>
-            <select id="km-saisie-mois-sel" onchange="renderKmSaisieMois()" style="height:32px;"></select>
-            <select id="km-saisie-annee-sel" onchange="renderKmSaisieMois()" style="height:32px;"></select>
-          </div>
-          <div id="km-saisie-body" style="margin-bottom:10px;"></div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn" onclick="editerFichesKmMois()">📄 ÉDITER LA/LES FICHE(S) DU MOIS</button>
-            <button class="btn btn-primary" onclick="comptabiliserKmMois()">✓ COMPTABILISER LE MOIS</button>
-          </div>
-        </div>
-
-        <div id="km-suivi-strip" style="margin-top:16px;"></div>
-        <div style="margin-top:6px;">
-          <button class="btn btn-sm" onclick="openKmMarquerModal()">⚙ Marquer un mois comme déjà comptabilisé (sans écriture)</button>
-        </div>
-
-
-        <div id="km-fiches-list" style="margin-top:16px;"></div>
+        <div class="card-title">③ Fiches kilométriques</div>
+        <div id="km-fiches-list"></div>
       </div>
     </div>
 
@@ -2230,6 +2193,67 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 </div>
 
 <!-- ══════════════ KM — MARQUER UN MOIS SANS ÉCRITURE ══════════════ -->
+<!-- ══════════════ FRAIS KM : PARAMÈTRES ══════════════ -->
+<div id="km-params-modal" class="modal-overlay">
+  <div class="modal" style="width:720px;">
+    <div class="modal-title">⚙ PARAMÈTRES — FRAIS KILOMÉTRIQUES</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:14px;">Configuration à faire une seule fois. Le barème (€/km) dépend de la puissance fiscale : réglez-le pour chaque véhicule. Les modifications sont enregistrées immédiatement.</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:300px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">VÉHICULES ET BARÈME</div>
+        <div id="km-vehicules-list" style="margin-bottom:8px;"></div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="km-new-vehicule" placeholder="Nom du véhicule" style="flex:1;height:30px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addKmVehicule();}">
+          <button class="btn btn-sm" onclick="addKmVehicule()">+ AJOUTER</button>
+        </div>
+      </div>
+      <div style="flex:1;min-width:260px;">
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">COMPTES COMPTABLES</div>
+        <div class="form-row c2 mb8">
+          <div class="form-field">
+            <label>Compte à débiter</label>
+            <input type="text" id="km-compte-debit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-debit')" onkeydown="genAcKey(event,'km-compte-debit')" onblur="genAcBlur('km-compte-debit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
+          </div>
+          <div class="form-field">
+            <label>Compte à créditer</label>
+            <input type="text" id="km-compte-credit" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit')" onkeydown="genAcKey(event,'km-compte-credit')" onblur="genAcBlur('km-compte-credit');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
+          </div>
+        </div>
+        <div class="form-row mb8">
+          <div class="form-field" style="grid-column:1/-1;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:400;">
+              <input type="checkbox" id="km-credit-double" onchange="toggleKmCreditDouble()" style="width:14px;height:14px;cursor:pointer;margin:0;">
+              Répartir le crédit sur 2 comptes (50/50)
+            </label>
+          </div>
+        </div>
+        <div class="form-row mb8" id="km-credit2-field" style="display:none;">
+          <div class="form-field" style="grid-column:1/-1;">
+            <label>2ᵉ compte à créditer (50%)</label>
+            <input type="text" id="km-compte-credit2" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit2')" onkeydown="genAcKey(event,'km-compte-credit2')" onblur="genAcBlur('km-compte-credit2');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--text2);">Écriture passée au journal HA, datée du dernier jour du mois, pièce KM_MM/AA.</div>
+      </div>
+    </div>
+    <div class="flex gap8" style="margin-top:18px;">
+      <button class="btn btn-primary ml-auto" onclick="closeKmParamsModal()">FERMER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ FRAIS KM : CONFIRMATION DE COMPTABILISATION ══════════════ -->
+<div id="km-compta-modal" class="modal-overlay">
+  <div class="modal" style="width:460px;">
+    <div class="modal-title" id="km-compta-title">✓ COMPTABILISER</div>
+    <div style="font-size:12px;color:var(--text1);margin-bottom:14px;line-height:1.6;" id="km-compta-msg"></div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" id="km-compta-btn" onclick="confirmKmCompta()">COMPTABILISER</button>
+      <button class="btn ml-auto" onclick="closeKmComptaModal()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
 <div id="km-marquer-modal" class="modal-overlay">
   <div class="modal" style="width:440px;">
     <div class="modal-title">⚙ MARQUER UN MOIS COMME DÉJÀ COMPTABILISÉ</div>
@@ -2709,7 +2733,8 @@ const POSTIT_MODULE_LABELS = {
   emprunts: 'Emprunts',
   inventaires: 'Écritures d\'inventaires',
   approbation: 'Approbation du résultat',
-  saisie: 'Saisie manuelle'
+  saisie: 'Saisie manuelle',
+  km: 'Frais kilométriques'
 };
 
 let _postItFilterModule = 'all';
@@ -9176,40 +9201,74 @@ function populateMoisAnneeSelects(selMoisId, selAnneeId) {
     }
   }
 }
-function getKmSaisieMois() {
-  const mm = document.getElementById('km-saisie-mois-sel')?.value;
-  const yy = document.getElementById('km-saisie-annee-sel')?.value;
-  return (mm && yy) ? `${yy}-${mm}` : moisActuelYYYYMM();
-}
-function setKmSaisieMois(mois) {
-  const [yy, mm] = mois.split('-');
-  const selMois = document.getElementById('km-saisie-mois-sel');
-  const selAnnee = document.getElementById('km-saisie-annee-sel');
-  if(selMois) selMois.value = mm;
-  if(selAnnee) selAnnee.value = yy;
-}
-
-let _kmParamsOpened = false;
-function toggleKmParams() {
-  _kmParamsOpened = !_kmParamsOpened;
-  const block = document.getElementById('km-params-block');
-  if(block) block.style.display = _kmParamsOpened ? 'block' : 'none';
-}
-
-function renderKmModule() {
+// ── Mois de saisie : uniquement les 12 mois de l'exercice ouvert ──
+function kmAnneeExercice() { return parseInt(CURRENT_YEAR, 10) || new Date().getFullYear(); }
+// Seuls les mois "orange" sont proposés : mois de l'exercice jusqu'au mois en cours, non comptabilisés.
+// Un mois comptabilisé se consulte via sa fiche (liste ③).
+function kmMoisSaisissables() {
   const km = ensureKm();
-  if(!km.vehicules.length && !_kmParamsOpened) { _kmParamsOpened = true; }
-  const block = document.getElementById('km-params-block');
-  if(block) block.style.display = _kmParamsOpened ? 'block' : 'none';
+  const annee = kmAnneeExercice();
+  const moisActuel = moisActuelYYYYMM();
+  return Array.from({length:12}, (_,i) => annee + '-' + String(i+1).padStart(2,'0'))
+    .filter(m => m <= moisActuel && !kmMoisComptabilise(km, m));
+}
+function populateKmMoisSelect() {
+  const sel = document.getElementById('km-saisie-mois-sel');
+  if(!sel) return;
+  const prev = sel.value;
+  const dispo = kmMoisSaisissables();
+  sel.innerHTML = dispo.map(m => `<option value="${m}">${moisLabelFromYYYYMM(m)}</option>`).join('');
+  sel.disabled = !dispo.length;
+  if(!dispo.length) return;
+  if(prev && dispo.includes(prev)) sel.value = prev;
+  else sel.value = dispo.includes(moisActuelYYYYMM()) ? moisActuelYYYYMM() : dispo[dispo.length-1];
+}
+function getKmSaisieMois() {
+  return document.getElementById('km-saisie-mois-sel')?.value || '';
+}
 
+// ── Statut d'un mois ──
+function kmMoisComptabilise(km, mois) {
+  return km.fiches.some(f => f.mois === mois && f.comptabilise) || km.moisMarquesSansEcriture.includes(mois);
+}
+function kmTrajetsDuMois(km, mois) {
+  return km.trajets.filter(t => t.mois === mois).sort((a,b) => (a.date||'').localeCompare(b.date||''));
+}
+function kmVehicule(km, id) { return km.vehicules.find(v => v.id === id) || null; }
+function kmVehiculesActifs(km) { return km.vehicules.filter(v => !v.supprime); }
+function kmTauxTrajet(km, t) { const v = kmVehicule(km, t.vehiculeId); return v ? (v.taux || 0) : 0; }
+function kmNomVehicule(km, t) {
+  const v = kmVehicule(km, t.vehiculeId);
+  return v ? v.nom : (t.vehiculeNom || '(véhicule inconnu)');
+}
+function kmTotauxMois(km, mois) {
+  const trajets = kmTrajetsDuMois(km, mois);
+  const totalKm = Math.round(trajets.reduce((s,t) => s + (t.km||0), 0) * 10) / 10;
+  const montant = Math.round(trajets.reduce((s,t) => s + kmMontantTrajet(t.km, kmTauxTrajet(km, t)), 0) * 100) / 100;
+  return { trajets, totalKm, montant };
+}
+
+// ── Paramètres (fenêtre dédiée) ──
+function openKmParamsModal() {
+  renderKmParams();
+  document.getElementById('km-params-modal').style.display = 'flex';
+}
+function closeKmParamsModal() {
+  saveKmConfig();
+  document.getElementById('km-params-modal').style.display = 'none';
+  renderKmModule();
+}
+function renderKmParams() {
+  const km = ensureKm();
+  const actifs = kmVehiculesActifs(km);
   const vList = document.getElementById('km-vehicules-list');
   if(vList) {
-    vList.innerHTML = km.vehicules.length
+    vList.innerHTML = actifs.length
       ? `<table style="font-size:11px;margin-bottom:6px;"><thead><tr><th>Véhicule</th><th class="td-num" style="width:90px">€/km</th><th style="width:30px"></th></tr></thead><tbody>
-        ${km.vehicules.map(v => `<tr>
+        ${actifs.map(v => `<tr>
           <td>${v.nom}</td>
           <td class="td-num"><input type="number" step="0.001" value="${v.taux||0}" onchange="saveKmVehiculeBareme('${v.id}',this.value)" style="width:80px;font-family:var(--mono);text-align:right;"></td>
-          <td style="text-align:center;"><button class="btn btn-sm btn-danger btn-icon" onclick="removeKmVehicule('${v.id}')" style="padding:1px 5px;font-size:9px;">✕</button></td>
+          <td style="text-align:center;"><button class="btn btn-sm btn-danger btn-icon" onclick="removeKmVehicule('${v.id}')" title="Supprimer (les trajets déjà saisis sont conservés)" style="padding:1px 5px;font-size:9px;">✕</button></td>
         </tr>`).join('')}
       </tbody></table>`
       : `<div style="font-size:10px;color:var(--text2);font-style:italic;">Aucun véhicule enregistré.</div>`;
@@ -9222,38 +9281,7 @@ function renderKmModule() {
   if(credEl && document.activeElement !== credEl) credEl.value = km.compteCredit || '';
   if(credDoubleEl) { credDoubleEl.checked = !!km.crediteDouble; document.getElementById('km-credit2-field').style.display = km.crediteDouble ? 'block' : 'none'; }
   if(cred2El && document.activeElement !== cred2El) cred2El.value = km.compteCredit2 || '';
-
-  populateMoisAnneeSelects('km-saisie-mois-sel', 'km-saisie-annee-sel');
-  renderKmSaisieMois();
-  renderKmSuiviStrip();
-  renderKmFichesList();
 }
-
-// Bande de suivi mensuel (janvier à décembre de l'exercice) — même logique visuelle que les échéanciers/emprunts
-function renderKmSuiviStrip() {
-  const zone = document.getElementById('km-suivi-strip');
-  if(!zone) return;
-  const km = ensureKm();
-  const moisActuel = moisActuelYYYYMM();
-  const anneeNum = parseInt(CURRENT_YEAR, 10) || new Date().getFullYear();
-  const mois12 = Array.from({length:12}, (_,i) => anneeNum + '-' + String(i+1).padStart(2,'0'));
-
-  const squares = mois12.map(m => {
-    const ficheComptabilisee = km.fiches.some(f => f.mois === m && f.comptabilise);
-    const marqueSansEcriture = km.moisMarquesSansEcriture.includes(m);
-    const done = ficheComptabilisee || marqueSansEcriture;
-    const lettre = MOIS_LABELS[parseInt(m.split('-')[1],10)-1].charAt(0).toUpperCase();
-    const isFuture = m > moisActuel;
-    let bg, fg, title, onclickAttr = '', cursor = 'default';
-    if(done) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(m)+' — comptabilisé (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserKmMois('${m}')"`; cursor='pointer'; }
-    else if(isFuture) { bg='var(--line2)'; fg='var(--text2)'; title=moisLabelFromYYYYMM(m)+' — à venir'; }
-    else { bg='var(--amber)'; fg='#332200'; title=moisLabelFromYYYYMM(m)+' — cliquer pour saisir ce mois'; onclickAttr=` onclick="setKmSaisieMois('${m}');renderKmSaisieMois();"`; cursor='pointer'; }
-    return `<span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:3px;background:${bg};color:${fg};font-size:10px;font-weight:700;font-family:var(--mono);cursor:${cursor};margin-right:3px;">${lettre}</span>`;
-  }).join('');
-
-  zone.innerHTML = `<div style="font-size:10px;color:var(--text2);margin-bottom:6px;">SUIVI ${anneeNum}</div><div>${squares}</div>`;
-}
-
 function addKmVehicule() {
   const inp = document.getElementById('km-new-vehicule');
   const nom = inp.value.trim();
@@ -9262,21 +9290,29 @@ function addKmVehicule() {
   km.vehicules.push({id:crypto.randomUUID(), nom, taux:0});
   inp.value = '';
   saveDB();
-  renderKmModule();
+  renderKmParams();
+  renderKmSaisieMois();
 }
+// Suppression "douce" : le véhicule n'est plus proposé pour les nouveaux trajets,
+// mais il reste en base pour que les trajets déjà saisis gardent leur nom et leur barème.
 function removeKmVehicule(id) {
   const km = ensureKm();
-  km.vehicules = km.vehicules.filter(v => v.id !== id);
+  const v = kmVehicule(km, id);
+  if(!v) return;
+  if(km.trajets.some(t => t.vehiculeId === id)) v.supprime = true;
+  else km.vehicules = km.vehicules.filter(x => x.id !== id);
   saveDB();
-  renderKmModule();
+  renderKmParams();
+  renderKmSaisieMois();
 }
 function saveKmVehiculeBareme(id, taux) {
   const km = ensureKm();
-  const v = km.vehicules.find(x => x.id === id);
+  const v = kmVehicule(km, id);
   if(!v) return;
   v.taux = parseFloat(taux) || 0;
   saveDB();
   renderKmSaisieMois();
+  renderKmFichesList();
 }
 function toggleKmCreditDouble() {
   const checked = document.getElementById('km-credit-double').checked;
@@ -9286,110 +9322,196 @@ function toggleKmCreditDouble() {
 }
 function saveKmConfig() {
   const km = ensureKm();
-  km.compteDebit = document.getElementById('km-compte-debit').value.trim();
-  km.compteCredit = document.getElementById('km-compte-credit').value.trim();
-  km.crediteDouble = document.getElementById('km-credit-double').checked;
-  km.compteCredit2 = document.getElementById('km-compte-credit2').value.trim();
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  km.compteDebit = g('km-compte-debit');
+  km.compteCredit = g('km-compte-credit');
+  km.crediteDouble = !!document.getElementById('km-credit-double')?.checked;
+  km.compteCredit2 = g('km-compte-credit2');
   saveDB();
 }
 
-// ── Saisie par ligne de déplacement (date / lieu / motif / km), un bloc par véhicule, éditable tant que non comptabilisé ──
+// ── Rendu global du module ──
+function renderKmModule() {
+  ensureKm();
+  populateKmMoisSelect();
+  renderKmSuiviStrip();
+  renderKmSaisieMois();
+  renderKmFichesList();
+}
+
+// ① Bande de suivi : 12 mois de l'exercice. Le carré sert à comptabiliser (orange) ou à annuler (vert).
+function renderKmSuiviStrip() {
+  const zone = document.getElementById('km-suivi-strip');
+  if(!zone) return;
+  const km = ensureKm();
+  const moisActuel = moisActuelYYYYMM();
+  const annee = kmAnneeExercice();
+  const lbl = document.getElementById('km-suivi-annee');
+  if(lbl) lbl.textContent = annee;
+  const mois12 = Array.from({length:12}, (_,i) => annee + '-' + String(i+1).padStart(2,'0'));
+  zone.innerHTML = `<div style="display:flex;gap:4px;flex-wrap:wrap;">` + mois12.map(m => {
+    const done = kmMoisComptabilise(km, m);
+    const lettre = MOIS_LABELS[parseInt(m.split('-')[1],10)-1].charAt(0).toUpperCase();
+    const isFuture = m > moisActuel;
+    let bg, fg, title, onclickAttr = '', cursor = 'default';
+    if(done) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(m)+' — comptabilisé (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserKmMois('${m}')"`; cursor='pointer'; }
+    else if(isFuture) { bg='var(--line2)'; fg='var(--text2)'; title=moisLabelFromYYYYMM(m)+' — à venir'; }
+    else { bg='var(--amber)'; fg='#332200'; title=moisLabelFromYYYYMM(m)+' — cliquer pour comptabiliser'; onclickAttr=` onclick="askComptabiliserKmMois('${m}')"`; cursor='pointer'; }
+    return `<span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:3px;background:${bg};color:${fg};font-size:11px;font-weight:700;font-family:var(--mono);cursor:${cursor};">${lettre}</span>`;
+  }).join('') + `</div>`;
+}
+
+// ② Saisie : une seule table par mois, le véhicule est choisi sur chaque trajet
 let _kmEditingTrajetId = null;
+let _kmDernierVehiculeId = null;
+function kmVehiculeOptions(km, selectedId) {
+  const opts = kmVehiculesActifs(km).slice();
+  const sel = kmVehicule(km, selectedId);
+  if(sel && sel.supprime) opts.push(sel); // trajet existant sur un véhicule supprimé
+  return opts.map(v => `<option value="${v.id}" ${v.id===selectedId?'selected':''}>${v.nom}${v.supprime?' (supprimé)':''} — ${String(v.taux||0).replace('.',',')} €/km</option>`).join('');
+}
+function kmMajMontantApercu(prefix) {
+  const km = ensureKm();
+  const v = kmVehicule(km, document.getElementById(prefix+'veh')?.value);
+  const kmVal = parseFloat(document.getElementById(prefix+'km')?.value) || 0;
+  const el = document.getElementById(prefix+'montant');
+  if(el) el.textContent = fmt(kmMontantTrajet(kmVal, v ? v.taux : 0)) + ' €';
+}
 function renderKmSaisieMois() {
   const km = ensureKm();
-  const mois = getKmSaisieMois();
   const body = document.getElementById('km-saisie-body');
   if(!body) return;
-
-  if(!km.vehicules.length) { body.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;">Ajoutez d'abord au moins un véhicule (bouton ⚙ Paramètres).</div>`; return; }
-
-  body.innerHTML = km.vehicules.map(v => {
-    const comptabilise = km.fiches.some(f => f.mois === mois && f.vehiculeId === v.id && f.comptabilise);
-    const trajets = km.trajets.filter(t => t.mois === mois && t.vehiculeId === v.id).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    const totalKm = trajets.reduce((s,t)=>s+(t.km||0),0);
-    const totalMontant = trajets.reduce((s,t)=>s+kmMontantTrajet(t.km, v.taux),0);
-
-    const rows = trajets.map(t => {
-      if(_kmEditingTrajetId === t.id) {
-        return `<tr>
-          <td><input type="date" id="km-edit-date-${t.id}" value="${t.date}" style="width:130px;font-family:var(--mono);font-size:10px;"></td>
-          <td><input type="text" id="km-edit-lieu-${t.id}" value="${t.lieu}" style="width:100%;"></td>
-          <td><input type="text" id="km-edit-motif-${t.id}" value="${t.motif}" style="width:100%;"></td>
-          <td><input type="number" step="0.1" id="km-edit-km-${t.id}" value="${t.km}" oninput="document.getElementById('km-edit-montant-${t.id}').textContent=fmt(kmMontantTrajet(parseFloat(this.value)||0,${v.taux||0}))+' €'" style="width:70px;font-family:var(--mono);text-align:right;"></td>
-          <td class="td-num" id="km-edit-montant-${t.id}" style="font-family:var(--mono);">${fmt(kmMontantTrajet(t.km, v.taux))} €</td>
-          <td style="text-align:center;white-space:nowrap;">
-            <button class="btn btn-sm btn-primary btn-icon" onclick="saveKmTrajetEdit('${t.id}')" style="padding:1px 4px;font-size:9px;">✓</button>
-            <button class="btn btn-sm btn-icon" onclick="_kmEditingTrajetId=null;renderKmSaisieMois();" style="padding:1px 4px;font-size:9px;">✕</button>
-          </td>
-        </tr>`;
-      }
-      return `<tr>
-        <td style="font-family:var(--mono);font-size:10px;">${fmtDateFr(t.date)}</td>
-        <td style="font-size:11px;">${t.lieu}</td>
-        <td style="font-size:11px;">${t.motif}</td>
-        <td class="td-num" style="font-size:11px;">${t.km}</td>
-        <td class="td-num" style="font-size:11px;font-family:var(--mono);">${fmt(kmMontantTrajet(t.km, v.taux))} €</td>
-        <td style="text-align:center;white-space:nowrap;">${comptabilise?'':`
-          <button class="btn btn-sm btn-icon" onclick="_kmEditingTrajetId='${t.id}';renderKmSaisieMois();" style="padding:1px 4px;font-size:9px;">✎</button>
-          <button class="btn btn-sm btn-danger btn-icon" onclick="removeKmTrajet('${t.id}')" style="padding:1px 4px;font-size:9px;">✕</button>`}</td>
-      </tr>`;
-    }).join('');
-
-    const addRow = comptabilise ? '' : `<tr>
-      <td><input type="date" id="km-new-date-${v.id}" style="width:130px;font-family:var(--mono);font-size:10px;"></td>
-      <td><input type="text" id="km-new-lieu-${v.id}" placeholder="Lieu" style="width:100%;"></td>
-      <td><input type="text" id="km-new-motif-${v.id}" placeholder="Motif" style="width:100%;"></td>
-      <td><input type="number" step="0.1" id="km-new-km-${v.id}" placeholder="Km" oninput="document.getElementById('km-new-montant-${v.id}').textContent=fmt(kmMontantTrajet(parseFloat(this.value)||0,${v.taux||0}))+' €'" style="width:70px;font-family:var(--mono);text-align:right;"></td>
-      <td class="td-num" id="km-new-montant-${v.id}" style="font-family:var(--mono);color:var(--text2);">0,00 €</td>
-      <td style="text-align:center;"><button class="btn btn-sm btn-primary" onclick="addKmTrajet('${v.id}')">+</button></td>
-    </tr>`;
-
-    return `<div style="margin-bottom:16px;">
-      <div style="font-size:11px;font-weight:700;color:var(--cyan);margin-bottom:6px;">${v.nom} <span style="color:var(--text2);font-weight:400;">(${v.taux||0}€/km)</span> ${comptabilise?'<span style="color:var(--green);font-weight:400;">— comptabilisé</span>':''}</div>
-      <table style="font-size:11px;">
-        <thead><tr><th style="width:130px">Date</th><th>Lieu</th><th>Motif</th><th class="td-num" style="width:70px">Km</th><th class="td-num" style="width:80px">Montant</th><th style="width:60px"></th></tr></thead>
-        <tbody>${rows}${addRow}</tbody>
-        ${trajets.length ? `<tfoot><tr style="font-weight:700;"><td colspan="3" style="text-align:right;">TOTAL — ${totalKm} km</td><td class="td-num" colspan="3">${fmt(totalMontant)} €</td></tr></tfoot>` : ''}
-      </table>
-    </div>`;
-  }).join('');
-}
-
-function addKmTrajet(vehiculeId) {
   const mois = getKmSaisieMois();
-  const date = document.getElementById(`km-new-date-${vehiculeId}`).value;
-  const lieu = document.getElementById(`km-new-lieu-${vehiculeId}`).value.trim();
-  const motif = document.getElementById(`km-new-motif-${vehiculeId}`).value.trim();
-  const kmVal = parseFloat(document.getElementById(`km-new-km-${vehiculeId}`).value) || 0;
-  if(!date || !lieu || !motif || kmVal <= 0) { toast('Merci de renseigner date, lieu, motif et kilométrage','error'); return; }
+  const statut = document.getElementById('km-saisie-statut');
+  if(!mois) {
+    if(statut) statut.innerHTML = '';
+    body.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;padding:6px 0;">Tous les mois de l'exercice jusqu'à aujourd'hui sont comptabilisés — rien à saisir. Les mois passés se consultent via leur fiche ci-dessous.</div>`;
+    return;
+  }
+  const comptabilise = kmMoisComptabilise(km, mois);
+  if(statut) statut.innerHTML = comptabilise
+    ? `<span style="color:var(--green);">✓ comptabilisé — lecture seule</span>`
+    : '';
+
+  const actifs = kmVehiculesActifs(km);
+  if(!actifs.length && !km.trajets.some(t => t.mois === mois)) {
+    body.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;padding:6px 0;">Aucun véhicule paramétré. <button class="btn btn-sm" onclick="openKmParamsModal()" style="margin-left:6px;">⚙ Ajouter un véhicule</button></div>`;
+    return;
+  }
+
+  const [yy, mm] = mois.split('-');
+  const dMin = `${mois}-01`;
+  const dMax = `${mois}-${String(dernierJourMois(mois)).padStart(2,'0')}`;
+  const { trajets, totalKm, montant } = kmTotauxMois(km, mois);
+  const enterSave = (fn) => `onkeydown="if(event.key==='Enter'){event.preventDefault();${fn};}"`;
+
+  const rows = trajets.map(t => {
+    const taux = kmTauxTrajet(km, t);
+    if(_kmEditingTrajetId === t.id && !comptabilise) {
+      const p = `km-edit-${t.id}-`;
+      const ent = enterSave(`saveKmTrajetEdit('${t.id}')`);
+      return `<tr>
+        <td><input type="date" id="${p}date" value="${t.date}" min="${dMin}" max="${dMax}" ${ent} style="width:130px;font-family:var(--mono);font-size:10px;"></td>
+        <td><select id="${p}veh" onchange="kmMajMontantApercu('${p}')" ${ent} style="width:100%;font-size:10px;">${kmVehiculeOptions(km, t.vehiculeId)}</select></td>
+        <td><input type="text" id="${p}lieu" value="${(t.lieu||'').replace(/"/g,'&quot;')}" ${ent} style="width:100%;"></td>
+        <td><input type="text" id="${p}motif" value="${(t.motif||'').replace(/"/g,'&quot;')}" ${ent} style="width:100%;"></td>
+        <td><input type="number" step="0.1" id="${p}km" value="${t.km}" oninput="kmMajMontantApercu('${p}')" ${ent} style="width:70px;font-family:var(--mono);text-align:right;"></td>
+        <td class="td-num" id="${p}montant" style="font-family:var(--mono);">${fmt(kmMontantTrajet(t.km, taux))} €</td>
+        <td style="text-align:center;white-space:nowrap;">
+          <button class="btn btn-sm btn-primary btn-icon" onclick="saveKmTrajetEdit('${t.id}')" style="padding:1px 4px;font-size:9px;">✓</button>
+          <button class="btn btn-sm btn-icon" onclick="_kmEditingTrajetId=null;renderKmSaisieMois();" style="padding:1px 4px;font-size:9px;">✕</button>
+        </td>
+      </tr>`;
+    }
+    return `<tr>
+      <td style="font-family:var(--mono);font-size:10px;">${fmtDateFr(t.date)}</td>
+      <td style="font-size:11px;">${kmNomVehicule(km, t)}</td>
+      <td style="font-size:11px;">${t.lieu||''}</td>
+      <td style="font-size:11px;">${t.motif||''}</td>
+      <td class="td-num" style="font-size:11px;">${t.km}</td>
+      <td class="td-num" style="font-size:11px;font-family:var(--mono);">${fmt(kmMontantTrajet(t.km, taux))} €</td>
+      <td style="text-align:center;white-space:nowrap;">${comptabilise ? '' : `
+        <button class="btn btn-sm btn-icon" onclick="_kmEditingTrajetId='${t.id}';renderKmSaisieMois();" title="Modifier" style="padding:1px 4px;font-size:9px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="removeKmTrajet('${t.id}')" title="Supprimer" style="padding:1px 4px;font-size:9px;">✕</button>`}</td>
+    </tr>`;
+  }).join('');
+
+  let addRow = '';
+  if(!comptabilise && actifs.length) {
+    const defVeh = (_kmDernierVehiculeId && actifs.some(v => v.id === _kmDernierVehiculeId)) ? _kmDernierVehiculeId : actifs[0].id;
+    const p = 'km-new-';
+    const ent = enterSave('addKmTrajet()');
+    addRow = `<tr style="background:var(--bg2);">
+      <td><input type="date" id="${p}date" min="${dMin}" max="${dMax}" ${ent} style="width:130px;font-family:var(--mono);font-size:10px;"></td>
+      <td><select id="${p}veh" onchange="kmMajMontantApercu('${p}')" ${ent} style="width:100%;font-size:10px;">${kmVehiculeOptions(km, defVeh)}</select></td>
+      <td><input type="text" id="${p}lieu" placeholder="Lieu" ${ent} style="width:100%;"></td>
+      <td><input type="text" id="${p}motif" placeholder="Motif" ${ent} style="width:100%;"></td>
+      <td><input type="number" step="0.1" id="${p}km" placeholder="Km" oninput="kmMajMontantApercu('${p}')" ${ent} style="width:70px;font-family:var(--mono);text-align:right;"></td>
+      <td class="td-num" id="${p}montant" style="font-family:var(--mono);color:var(--text2);">0,00 €</td>
+      <td style="text-align:center;"><button class="btn btn-sm btn-primary" onclick="addKmTrajet()" title="Ajouter (ou touche Entrée)">+</button></td>
+    </tr>`;
+  }
+
+  const vide = !trajets.length && comptabilise
+    ? `<tr><td colspan="7" style="font-size:11px;color:var(--text2);font-style:italic;text-align:center;">Mois marqué sans frais.</td></tr>` : '';
+
+  body.innerHTML = `<table style="font-size:11px;table-layout:fixed;width:100%;">
+    <colgroup><col style="width:140px"><col style="width:190px"><col><col><col style="width:80px"><col style="width:90px"><col style="width:70px"></colgroup>
+    <thead><tr><th>Date</th><th>Véhicule</th><th>Lieu</th><th>Motif</th><th class="td-num">Km</th><th class="td-num">Montant</th><th></th></tr></thead>
+    <tbody>${rows}${vide}${addRow}</tbody>
+    ${trajets.length ? `<tfoot><tr style="font-weight:700;"><td colspan="4" style="text-align:right;">TOTAL ${moisLabelFromYYYYMM(mois).toUpperCase()}</td><td class="td-num">${totalKm} km</td><td class="td-num">${fmt(montant)} €</td><td></td></tr></tfoot>` : ''}
+  </table>`;
+}
+function kmLireTrajetForm(prefix, mois) {
+  const date = document.getElementById(prefix+'date').value;
+  const vehiculeId = document.getElementById(prefix+'veh').value;
+  const lieu = document.getElementById(prefix+'lieu').value.trim();
+  const motif = document.getElementById(prefix+'motif').value.trim();
+  const kmVal = parseFloat(document.getElementById(prefix+'km').value) || 0;
+  if(!date || !vehiculeId || !lieu || !motif || kmVal <= 0) { toast('Merci de renseigner date, véhicule, lieu, motif et kilométrage','error'); return null; }
+  if(date.slice(0,7) !== mois) { toast(`La date doit être comprise dans le mois de ${moisLabelFromYYYYMM(mois)}`,'error'); return null; }
+  return { date, vehiculeId, lieu, motif, km: kmVal };
+}
+function addKmTrajet() {
   const km = ensureKm();
-  km.trajets.push({id:crypto.randomUUID(), mois, vehiculeId, date, lieu, motif, km:kmVal});
+  const mois = getKmSaisieMois();
+  if(kmMoisComptabilise(km, mois)) { toast('Mois déjà comptabilisé','error'); return; }
+  const data = kmLireTrajetForm('km-new-', mois);
+  if(!data) return;
+  const v = kmVehicule(km, data.vehiculeId);
+  km.trajets.push({ id: crypto.randomUUID(), mois, ...data, vehiculeNom: v ? v.nom : '' });
+  _kmDernierVehiculeId = data.vehiculeId;
   saveDB();
   renderKmSaisieMois();
+  renderKmFichesList();
+  setTimeout(() => document.getElementById('km-new-date')?.focus(), 0);
 }
 function removeKmTrajet(id) {
   const km = ensureKm();
   km.trajets = km.trajets.filter(t => t.id !== id);
   saveDB();
   renderKmSaisieMois();
+  renderKmFichesList();
 }
 function saveKmTrajetEdit(id) {
   const km = ensureKm();
   const t = km.trajets.find(x => x.id === id);
   if(!t) return;
-  const date = document.getElementById(`km-edit-date-${id}`).value;
-  const lieu = document.getElementById(`km-edit-lieu-${id}`).value.trim();
-  const motif = document.getElementById(`km-edit-motif-${id}`).value.trim();
-  const kmVal = parseFloat(document.getElementById(`km-edit-km-${id}`).value) || 0;
-  if(!date || !lieu || !motif || kmVal <= 0) { toast('Merci de renseigner date, lieu, motif et kilométrage','error'); return; }
-  Object.assign(t, {date, lieu, motif, km:kmVal});
+  const data = kmLireTrajetForm(`km-edit-${id}-`, t.mois);
+  if(!data) return;
+  const v = kmVehicule(km, data.vehiculeId);
+  Object.assign(t, data, { vehiculeNom: v ? v.nom : (t.vehiculeNom || '') });
   _kmEditingTrajetId = null;
   saveDB();
   renderKmSaisieMois();
+  renderKmFichesList();
 }
 
-// Construit le HTML de la fiche kilométrique (format paysage, logo, charte orange)
-function buildFicheKmHtml(v, mois, trajets, totalKm, montant) {
+// ── Fiche papier du mois (tous véhicules sur une seule fiche, format paysage) ──
+function buildFicheKmMoisHtml(km, mois, trajets, totalKm, montant) {
+  const td = 'padding:5px 8px;border:1px solid #ccc;';
+  const th = td + 'font-weight:700;background:#fde8df;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+  const orange = 'background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
   return `<div style="font-family:Arial,sans-serif;max-width:1000px;margin:0 auto;padding:20px;color:#111;">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
       <img src="${LOGO_PLACEHOLDER}" style="width:60px;height:auto;">
@@ -9399,111 +9521,121 @@ function buildFicheKmHtml(v, mois, trajets, totalKm, montant) {
       </div>
     </div>
     <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
-      <tr><td colspan="5" style="background:#e84b0f;color:#fff;font-weight:700;text-align:center;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">FRAIS KILOMÉTRIQUES — ${v.nom.toUpperCase()} — ${moisLabelFromYYYYMM(mois).toUpperCase()} — BARÈME ${v.taux}€/KM</td></tr>
+      <tr><td colspan="7" style="${orange}text-align:center;">FRAIS KILOMÉTRIQUES — ${moisLabelFromYYYYMM(mois).toUpperCase()}</td></tr>
       <tr>
-        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#fde8df;">Date</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#fde8df;">Lieu</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#fde8df;">Motif</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#fde8df;text-align:right;">Km</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;font-weight:700;background:#fde8df;text-align:right;">Montant</td>
+        <td style="${th}">Date</td><td style="${th}">Véhicule</td><td style="${th}">Lieu</td><td style="${th}">Motif</td>
+        <td style="${th}text-align:right;">Km</td><td style="${th}text-align:right;">Barème</td><td style="${th}text-align:right;">Montant</td>
       </tr>
-      ${trajets.map(t=>`<tr>
-        <td style="padding:5px 8px;border:1px solid #ccc;">${fmtDateFr(t.date)}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;">${t.lieu}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;">${t.motif}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${t.km}</td>
-        <td style="padding:5px 8px;border:1px solid #ccc;text-align:right;">${fmt(kmMontantTrajet(t.km, v.taux))}€</td>
-      </tr>`).join('')}
-      <tr><td colspan="3" style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL</td>
-      <td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${totalKm} km</td>
-      <td style="background:#e84b0f;color:#fff;font-weight:700;padding:8px;text-align:right;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${fmt(montant)}€</td></tr>
+      ${trajets.map(t => { const taux = kmTauxTrajet(km, t); return `<tr>
+        <td style="${td}">${fmtDateFr(t.date)}</td>
+        <td style="${td}">${kmNomVehicule(km, t)}</td>
+        <td style="${td}">${t.lieu||''}</td>
+        <td style="${td}">${t.motif||''}</td>
+        <td style="${td}text-align:right;">${t.km}</td>
+        <td style="${td}text-align:right;">${String(taux).replace('.',',')} €/km</td>
+        <td style="${td}text-align:right;">${fmt(kmMontantTrajet(t.km, taux))}€</td>
+      </tr>`; }).join('')}
+      <tr><td colspan="4" style="${orange}">TOTAL</td>
+      <td style="${orange}text-align:right;">${totalKm} km</td>
+      <td style="${orange}"></td>
+      <td style="${orange}text-align:right;">${fmt(montant)}€</td></tr>
     </table>
     ${rptFooter()}
   </div>`;
 }
-
-// Récupère (ou crée si besoin) la fiche non comptabilisée d'un véhicule pour un mois donné
-function getOrBuildKmFiche(km, v, mois) {
-  let fiche = km.fiches.find(f => f.mois === mois && f.vehiculeId === v.id);
-  if(fiche && fiche.comptabilise && fiche.docHtml) return fiche; // déjà comptabilisée et le document existe, on ne la régénère pas
-  const trajets = km.trajets.filter(t => t.mois === mois && t.vehiculeId === v.id).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-  if(!trajets.length) return fiche || null;
-  const totalKm = trajets.reduce((s,t)=>s+(t.km||0),0);
-  const montant = Math.round(trajets.reduce((s,t)=>s+kmMontantTrajet(t.km, v.taux),0)*100)/100;
-  if(montant <= 0) return fiche || null;
-  const html = buildFicheKmHtml(v, mois, trajets, totalKm, montant);
+// Fiche mensuelle (nouveau format, sans vehiculeId). Une fiche comptabilisée est figée.
+function getOrBuildKmFicheMois(km, mois) {
+  let fiche = km.fiches.find(f => f.mois === mois && !f.vehiculeId);
+  if(fiche && fiche.comptabilise && fiche.docHtml) return fiche;
+  const { trajets, totalKm, montant } = kmTotauxMois(km, mois);
+  if(!trajets.length || montant <= 0) return fiche || null;
+  const html = buildFicheKmMoisHtml(km, mois, trajets, totalKm, montant);
+  const docTitle = `Fiche_KM_${mois}`;
   if(fiche) {
-    // Si déjà comptabilisée (fiche archivée régénérée pour consultation), on ne touche pas au montant figé, juste au HTML
-    if(fiche.comptabilise) { fiche.docHtml = html; fiche.docTitle = `Fiche_KM_${v.nom}_${mois}`; }
-    else Object.assign(fiche, {total:montant, totalKm, docHtml:html, docTitle:`Fiche_KM_${v.nom}_${mois}`});
+    if(fiche.comptabilise) Object.assign(fiche, { docHtml: html, docTitle });
+    else Object.assign(fiche, { total: montant, totalKm, docHtml: html, docTitle, archived: false });
   } else {
-    fiche = {id:crypto.randomUUID(), mois, vehiculeId:v.id, vehiculeNom:v.nom, dateEmission:new Date().toISOString().slice(0,10), total:montant, totalKm, docHtml:html, docTitle:`Fiche_KM_${v.nom}_${mois}`, comptabilise:false};
+    fiche = { id: crypto.randomUUID(), mois, vehiculeId: null, dateEmission: new Date().toISOString().slice(0,10), total: montant, totalKm, docHtml: html, docTitle, comptabilise: false };
     km.fiches.push(fiche);
   }
+  // Les anciennes fiches "par véhicule" non comptabilisées de ce mois ne sont plus utiles
+  km.fiches = km.fiches.filter(f => !(f.mois === mois && f.vehiculeId && !f.comptabilise));
   return fiche;
 }
 
-// ── Édition : génère/ouvre les fiches du mois, sans passer d'écriture ──
-function editerFichesKmMois() {
-  const km = ensureKm();
-  const mois = getKmSaisieMois();
-  let count = 0;
-  km.vehicules.forEach(v => {
-    const fiche = getOrBuildKmFiche(km, v, mois);
-    if(!fiche) return;
-    printDoc(fiche.docHtml, fiche.docTitle, false, true);
-    count++;
-  });
-  if(!count) { toast('Aucun trajet renseigné pour ce mois','error'); return; }
-  saveDB();
-  renderKmFichesList();
-  toast(`${count} fiche(s) éditée(s)`,'success');
-}
-
-// ── Comptabilisation : passe l'écriture pour chaque fiche du mois pas encore comptabilisée ──
-function comptabiliserKmMois() {
+// ── Comptabilisation (déclenchée par le carré orange) ──
+let _kmComptaPending = null;
+function askComptabiliserKmMois(mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const km = ensureKm();
-  const mois = getKmSaisieMois();
+  const { trajets, totalKm, montant } = kmTotauxMois(km, mois);
+  const title = document.getElementById('km-compta-title');
+  const msg = document.getElementById('km-compta-msg');
+  const btn = document.getElementById('km-compta-btn');
+  if(trajets.length && montant > 0) {
+    _kmComptaPending = { mois, mode: 'compta' };
+    title.textContent = '✓ COMPTABILISER ' + moisLabelFromYYYYMM(mois).toUpperCase();
+    msg.innerHTML = `${trajets.length} trajet(s) — <strong>${totalKm} km</strong> — <strong style="color:var(--cyan);">${fmt(montant)} €</strong><br><span style="color:var(--text2);font-size:11px;">L'écriture sera passée au ${fmtDateFr(mois + '-' + String(dernierJourMois(mois)).padStart(2,'0'))} (pièce KM_${mois.slice(5,7)}/${mois.slice(2,4)}) et la saisie du mois sera verrouillée.</span>`;
+    btn.textContent = 'COMPTABILISER';
+  } else {
+    _kmComptaPending = { mois, mode: 'sansFrais' };
+    title.textContent = '⚙ ' + moisLabelFromYYYYMM(mois).toUpperCase() + ' — AUCUN TRAJET';
+    msg.innerHTML = `Aucun trajet n'est saisi pour ${moisLabelFromYYYYMM(mois)}.<br>Marquer ce mois comme <strong>sans frais</strong> ? Aucune écriture ne sera passée.`;
+    btn.textContent = 'MARQUER SANS FRAIS';
+  }
+  document.getElementById('km-compta-modal').style.display = 'flex';
+}
+function closeKmComptaModal() { document.getElementById('km-compta-modal').style.display = 'none'; _kmComptaPending = null; }
+function confirmKmCompta() {
+  if(!_kmComptaPending) return;
+  const { mois, mode } = _kmComptaPending;
+  closeKmComptaModal();
+  if(mode === 'compta') comptabiliserKmMois(mois);
+  else {
+    const km = ensureKm();
+    if(!km.moisMarquesSansEcriture.includes(mois)) km.moisMarquesSansEcriture.push(mois);
+    saveDB();
+    toast(`${moisLabelFromYYYYMM(mois)} marqué sans frais`,'success');
+    renderKmModule();
+  }
+}
+function comptabiliserKmMois(mois) {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  const km = ensureKm();
+  if(!mois) mois = getKmSaisieMois();
   if(!km.compteDebit || !km.compteCredit) { toast('Renseignez les comptes à débiter et créditer (⚙ Paramètres)','error'); return; }
-  if(km.crediteDouble && !km.compteCredit2) { toast('Renseignez le 2ᵉ compte à créditer','error'); return; }
+  if(km.crediteDouble && !km.compteCredit2) { toast('Renseignez le 2ᵉ compte à créditer (⚙ Paramètres)','error'); return; }
+  if(kmMoisComptabilise(km, mois)) { toast('Mois déjà comptabilisé','error'); return; }
+  const fiche = getOrBuildKmFicheMois(km, mois);
+  if(!fiche) { toast('Aucun trajet à comptabiliser pour ce mois','error'); return; }
 
-  const [yy,mm] = mois.split('-');
+  const [yy, mm] = mois.split('-');
   const dateEcr = mois + '-' + String(dernierJourMois(mois)).padStart(2,'0');
-  const [anneeNum, moisNum] = mois.split('-').map(Number);
-  const moisAnneeTxt = `${MOIS_LABELS[moisNum-1]} ${anneeNum}`;
-  let count = 0;
-
-  km.vehicules.forEach(v => {
-    const fiche = getOrBuildKmFiche(km, v, mois);
-    if(!fiche || fiche.comptabilise) return;
-
-    const libelleEcriture = `Kilomètres - ${v.nom} - ${moisAnneeTxt}`;
-    const numDoc = 'KM/'+mm+'/'+yy.slice(-2);
-    const io = Date.now() + count;
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc, debit:fiche.total, credit:0});
-
-    if(km.crediteDouble && km.compteCredit2) {
-      // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur,
-      // le 2e le solde exact (toujours 2 décimales, jamais d'écart sur le total).
-      const part1 = Math.ceil(fiche.total * 50) / 100;
-      const part2 = Math.round((fiche.total - part1) * 100) / 100;
-      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
-      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit2, libelleCompte:getLib(km.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
-    } else {
-      DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:fiche.total});
-    }
-
-    fiche.comptabilise = true;
-    count++;
-  });
-
-  if(!count) { toast('Aucun trajet à comptabiliser pour ce mois (ou déjà fait)','error'); return; }
+  const libelleEcriture = `Kilomètres - ${MOIS_LABELS[parseInt(mm,10)-1]} ${yy}`;
+  const numDoc = 'KM_' + mm + '/' + yy.slice(-2);
+  const io = Date.now();
+  const total = fiche.total;
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc, debit:total, credit:0});
+  if(km.crediteDouble && km.compteCredit2) {
+    // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur, le 2e le solde exact.
+    const part1 = Math.ceil(total * 50) / 100;
+    const part2 = Math.round((total - part1) * 100) / 100;
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit2, libelleCompte:getLib(km.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
+  } else {
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:total});
+  }
+  fiche.comptabilise = true;
+  fiche.dateEmission = new Date().toISOString().slice(0,10);
+  km.moisMarquesSansEcriture = km.moisMarquesSansEcriture.filter(m => m !== mois);
   renum(); saveDB(); updateNavCounts();
-  toast(`${count} fiche(s) kilométrique(s) comptabilisée(s) pour ${moisLabelFromYYYYMM(mois)}`,'success');
+  notifierPieceGeneree('km', numDoc, libelleEcriture, dateEcr);
+  toast(`Frais kilométriques de ${moisLabelFromYYYYMM(mois)} comptabilisés (${fmt(total)} €)`,'success');
+  _kmEditingTrajetId = null;
   renderKmModule();
 }
 
+// Conservé pour compatibilité (ancienne modale "marquer un mois")
 function openKmMarquerModal() {
   populateMoisAnneeSelects('km-marquer-mois-sel', 'km-marquer-annee-sel');
   const [yy, mm] = moisActuelYYYYMM().split('-');
@@ -9524,27 +9656,67 @@ function confirmKmMarquer() {
   renderKmModule();
 }
 
+// ③ Liste des fiches : une ligne par mois ayant des trajets (comme la liste des documents en gestion locative).
+// Les anciennes fiches comptabilisées "par véhicule" restent listées telles quelles.
 function renderKmFichesList() {
   const zone = document.getElementById('km-fiches-list');
   if(!zone) return;
   const km = ensureKm();
-  const list = km.fiches.filter(f => !f.archived).slice().sort((a,b) => (b.mois||'').localeCompare(a.mois||'') || (a.vehiculeNom||'').localeCompare(b.vehiculeNom||''));
-  if(!list.length) { zone.innerHTML = ''; return; }
-  zone.innerHTML = `<div style="font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--text2);margin-bottom:8px;">FICHES KILOMÉTRIQUES GÉNÉRÉES</div>
-    <div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
-      ${list.map(f => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
-        <span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewKmFiche('${f.id}')">📄 ${f.vehiculeNom||''} — ${moisLabelFromYYYYMM(f.mois)}</span>
-        <span style="color:var(--text2);">${f.totalKm||0} km — ${fmt(f.total)} €</span>
-        <span style="width:90px;font-size:9px;${f.comptabilise?'color:var(--green);':'color:var(--amber);'}">${f.comptabilise?'✓ comptabilisée':'à comptabiliser'}</span>
-        <button class="btn btn-sm" onclick="askArchiveKmFiche('${f.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
-      </div>`).join('')}
+  const moisActuel = moisActuelYYYYMM();
+  const lignes = [];
+  const moisSet = new Set(km.trajets.map(t => t.mois));
+  km.fiches.filter(f => !f.vehiculeId).forEach(f => moisSet.add(f.mois));
+  [...moisSet].forEach(mois => {
+    const fiche = km.fiches.find(f => f.mois === mois && !f.vehiculeId);
+    const legacy = km.fiches.filter(f => f.mois === mois && f.vehiculeId && f.comptabilise);
+    if(legacy.length) {
+      legacy.filter(f => !f.archived).forEach(f => lignes.push({ mois, legacy: f }));
+      return;
+    }
+    if(fiche && fiche.archived) return;
+    const done = kmMoisComptabilise(km, mois);
+    const tot = (fiche && fiche.comptabilise) ? { totalKm: fiche.totalKm, montant: fiche.total } : kmTotauxMois(km, mois);
+    if(!done && !tot.montant) return;
+    lignes.push({ mois, fiche, done, totalKm: tot.totalKm, montant: tot.montant });
+  });
+  lignes.sort((a,b) => b.mois.localeCompare(a.mois));
+  if(!lignes.length) { zone.innerHTML = `<div style="font-size:11px;color:var(--text2);font-style:italic;">Aucune fiche pour le moment — elles apparaissent dès qu'un trajet est saisi.</div>`; return; }
+
+  zone.innerHTML = `<div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">` + lignes.map(l => {
+    if(l.legacy) {
+      const f = l.legacy;
+      return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line1);border-left:3px solid var(--green);font-size:11px;">
+        <span style="flex:1;"><span style="cursor:pointer;color:var(--cyan);" onclick="viewKmFiche('${f.id}')" title="Ouvrir la fiche">📄 Fiche — ${moisLabelFromYYYYMM(f.mois)}</span> <span style="color:var(--text2);">(${f.vehiculeNom||''}, ancien format)</span></span>
+        <span style="color:var(--text2);font-family:var(--mono);">${f.totalKm||0} km — ${fmt(f.total)} €</span>
+        <span style="width:110px;font-size:9px;color:var(--green);">✓ comptabilisée</span>
+        <button class="btn btn-sm btn-icon" onclick="askArchiveKmFiche('${f.id}')" title="Archiver" style="padding:1px 6px;font-size:9px;">📦</button>
+      </div>`;
+    }
+    let bar, statut;
+    if(l.done) { bar = 'var(--green)'; statut = '<span style="color:var(--green);">✓ comptabilisée</span>'; }
+    else if(l.mois < moisActuel) { bar = 'var(--amber)'; statut = '<span style="color:var(--amber);">à comptabiliser</span>'; }
+    else { bar = 'var(--cyan)'; statut = '<span style="color:var(--cyan);">mois en cours</span>'; }
+    const archiveBtn = (l.done && l.fiche) ? `<button class="btn btn-sm btn-icon" onclick="askArchiveKmFiche('${l.fiche.id}')" title="Archiver" style="padding:1px 6px;font-size:9px;">📦</button>` : `<span style="display:inline-block;width:26px;"></span>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line1);border-left:3px solid ${bar};font-size:11px;">
+      <span style="flex:1;cursor:pointer;color:var(--cyan);" onclick="viewKmFicheMois('${l.mois}')" title="Ouvrir la fiche">📄 Fiche — ${moisLabelFromYYYYMM(l.mois)}</span>
+      <span style="color:var(--text2);font-family:var(--mono);">${l.totalKm||0} km — ${fmt(l.montant)} €</span>
+      <span style="width:110px;font-size:9px;">${statut}</span>
+      ${archiveBtn}
     </div>`;
+  }).join('') + `</div>`;
+}
+function viewKmFicheMois(mois) {
+  const km = ensureKm();
+  const fiche = getOrBuildKmFicheMois(km, mois);
+  if(!fiche || !fiche.docHtml) { toast('Aucun trajet pour ce mois','error'); return; }
+  saveDB();
+  printDoc(fiche.docHtml, fiche.docTitle || 'Fiche_KM', false, true);
 }
 function viewKmFiche(id) {
   const km = ensureKm();
   const f = km.fiches.find(x => x.id === id);
   if(!f || !f.docHtml) { toast('Document introuvable','error'); return; }
-  printDoc(f.docHtml, f.docTitle || 'Fiche_KM', false);
+  printDoc(f.docHtml, f.docTitle || 'Fiche_KM', false, true);
 }
 
 // ── Archivage générique (fiches km, PV d'AGO...) ──
@@ -10097,7 +10269,7 @@ function askDecomptabiliserEmpruntMois(id, mois) {
 }
 function askDecomptabiliserKmMois(mois) {
   _decomptaPending = {type:'km', mois};
-  document.getElementById('decompta-confirm-msg').innerHTML = `Annuler la comptabilisation des frais kilométriques de <strong>${moisLabelFromYYYYMM(mois)}</strong> ?<br>L'écriture et la fiche correspondantes seront supprimées.`;
+  document.getElementById('decompta-confirm-msg').innerHTML = `Annuler la comptabilisation des frais kilométriques de <strong>${moisLabelFromYYYYMM(mois)}</strong> ?<br>L'écriture sera supprimée et la saisie du mois redeviendra modifiable (les trajets sont conservés).`;
   document.getElementById('decompta-confirm-modal').style.display = 'flex';
 }
 function closeDecomptaConfirmModal() { document.getElementById('decompta-confirm-modal').style.display = 'none'; _decomptaPending = null; }
@@ -10114,7 +10286,7 @@ function confirmDecompta() {
 function decomptabiliserKmMois(mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const km = ensureKm();
-  DB.ecritures = DB.ecritures.filter(e => !(e.date && e.date.startsWith(mois) && e.numDoc && e.numDoc.startsWith('KM/')));
+  DB.ecritures = DB.ecritures.filter(e => !(e.date && e.date.startsWith(mois) && e.numDoc && (e.numDoc.startsWith('KM_') || e.numDoc.startsWith('KM/'))));
   km.fiches.forEach(f => { if(f.mois === mois) f.comptabilise = false; });
   km.moisMarquesSansEcriture = km.moisMarquesSansEcriture.filter(m => m !== mois);
   renum(); saveDB(); updateNavCounts();
