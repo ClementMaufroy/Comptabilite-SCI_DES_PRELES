@@ -2742,12 +2742,38 @@ function setPostItFilter(v) {
 }
 
 // Coche/décoche une pièce
+// Regroupe les entrées du post-it par n° de pièce : une même pièce papier
+// (ex. RBANQUE_09/26) peut être liée à plusieurs écritures → une seule ligne.
+function grouperPostItParPiece(list) {
+  const map = new Map();
+  list.forEach(p => {
+    const k = p.numDoc || ('__' + p.id);
+    if(!map.has(k)) map.set(k, []);
+    map.get(k).push(p);
+  });
+  return [...map.values()].map(items => {
+    const first = items.slice().sort((a,b) => (b.dateAjout||'').localeCompare(a.dateAjout||''))[0];
+    // Nombre d'écritures distinctes portant ce n° de pièce dans le journal
+    const ios = new Set((DB.ecritures||[]).filter(e => e.numDoc && e.numDoc === first.numDoc).map(e => e._io ?? e.num));
+    return {
+      ref: first,
+      items,
+      coche: items.every(x => x.coche),
+      dateAjout: first.dateAjout || '',
+      nbEcritures: Math.max(items.length, ios.size)
+    };
+  });
+}
+
 function togglePieceFormalisee(id) {
   const list = ensurePiecesAFormaliser();
   const p = list.find(x => x.id === id);
   if(!p) return;
-  p.coche = !p.coche;
-  p.dateCochage = p.coche ? new Date().toISOString() : null;
+  // Toutes les entrées de la même pièce sont cochées / décochées ensemble
+  const freres = p.numDoc ? list.filter(x => x.numDoc === p.numDoc) : [p];
+  const nouvelEtat = !freres.every(x => x.coche);
+  const now = new Date().toISOString();
+  freres.forEach(x => { x.coche = nouvelEtat; x.dateCochage = nouvelEtat ? now : null; });
   saveDB();
   renderPostItPieces();
 }
@@ -2770,8 +2796,10 @@ function renderPostItPieces() {
   purgerPostItPieces();
   const list = ensurePiecesAFormaliser();
   const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
-  const nbNonCocheesToutes = list.filter(p => !p.coche).length;
-  const nbNonCochees = filtered.filter(p => !p.coche).length;
+  const groupesTous = grouperPostItParPiece(list);
+  const groupes = grouperPostItParPiece(filtered);
+  const nbNonCocheesToutes = groupesTous.filter(g => !g.coche).length;
+  const nbNonCochees = groupes.filter(g => !g.coche).length;
 
   // 1) Mise à jour du badge du bouton d'entête (compteur toutes pièces, indépendant du filtre)
   const badge = document.getElementById('btn-postit-badge');
@@ -2817,19 +2845,29 @@ function renderPostItPieces() {
     bodyHtml = '<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à formaliser.</div>';
   } else {
     // Non cochées d'abord (par date décroissante), puis cochées
-    const sorted = filtered.slice().sort((a,b) => {
+    const sorted = groupes.slice().sort((a,b) => {
       if(a.coche !== b.coche) return a.coche ? 1 : -1;
       return (b.dateAjout||'').localeCompare(a.dateAjout||'');
     });
     bodyHtml = `<div style="max-height:400px;overflow-y:auto;padding:4px 6px;">
-      ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
-        <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
+      ${sorted.map(g => {
+        const p = g.ref;
+        const multi = g.nbEcritures > 1;
+        const barre = g.coche ? 'text-decoration:line-through;' : '';
+        const m = multi ? null : montantPiecePostIt(p);
+        const droite = m !== null ? `<span style="white-space:nowrap;">${fmt(m)} €</span>` : '';
+        const details = multi
+          ? `<div style="color:${g.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;font-style:italic;${barre}">${g.nbEcritures} écritures liées à cette pièce</div>`
+          : `<div style="color:${g.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;${barre}">${p.libelle||''}</div>
+          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>`;
+        return `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${g.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
+        <input type="checkbox" ${g.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
         <div style="flex:1;font-size:11px;line-height:1.35;min-width:0;">
-          <div style="font-family:var(--mono);font-weight:600;color:${p.coche?'var(--text2)':'var(--amber)'};${p.coche?'text-decoration:line-through;':''}display:flex;justify-content:space-between;gap:8px;"><span>${p.numDoc}</span>${(() => { const m = montantPiecePostIt(p); return m !== null ? `<span style="white-space:nowrap;">${fmt(m)} €</span>` : ''; })()}</div>
-          <div style="color:${p.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;${p.coche?'text-decoration:line-through;':''}">${p.libelle||''}</div>
-          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>
+          <div style="font-family:var(--mono);font-weight:600;color:${g.coche?'var(--text2)':'var(--amber)'};${barre}display:flex;justify-content:space-between;gap:8px;"><span>${p.numDoc}</span>${droite}</div>
+          ${details}
         </div>
-      </label>`).join('')}
+      </label>`;
+      }).join('')}
     </div>`;
   }
 
@@ -9995,12 +10033,12 @@ function postEcheancierMois(ech, mois) {
   // Format n° pièce (mêmes règles que le module Emprunts) :
   //   1) type + numeroAuto  → PREFIXE/NNN
   //   2) type + nomPiece    → PREFIXE_nomPiece
-  //   3) type seul          → PREFIXE/MM/AA (historique — conserve le format existant)
+  //   3) type seul          → PREFIXE_MM/AA (même format que la gestion locative)
   //   4) nomPiece seul      → nomPiece
   let numDoc;
   if(ech.typePiece && ech.numeroAuto) numDoc = getNextAutoPieceNumber(ech.typePiece);
   else if(ech.typePiece && ech.nomPiece) numDoc = `${ech.typePiece}_${ech.nomPiece}`;
-  else if(ech.typePiece) numDoc = `${ech.typePiece}/${mm}/${yy.slice(-2)}`;
+  else if(ech.typePiece) numDoc = `${ech.typePiece}_${mm}/${yy.slice(-2)}`;
   else if(ech.nomPiece) numDoc = ech.nomPiece;
   else numDoc = '';
   const libelleEcriture = buildLibelleEcheance(ech, mois);
@@ -10235,19 +10273,45 @@ async function handleEmpruntImport(evt) {
   renderEmprunts();
 }
 
-function empruntMoisGridHtml(emp) {
+// Colonnes d'années communes à tous les emprunts (pour que les années soient alignées d'un emprunt à l'autre).
+// Règle : on garde l'année en cours et l'année N-1 ; les années plus anciennes ne sont conservées
+// que si au moins un emprunt y a encore un mois non comptabilisé. Les années futures restent affichées.
+function anneesCommunesEmprunts() {
+  const anneeN = new Date().getFullYear();
+  const moisActuel = moisActuelYYYYMM();
+  const toutes = new Set();
+  const anciennesAGarder = new Set();
+  ensureEmpruntsArray().forEach(emp => {
+    const done = emp.moisComptabilises || [];
+    (emp.tableau || []).forEach(r => {
+      const y = parseInt(r.mois.split('-')[0], 10);
+      toutes.add(y);
+      if(y < anneeN - 1 && !done.includes(r.mois) && r.mois <= moisActuel) anciennesAGarder.add(y);
+    });
+  });
+  if(!toutes.size) return [];
+  const min = Math.min(...toutes), max = Math.max(...toutes);
+  const res = [];
+  for(let y = min; y <= max; y++) {
+    if(y >= anneeN - 1 || anciennesAGarder.has(y)) res.push(String(y));
+  }
+  return res;
+}
+
+function empruntMoisGridHtml(emp, anneesCommunes) {
   const tableau = emp.tableau || [];
   if(!tableau.length) return `<span style="font-size:10px;color:var(--text2);font-style:italic;">Aucun tableau importé</span>`;
   const done = emp.moisComptabilises || [];
   const moisActuel = moisActuelYYYYMM();
   const byMois = {};
   tableau.forEach(r => { byMois[r.mois] = r; });
-  const years = [...new Set(tableau.map(r => r.mois.split('-')[0]))].sort();
+  const years = (anneesCommunes && anneesCommunes.length) ? anneesCommunes : [...new Set(tableau.map(r => r.mois.split('-')[0]))].sort();
 
   const cell = (bg, fg, title, onclickAttr, cursor, content) =>
-    `<td style="padding:1px;border:none;"><span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:2px;background:${bg};color:${fg};font-size:7px;font-weight:700;font-family:var(--mono);cursor:${cursor};">${content}</span></td>`;
+    `<td style="padding:1px;border:none;text-align:center;"><span title="${title}"${onclickAttr} style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border-radius:2px;background:${bg};color:${fg};font-size:7px;font-weight:700;font-family:var(--mono);cursor:${cursor};">${content}</span></td>`;
 
-  let html = `<table style="border-collapse:collapse;"><thead><tr><td style="padding:0;border:none;"></td>${years.map(y=>`<td style="font-size:8px;color:var(--text2);text-align:center;padding:0 1px;border:none;">${y}</td>`).join('')}</tr></thead><tbody>`;
+  // Largeurs fixes : chaque colonne d'année fait exactement la même largeur sur tous les emprunts
+  let html = `<table style="border-collapse:collapse;table-layout:fixed;width:${14 + years.length*24}px;"><colgroup><col style="width:14px">${years.map(()=>'<col style="width:24px">').join('')}</colgroup><thead><tr><td style="padding:0;border:none;"></td>${years.map(y=>`<td style="font-size:8px;color:var(--text2);text-align:center;padding:0;border:none;">${y}</td>`).join('')}</tr></thead><tbody>`;
   for(let mIdx = 0; mIdx < 12; mIdx++) {
     const lettre = MOIS_LABELS[mIdx].charAt(0).toUpperCase();
     html += `<tr><td style="font-size:8px;color:var(--text2);text-align:right;padding:1px 3px 1px 0;border:none;">${lettre}</td>`;
@@ -10286,6 +10350,7 @@ function renderEmprunts() {
   document.querySelector('#tab-emprunts table').style.display = '';
 
   const moisActuel = moisActuelYYYYMM();
+  const anneesCommunes = anneesCommunesEmprunts();
   let totalCapitalRestant = 0;
 
   body.innerHTML = list.slice().sort((a,b) => (a.libelle||'').localeCompare(b.libelle||'')).map(emp => {
@@ -10311,7 +10376,7 @@ function renderEmprunts() {
       <td style="text-align:center;padding:8px 3px;overflow:hidden;">
         <button class="btn btn-sm" onclick="triggerEmpruntImport('${emp.id}')" title="Importer / remplacer le tableau d'amortissement" style="padding:1px 3px;font-size:8px;">${tableau.length?'REMPL.':'IMPORT'}</button>
       </td>
-      <td style="overflow-x:auto;max-width:0;">${empruntMoisGridHtml(emp)}</td>
+      <td style="overflow-x:auto;max-width:0;">${empruntMoisGridHtml(emp, anneesCommunes)}</td>
       <td style="text-align:center;white-space:nowrap;padding-top:8px;">
         ${btnMoisCourant}
         <button class="btn btn-sm btn-icon" onclick="openEmpruntMarquerModal('${emp.id}')" title="Marquer des mois comme déjà comptabilisés (sans écriture)" style="padding:1px 5px;font-size:10px;">⚙</button>
