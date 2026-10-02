@@ -1947,7 +1947,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div class="form-row mb8">
       <div class="form-field" style="grid-column:1/-1;">
         <label>Catégorie *</label>
-        <input type="text" id="ech-categorie" placeholder="Assurances PNO" oninput="genAcCategorieSearch('ech-categorie')" onkeydown="genAcCategorieKey(event,'ech-categorie')" onblur="genAcCategorieBlur('ech-categorie')" autocomplete="off">
+        <input type="text" id="ech-categorie" placeholder="Assurances PNO — cliquez pour choisir une catégorie existante" onfocus="genAcCategorieSearch('ech-categorie')" onclick="genAcCategorieSearch('ech-categorie')" oninput="genAcCategorieSearch('ech-categorie')" onkeydown="genAcCategorieKey(event,'ech-categorie')" onblur="genAcCategorieBlur('ech-categorie')" autocomplete="off">
       </div>
     </div>
     <div class="form-row c2 mb8">
@@ -9659,12 +9659,41 @@ function checkEcheanciersExpirationAuBoot() {
 }
 
 // ── Aperçu du mois ──
-// Bande visuelle : un point par mois de la période, coloré selon le statut — visible d'un coup d'œil
-function moisStripHtml(ech) {
-  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+// Bande visuelle : un carré par mois, coloré selon le statut.
+// Règles d'affichage :
+//  - les mois comptabilisés (verts) ne sont conservés que pour le mois en cours et le mois précédent ;
+//  - les mois passés non comptabilisés (orange) restent affichés sans limite d'antériorité ;
+//  - toutes les bandes partent d'un même mois de départ commun (moisDepartCommun), pour que
+//    les carrés d'un même mois soient alignés verticalement d'un échéancier à l'autre.
+function moisVisiblesEcheancier(ech) {
+  const done = ech.moisComptabilises || [];
+  const seuilVert = moisPrecedent(moisActuelYYYYMM());
+  return computeMoisRange(ech.periodeDebut, effectiveFin(ech))
+    .filter(m => !done.includes(m) || m >= seuilVert);
+}
+function moisDepartCommunEcheanciers() {
+  let depart = null;
+  ensureEcheanciersArray().forEach(ech => {
+    const v = moisVisiblesEcheancier(ech);
+    if(v.length && (!depart || v[0] < depart)) depart = v[0];
+  });
+  return depart;
+}
+function moisStripHtml(ech, moisDepart) {
+  const visibles = moisVisiblesEcheancier(ech);
   const done = ech.moisComptabilises || [];
   const moisActuel = moisActuelYYYYMM();
-  return `<div style="display:flex;flex-wrap:wrap;gap:3px;max-width:280px;">` + allMois.map(m => {
+  if(!visibles.length) return '';
+  const fin = visibles[visibles.length-1];
+  let cur = (moisDepart && moisDepart < visibles[0]) ? moisDepart : visibles[0];
+  const slots = [];
+  let guard = 0;
+  while(cur <= fin && guard < 480) { slots.push(cur); cur = moisSuivant(cur); guard++; }
+  return `<div style="display:flex;flex-wrap:wrap;gap:3px;max-width:280px;">` + slots.map(m => {
+    if(!visibles.includes(m)) {
+      // Case vide : mois hors période ou mois vert ancien masqué — conserve l'alignement
+      return `<span style="display:inline-block;width:17px;height:17px;"></span>`;
+    }
     const isDone = done.includes(m);
     const isFuture = m > moisActuel;
     const lettre = MOIS_LABELS[parseInt(m.split('-')[1],10)-1].charAt(0).toUpperCase();
@@ -9704,6 +9733,7 @@ function renderEcheanciers() {
     groups[cat].push(ech);
   });
   const sortedCats = Object.keys(groups).sort();
+  const moisDepart = moisDepartCommunEcheanciers();
 
   groupsWrap.innerHTML = sortedCats.map(cat => {
     const items = groups[cat].slice().sort((a,b) => (a.libelle||'').localeCompare(b.libelle||''));
@@ -9731,7 +9761,7 @@ function renderEcheanciers() {
         <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${ech.compteCredit}</td>
         <td style="font-family:var(--mono);font-size:9px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${[ech.typePiece,ech.nomPiece].filter(Boolean).join(' · ')}">${[ech.typePiece,ech.nomPiece].filter(Boolean).join(' · ')}</td>
         <td style="font-size:10px;white-space:nowrap;"${perExpire}>${periodeTxt}</td>
-        <td>${moisStripHtml(ech)}</td>
+        <td>${moisStripHtml(ech, moisDepart)}</td>
         <td style="text-align:center;white-space:nowrap;">
           ${retardBtn}
           ${btnMoisCourant}
