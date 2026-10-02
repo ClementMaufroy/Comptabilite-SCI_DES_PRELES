@@ -2381,9 +2381,9 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
         </div>
       </div>
       <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(42,235,255,0.06);border:1px solid rgba(42,235,255,0.2);border-radius:var(--radius);">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">OUVRIR L'EXERCICE SUIVANT</div>
-        <div id="cloture-next-existing" style="margin-bottom:10px;"></div>
-        <div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">OU CRÉER UN NOUVEL EXERCICE</div>
+        <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">CRÉER L'EXERCICE SUIVANT</div>
+        <div id="cloture-next-existing" style="display:none;"></div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">L'exercice suivant est toujours créé à neuf : balance d'ouverture et reprise des modules automatiques.</div>
         <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
           <div style="flex:1;min-width:100px;">
             <input type="text" id="cloture-next-name" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')clotureCreateNext()">
@@ -2647,9 +2647,9 @@ function handleBackupRestoreFile(evt) {
 
     // ── Cas 1 : exercice test → import dans le bac à sable ──
     if(isTestExercise(CURRENT_YEAR)) {
-      _pendingRestoreData = { data, mode: 'test', targetYear: String(CURRENT_YEAR) };
+      _pendingRestoreData = { data, mode: 'test', targetYear: String(CURRENT_YEAR), fileYear };
       document.getElementById('backup-restore-title').innerHTML = '🧪 CHARGER CETTE SAUVEGARDE DANS L\'EXERCICE TEST';
-      msg.innerHTML = `${infoTxt}<br><br>Le contenu du fichier va être chargé dans l'exercice test <strong style="color:#a78bfa;">${CURRENT_YEAR}</strong>, à la place de son contenu actuel.<br><br><span style="color:var(--green);">✓ Aucun vrai exercice n'est modifié${fileYear ? ` — l'exercice ${fileYear} dans Firebase reste strictement intact` : ''}.</span>`;
+      msg.innerHTML = `${infoTxt}<br><br>Le contenu du fichier va être chargé tel quel (données ${fileYear || 'du fichier'}, mêmes règles de dates) dans l'exercice test <strong style="color:#a78bfa;">${CURRENT_YEAR}</strong>, à la place de son contenu actuel.<br><br><span style="color:var(--green);">✓ Aucun vrai exercice n'est modifié${fileYear ? ` — l'exercice ${fileYear} dans Firebase reste strictement intact` : ''}.</span>`;
       btn.textContent = 'CHARGER DANS L\'EXERCICE TEST';
       btn.className = 'btn btn-primary';
       btn.disabled = false;
@@ -2701,7 +2701,7 @@ function handleBackupRestoreFile(evt) {
 function closeBackupRestoreModal() { document.getElementById('backup-restore-modal').style.display = 'none'; _pendingRestoreData = null; }
 async function confirmBackupRestore() {
   if(!_pendingRestoreData) return;
-  const { data, mode, targetYear } = _pendingRestoreData;
+  const { data, mode, targetYear, fileYear } = _pendingRestoreData;
 
   if(mode === 'test') {
     if(!isTestExercise(CURRENT_YEAR)) { toast('Exercice test introuvable','error'); return; }
@@ -2715,6 +2715,9 @@ async function confirmBackupRestore() {
     if(!DB.journalNums) DB.journalNums = {VE:1,HA:1,IMMO:1,OD:1,TRESO:1};
     if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], compteDebit:'', compteCredit:'', trajets:[], fiches:[], moisMarquesSansEcriture:[]};
     initDefaults();
+    // Les données gardent leur année comptable d'origine (ex. 2026), quel que soit le nom de l'exercice test
+    const anneeFichier = parseInt(copie._anneeComptable, 10) || parseInt(fileYear, 10);
+    if(!isNaN(anneeFichier)) DB._anneeComptable = anneeFichier;
     DB._status = 'open';
     setTestFlag(CURRENT_YEAR, true);
     EXERCISE_STATUS = 'open';
@@ -2778,6 +2781,16 @@ let lineIdCounter = 0;
 // EXERCISE STATE
 // ══════════════════════════════════════════════
 let CURRENT_YEAR = new Date().getFullYear();
+// Année COMPTABLE des données affichées. Par défaut = le nom de l'exercice (2026 → 2026).
+// Mais un exercice test peut contenir les données d'une autre année (ex. sauvegarde 2026 chargée
+// dans "2027 TEST") : l'année réelle est alors mémorisée dans DB._anneeComptable et fait foi
+// pour toutes les règles de date (mois comptabilisables, dotations, 31/12, frais km…).
+function anneeCompta() {
+  const a = parseInt(DB && DB._anneeComptable, 10);
+  if(!isNaN(a)) return a;
+  const n = parseInt(CURRENT_YEAR, 10);
+  return isNaN(n) ? new Date().getFullYear() : n;
+}
 let EXERCISE_STATUS = 'open'; // 'open' | 'closed'
 let _unsubscribeListen = null;
 
@@ -3883,11 +3896,11 @@ function fmtDateGL(d) {
     const [dd,mm,yyyy] = d.split('/');
     return `${dd}/${mm}/${yyyy.slice(2)}`;
   }
-  // DD-mon → DD/MM/AA using CURRENT_YEAR
+  // DD-mon → DD/MM/AA using anneeCompta()
   if(d.includes('-')) {
     const [day, mon] = d.split('-');
     const m = MONTHS[mon?.toLowerCase()] || '01';
-    const y = String(CURRENT_YEAR).slice(2);
+    const y = String(anneeCompta()).slice(2);
     return `${day.padStart(2,'0')}/${m}/${y}`;
   }
   return d;
@@ -4344,7 +4357,7 @@ function previewImport(){
                   'juil':'07','août':'08','sept':'09','oct':'10','nov':'11','déc':'12'};
 
   // Detect year from CURRENT_YEAR
-  const csvYear = String(CURRENT_YEAR).length === 4 ? String(CURRENT_YEAR) : String(new Date().getFullYear());
+  const csvYear = String(anneeCompta());
 
   function parseDate(raw) {
     raw = raw.trim();
@@ -5219,6 +5232,22 @@ function createNewExerciseCancel() {
   document.getElementById('new-ex-confirm').style.display = 'none';
 }
 async function createNewExerciseConfirm() {
+  // Depuis un exercice clôturé, la création de l'exercice suivant passe par la même logique que la clôture
+  // (balance d'ouverture + reprise des modules), pour ne jamais créer un N+1 "vide" par erreur.
+  if(EXERCISE_STATUS === 'closed' && !isTestExercise(CURRENT_YEAR)) {
+    const nameEl = document.getElementById('new-ex-name');
+    document.getElementById('cloture-next-name').value = (nameEl?.value || '').trim();
+    const t = document.getElementById('cloture-next-istest'); if(t) t.checked = !!document.getElementById('new-ex-istest')?.checked;
+    window._closingEcritures = JSON.parse(JSON.stringify(DB.ecritures));
+    window._closingTbData = JSON.parse(JSON.stringify(DB.tbData));
+    window._closingLabel = CURRENT_YEAR;
+    window._closingAnnee = anneeCompta();
+    window._closingDB = JSON.parse(JSON.stringify(DB));
+    if(nameEl) nameEl.value = '';
+    createNewExerciseCancel();
+    await clotureCreateNext();
+    return;
+  }
   const input = document.getElementById('new-ex-name');
   const isTestChecked = document.getElementById('new-ex-istest')?.checked || false;
   const trimmed = (input?.value||'').trim();
@@ -5236,6 +5265,7 @@ async function createNewExerciseConfirm() {
   CURRENT_YEAR = label;
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
+  if(!isNaN(parseInt(label, 10))) DB._anneeComptable = parseInt(label, 10);
   EXERCISE_STATUS = 'open';
   await saveDBNow();
   await loadKnownYears();
@@ -5250,7 +5280,7 @@ function createNewExercise() { createNewExerciseStep1(); }
 // CONTRÔLES AVANT CLÔTURE — la clôture est refusée tant qu'un point reste en suspens
 // ══════════════════════════════════════════════
 function controlesAvantCloture() {
-  const Y = parseInt(CURRENT_YEAR, 10);
+  const Y = anneeCompta();
   const blocages = [];
   if(isNaN(Y)) return blocages; // exercice test sans année : pas de contrôle
   const mois12 = Array.from({length:12}, (_,i) => `${Y}-${String(i+1).padStart(2,'0')}`);
@@ -5353,6 +5383,7 @@ async function clotureGoToNext() {
   window._closingEcritures = JSON.parse(JSON.stringify(DB.ecritures));
   window._closingTbData = JSON.parse(JSON.stringify(DB.tbData));
   window._closingLabel = CURRENT_YEAR;
+  window._closingAnnee = anneeCompta();
   window._closingDB = JSON.parse(JSON.stringify(DB)); // pour la reprise des modules dans N+1
   // Close the exercise immediately
   DB._status = 'closed';
@@ -5366,7 +5397,9 @@ async function clotureGoToNext() {
   const nextStr = String(nextYear);
   document.getElementById('cloture-skip-year').textContent = CURRENT_YEAR;
   // Show existing matching exercises (N+1 candidates)
-  const candidates = knownYears.filter(y => y !== String(CURRENT_YEAR));
+  // Règle : l'exercice suivant est TOUJOURS créé à neuf à la clôture — on ne propose jamais
+  // d'ouvrir un exercice déjà existant (risque de mélanger des données).
+  const candidates = [];
   const existingDiv = document.getElementById('cloture-next-existing');
   if(candidates.length) {
     existingDiv.innerHTML = `<div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">EXERCICE EXISTANT</div>` +
@@ -5387,6 +5420,7 @@ function clotureSkipNext() {
   toast(`Exercice ${CURRENT_YEAR} clôturé. Vous êtes en lecture seule.`, 'warn');
 }
 async function clotureOpenExisting(year) {
+  toast("Interdit : l'exercice suivant doit être créé à neuf lors de la clôture", 'error'); return;
   closeExerciseModal();
   await switchExercise(year);
   // Generate FNO from closing exercise into this one
@@ -5394,7 +5428,7 @@ async function clotureOpenExisting(year) {
   const closingTbData = window._closingTbData || DB.tbData;
   // Reprise des modules (uniquement ceux encore vides dans l'exercice ouvert)
   if(window._closingDB) {
-    appliquerReprisesSurExercice(construireReprisesModules(window._closingDB, year));
+    appliquerReprisesSurExercice(construireReprisesModules(window._closingDB, (window._closingAnnee || anneeCompta() - 1) + 1));
     window._closingDB = null;
     await saveDBNow();
     refreshAlerteTaux();
@@ -5425,7 +5459,7 @@ async function clotureCreateNext() {
   if(!label) { errEl.textContent = 'Nom invalide.'; return; }
   const existing = Array.from(document.getElementById('ex-year-select').options).map(o => o.value);
   if(existing.map(v => v.toLowerCase()).includes(String(label).toLowerCase())) {
-    errEl.textContent = 'Cet exercice existe déjà — utilisez le bouton "Ouvrir" ci-dessus.'; return;
+    errEl.textContent = 'Cet exercice existe déjà — choisissez un autre nom (l\'exercice suivant doit être créé à neuf).'; return;
   }
   const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
   const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
@@ -5433,7 +5467,8 @@ async function clotureCreateNext() {
   // Capture bilan soldes from the closing exercise BEFORE switching
   const closingEcritures = window._closingEcritures || JSON.parse(JSON.stringify(DB.ecritures));
   const fnoEcritures = buildFNO(closingEcritures, tbDataCopy);
-  const reprises = construireReprisesModules(window._closingDB || DB, label);
+  const anneeN1 = (window._closingAnnee || anneeCompta()) + 1;
+  const reprises = construireReprisesModules(window._closingDB || DB, anneeN1);
   window._closingDB = null;
   input.value = '';
   closeExerciseModal();
@@ -5442,6 +5477,7 @@ async function clotureCreateNext() {
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
   EXERCISE_STATUS = 'open';
+  DB._anneeComptable = anneeN1;
   // Reprise des modules de l'exercice clôturé
   Object.assign(DB, reprises);
   if(!reprises.tauxAMettreAJour.km.length && !reprises.tauxAMettreAJour.cc.length) delete DB.tauxAMettreAJour;
@@ -5585,7 +5621,7 @@ function openTauxMajModal() {
     html += `<div style="font-size:11px;font-weight:700;color:var(--text2);margin:4px 0 6px;">BARÈME FISCAL — FRAIS KILOMÉTRIQUES (€/km)</div>`;
     html += r.km.map(id => { const v = km.vehicules.find(x => x.id === id); return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
       <span style="flex:1;font-size:11px;">🚗 ${v.nom}</span>
-      <span style="font-size:10px;color:var(--text2);">${CURRENT_YEAR - 1 || 'N-1'} : ${String(v.taux||0).replace('.',',')}</span>
+      <span style="font-size:10px;color:var(--text2);">${anneeCompta() - 1} : ${String(v.taux||0).replace('.',',')}</span>
       <input type="number" step="0.001" class="taux-maj-input" data-type="km" data-cle="${id}" value="${v.taux||0}" style="width:90px;font-family:var(--mono);height:28px;text-align:right;">
     </div>`; }).join('');
   }
@@ -5594,7 +5630,7 @@ function openTauxMajModal() {
     html += r.cc.map(c => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
       <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);width:65px;">${c}</span>
       <span style="flex:1;font-size:11px;">${getLib(c) || ''}</span>
-      <span style="font-size:10px;color:var(--text2);">${CURRENT_YEAR - 1 || 'N-1'} : ${String(cc[c].taux ?? '').replace('.',',')}</span>
+      <span style="font-size:10px;color:var(--text2);">${anneeCompta() - 1} : ${String(cc[c].taux ?? '').replace('.',',')}</span>
       <input type="number" step="0.01" class="taux-maj-input" data-type="cc" data-cle="${c}" value="${cc[c].taux ?? ''}" style="width:90px;font-family:var(--mono);height:28px;text-align:right;">
     </div>`).join('');
   }
@@ -5655,7 +5691,8 @@ function buildFNO(ecritures, tbData) {
   creditors.sort((a,b) => a.compte.localeCompare(b.compte));
   const today = new Date();
   // Use Jan 1 of N+1 — but if CURRENT_YEAR is a test string, use current year
-  const nextYear = isNaN(parseInt(CURRENT_YEAR)) ? today.getFullYear() : parseInt(CURRENT_YEAR) + 1;
+  // Année de l'exercice clôturé + 1 (mémorisée au moment de la clôture, car on peut déjà avoir basculé sur N+1)
+  const nextYear = (window._closingAnnee || anneeCompta()) + 1;
   const dateStr = `${nextYear}-01-01`;
   const result = [];
   let num = 1;
@@ -5992,7 +6029,7 @@ async function generateBG(fmt) {
     const vartot = hasN1 ? `<td style="${totS}">${rn(totNet25-totNet24)}</td>` : '';
 
     const html = `<div class="rpt">
-      ${rptHeader('Balance Générale', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR} — Montants en euros entiers`)}
+      ${rptHeader('Balance Générale', `Exercice du 01/01/${anneeCompta()} au 31/12/${anneeCompta()} — Montants en euros entiers`)}
       <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
         <colgroup>${cols}</colgroup>
         <thead><tr>
@@ -6363,7 +6400,7 @@ function renderBilanHTML(b, bn1, n1Year) {
     + '</tbody></table>';
 
   return '<div class="rpt">'
-    + rptHeader('Bilan', 'Exercice du 01/01/' + CURRENT_YEAR + ' au 31/12/' + CURRENT_YEAR + ' — Montants en euros entiers')
+    + rptHeader('Bilan', 'Exercice du 01/01/' + anneeCompta() + ' au 31/12/' + anneeCompta() + ' — Montants en euros entiers')
     + '<div style="margin-bottom:20px;">' + actifHTML + '</div>'
     + '<div>' + passifHTML + '</div>'
     + rptFooter()
@@ -7012,7 +7049,7 @@ function renderCRHTML(cr, crn1, n1Year) {
     + '</tbody></table>';
 
   return '<div class="rpt">'
-    + rptHeader('Compte de Résultat', 'Exercice du 01/01/' + CURRENT_YEAR + ' au 31/12/' + CURRENT_YEAR + ' — Montants en euros entiers')
+    + rptHeader('Compte de Résultat', 'Exercice du 01/01/' + anneeCompta() + ' au 31/12/' + anneeCompta() + ' — Montants en euros entiers')
     + html
     + rptFooter()
     + '</div>';
@@ -9548,7 +9585,7 @@ function populateMoisAnneeSelects(selMoisId, selAnneeId) {
   const selMois = document.getElementById(selMoisId);
   const selAnnee = document.getElementById(selAnneeId);
   if(!selMois || !selAnnee) return;
-  const anneeNum = parseInt(CURRENT_YEAR, 10) || new Date().getFullYear();
+  const anneeNum = anneeCompta();
   const isNewMois = !selMois.options.length;
   const isNewAnnee = !selAnnee.options.length;
   if(isNewMois) {
@@ -9570,7 +9607,7 @@ function populateMoisAnneeSelects(selMoisId, selAnneeId) {
   }
 }
 // ── Mois de saisie : uniquement les 12 mois de l'exercice ouvert ──
-function kmAnneeExercice() { return parseInt(CURRENT_YEAR, 10) || new Date().getFullYear(); }
+function kmAnneeExercice() { return anneeCompta(); }
 // Seuls les mois "orange" sont proposés : mois de l'exercice jusqu'au mois en cours, non comptabilisés.
 // Un mois comptabilisé se consulte via sa fiche (liste ③).
 function kmMoisSaisissables() {
@@ -10149,7 +10186,7 @@ function moisActuelYYYYMM() {
 
 // Un échéancier sans date de fin est considéré actif jusqu'à aujourd'hui pour tous les calculs d'affichage
 function effectiveFin(ech) {
-  return ech.periodeFin || new Date().toISOString().slice(0,10);
+  return ech.periodeFin || `${anneeCompta()}-12-31`;
 }
 
 function jourEcheanceFor(ech) {
@@ -10277,7 +10314,7 @@ function checkEcheanciersExpirationAuBoot() {
 //    les carrés d'un même mois soient alignés verticalement d'un échéancier à l'autre.
 // Premier mois de l'exercice ouvert (null pour un exercice test sans année) : les mois antérieurs
 // appartiennent à l'exercice précédent et ne sont plus ni affichés ni comptabilisables ici.
-function moisDebutExerciceCourant() { const n = parseInt(CURRENT_YEAR, 10); return isNaN(n) ? null : `${n}-01`; }
+function moisDebutExerciceCourant() { return `${anneeCompta()}-01`; }
 function moisEcheancierExercice(ech) {
   const debut = moisDebutExerciceCourant();
   return computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => !debut || m >= debut);
@@ -10826,7 +10863,7 @@ async function handleEmpruntImport(evt) {
 // Règle : on garde l'année en cours et l'année N-1 ; les années plus anciennes ne sont conservées
 // que si au moins un emprunt y a encore un mois non comptabilisé. Les années futures restent affichées.
 function anneesCommunesEmprunts() {
-  const anneeN = new Date().getFullYear();
+  const anneeN = anneeCompta();
   const moisActuel = moisActuelYYYYMM();
   const toutes = new Set();
   const anciennesAGarder = new Set();
@@ -11172,7 +11209,7 @@ function decomptabiliserEmpruntMois(id, mois) {
 
 // Vérifie si le résultat a déjà été constaté cette année (présence d'une écriture CLOTURE au 31/12)
 function resultatDejaConstate() {
-  const dateCloture = CURRENT_YEAR + '-12-31';
+  const dateCloture = anneeCompta() + '-12-31';
   return DB.ecritures.some(e => e.numDoc === 'CLOTURE' && e.date === dateCloture);
 }
 
@@ -11246,7 +11283,7 @@ function computeInteretsCompte(compte, taux) {
     byDate[e.date].debit += e.debit||0;
   });
   const dates = Object.keys(byDate).sort();
-  const yearNum = isNaN(parseInt(CURRENT_YEAR)) ? new Date().getFullYear() : parseInt(CURRENT_YEAR);
+  const yearNum = anneeCompta();
   const finExercice = (yearNum+1) + '-01-01';
 
   let solde = 0;
@@ -11314,7 +11351,7 @@ function editerTableauCCInterets() {
 }
 
 function ccInteretsDejaComptabilises() {
-  const dateEcr = CURRENT_YEAR + '-12-31';
+  const dateEcr = anneeCompta() + '-12-31';
   return DB.ecritures.some(e => e.numDoc === 'OD/Calcul des intérêts de c:c' && e.date === dateEcr);
 }
 
@@ -11341,7 +11378,7 @@ function openCCInteretsConfirmModal() {
   const body = document.getElementById('cc-interets-body');
   body.innerHTML = `
     <p style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6;">
-      Pour chaque compte courant, débit du <strong>661500</strong> en contrepartie du compte 455 correspondant, au 31/12/${CURRENT_YEAR}.
+      Pour chaque compte courant, débit du <strong>661500</strong> en contrepartie du compte 455 correspondant, au 31/12/${anneeCompta()}.
     </p>
     <table style="font-size:11px;">
       <thead><tr><th>Compte</th><th>Libellé</th><th class="td-num">Taux</th><th class="td-num">Intérêt</th></tr></thead>
@@ -11361,7 +11398,7 @@ function confirmerComptabiliserCCInterets() {
   if(!lignes || !lignes.length) return;
   if(ccInteretsDejaComptabilises()) { toast('Déjà comptabilisé','error'); closeCCInteretsConfirmModal(); return; }
 
-  const dateEcr = CURRENT_YEAR + '-12-31';
+  const dateEcr = anneeCompta() + '-12-31';
   const libelleEcriture = "Intérêts des comptes courant d'associés";
   const numDoc = 'OD/Calcul des intérêts de c:c';
 
@@ -11441,7 +11478,7 @@ function confirmerConstatationResultat() {
   if(resultatDejaConstate()) { toast('Déjà constaté','error'); closeInventaireModal(); return; }
 
   const {resultat} = calc;
-  const dateEcr = CURRENT_YEAR + '-12-31';
+  const dateEcr = anneeCompta() + '-12-31';
   const isBenefice = resultat >= 0;
   const libelleEcriture = `Résultat de l'exercice (${isBenefice ? 'bénéfice' : 'perte'})`;
   const io = Date.now();
@@ -11473,7 +11510,7 @@ function confirmerConstatationResultat() {
 function estConstatationResultatExercice(e) {
   const c = String(e.compte);
   if(!c.startsWith('120') && !c.startsWith('129')) return false;
-  return e.numDoc === 'CLOTURE' || e.date === `${CURRENT_YEAR}-12-31`;
+  return e.numDoc === 'CLOTURE' || e.date === `${anneeCompta()}-12-31`;
 }
 function soldeCompteApprobation(prefixes) {
   let net = 0;
@@ -11809,7 +11846,7 @@ function immoRootLabel(root) {
 // ══════════════════════════════════════════════
 function buildRegistreImmoData() {
   const list = ensureImmoArray();
-  const year = parseInt(CURRENT_YEAR);
+  const year = anneeCompta();
   const groups = {};
   list.forEach(immo => {
     const root = String(immo.compteImmo||'').slice(0,3) || '???';
@@ -11873,7 +11910,7 @@ function renderRegistreImmoHTML() {
   }).join('');
 
   return `<div class="rpt">
-    ${rptHeader('Registre des Immobilisations', `Exercice du 01/01/${CURRENT_YEAR} au 31/12/${CURRENT_YEAR} — Montants en euros`)}
+    ${rptHeader('Registre des Immobilisations', `Exercice du 01/01/${anneeCompta()} au 31/12/${anneeCompta()} — Montants en euros`)}
     ${groupsHtml || '<p style="font-size:12px;color:#888;">Aucune immobilisation enregistrée.</p>'}
     ${rptFooter()}
   </div>`;
@@ -11957,7 +11994,7 @@ function renderImmos() {
   if(empty) empty.style.display = 'none';
 
   const rn = (v) => fmt(v);
-  const yearNow = String(CURRENT_YEAR);
+  const yearNow = String(anneeCompta());
 
   // Regrouper par racine comptable (3 premiers chiffres du compte d'immobilisation)
   const groups = {};
@@ -11979,7 +12016,7 @@ function renderImmos() {
       const dotationPostee = rowEx ? isDotationAlreadyPosted(immo) : false;
       const cumulActuel = Math.round((cumulAnterieur + (rowEx && dotationPostee ? rowEx.dotation : 0)) * 100) / 100;
       const noteDotation = (rowEx && rowEx.dotation > 0 && !dotationPostee)
-        ? `<div style="font-size:9px;color:var(--text2);font-weight:400;">dotation ${yearNow} à comptabiliser : ${rn(rowEx.dotation)}</div>` : '';
+        ? `<div style="font-size:9px;color:var(--text2);font-weight:400;white-space:nowrap;">dotation ${yearNow} à comptabiliser : ${rn(rowEx.dotation)}</div>` : '';
       const vncActuelle = immo.nonAmortissable ? parseFloat(immo.valeurBrute) : Math.round((parseFloat(immo.valeurBrute) - cumulActuel) * 100) / 100;
       const scheduleBtn = immo.nonAmortissable
         ? ''
@@ -12016,7 +12053,7 @@ function renderImmos() {
             <th style="width:70px">Durée</th>
             <th style="width:85px">Compte Dotation</th>
             <th style="width:85px">Compte Amort.</th>
-            <th class="td-num" style="width:100px">Amort. cumulés</th>
+            <th class="td-num" style="width:240px">Amort. cumulés</th>
             <th class="td-num" style="width:100px">VNC actuelle</th>
             <th style="width:90px"></th>
           </tr>
@@ -12105,14 +12142,14 @@ let immoDeleteTargetId = null;
 let _dotationPending = [];
 
 function isDotationAlreadyPosted(immo) {
-  const libEcr = `Amortissement ${CURRENT_YEAR} - ${immo.libelle}`;
+  const libEcr = `Amortissement ${anneeCompta()} - ${immo.libelle}`;
   return DB.ecritures.some(e => e.journal === 'OD' && e.libelleEcriture === libEcr && String(e.compte) === String(immo.compteDotation));
 }
 
 function openDotationModal() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — comptabilisation impossible','error'); return; }
   const list = ensureImmoArray().filter(i => !i.nonAmortissable);
-  const year = parseInt(CURRENT_YEAR);
+  const year = anneeCompta();
 
   _dotationPending = [];
   const rows = [];
@@ -12127,7 +12164,7 @@ function openDotationModal() {
     rows.push(item);
   });
 
-  document.getElementById('immo-dotation-date').textContent = `31/12/${CURRENT_YEAR}`;
+  document.getElementById('immo-dotation-date').textContent = `31/12/${anneeCompta()}`;
 
   const body = document.getElementById('immo-dotation-body');
   const empty = document.getElementById('immo-dotation-empty');
@@ -12173,7 +12210,7 @@ function confirmDotationEcritures() {
   undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
   redoStack = []; updUndoRedo();
 
-  const date = `${CURRENT_YEAR}-12-31`;
+  const date = `${anneeCompta()}-12-31`;
   const base = Date.now();
   let count = 0, total = 0;
 
@@ -12183,7 +12220,7 @@ function confirmDotationEcritures() {
     if(!item || item.alreadyPosted) return;
     const {immo, montant} = item;
     const io = base + i; // _io unique et croissant → passera après les écritures déjà présentes
-    const libelleEcriture = `Amortissement ${CURRENT_YEAR} - ${immo.libelle}`;
+    const libelleEcriture = `Amortissement ${anneeCompta()} - ${immo.libelle}`;
     DB.ecritures.push({
       id: crypto.randomUUID(), _io: io, journal: 'OD', date,
       compte: immo.compteDotation, libelleCompte: getLib(immo.compteDotation) || 'Dotation aux amortissements',
