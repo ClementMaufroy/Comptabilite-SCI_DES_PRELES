@@ -610,6 +610,9 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <span class="ni-icon">🏦</span> Emprunts
       <span class="ni-count" id="nc-emprunts">0</span>
     </div>
+    <div class="nav-item" onclick="showTab('km')" id="nav-km">
+      <span class="ni-icon">🚗</span> Frais kilométriques
+    </div>
     <div class="nav-item" onclick="showTab('inventaire')" id="nav-inventaire">
       <span class="ni-icon">🧮</span> Écritures d'inventaire
     </div>
@@ -1065,8 +1068,64 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
       <div id="echeanciers-expiration-banner"></div>
 
-      <!-- ══════════════ FRAIS KILOMÉTRIQUES (toujours présent, en tête) ══════════════ -->
-      <div class="card" style="margin-bottom:22px;border:1px solid var(--cyan);">
+      <div id="echeanciers-groups"></div>
+      <div id="echeanciers-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+        Aucun échéancier enregistré. Cliquez sur "+ AJOUTER UN ÉCHÉANCIER" pour commencer.
+      </div>
+    </div>
+
+    <!-- ══════════════ EMPRUNTS ══════════════ -->
+    <div class="tab-content" id="tab-emprunts">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">EMPRUNTS</div>
+          <div class="page-sub">Suivi des emprunts et comptabilisation des échéances mensuelles</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="downloadEmpruntTemplate()">⬇ MODÈLE EXCEL</button>
+          <button class="btn btn-sm btn-primary" onclick="openEmpruntModal()">+ AJOUTER UN EMPRUNT</button>
+        </div>
+      </div>
+      <input type="file" id="emprunt-import-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleEmpruntImport(event)">
+      <table style="table-layout:fixed;width:100%;">
+        <colgroup>
+          <col style="width:120px">
+          <col style="width:46px">
+          <col style="width:46px">
+          <col style="width:46px">
+          <col style="width:62px">
+          <col style="width:62px">
+          <col>
+          <col style="width:150px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th style="overflow:hidden;">Libellé / Banque</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Emprunt</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Intérêts</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Crédit</th>
+            <th class="td-num" style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Restant dû</th>
+            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Tableau</th>
+            <th>Suivi mensuel (clic = comptabiliser)</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="emprunts-body"></tbody>
+      </table>
+      <div id="emprunts-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
+        Aucun emprunt enregistré. Cliquez sur "+ AJOUTER UN EMPRUNT" pour commencer.
+      </div>
+    </div>
+
+    <!-- ══════════════ FRAIS KILOMÉTRIQUES ══════════════ -->
+    <div class="tab-content" id="tab-km">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">FRAIS KILOMÉTRIQUES</div>
+          <div class="page-sub">Saisie mensuelle des déplacements, édition des fiches et comptabilisation</div>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:22px;">
         <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
           <span>🚗 Frais kilométriques</span>
           <button class="btn btn-sm" onclick="toggleKmParams()" id="km-params-toggle-btn">⚙ Paramètres</button>
@@ -1133,54 +1192,6 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 
 
         <div id="km-fiches-list" style="margin-top:16px;"></div>
-      </div>
-
-      <div id="echeanciers-groups"></div>
-      <div id="echeanciers-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
-        Aucun échéancier enregistré. Cliquez sur "+ AJOUTER UN ÉCHÉANCIER" pour commencer.
-      </div>
-    </div>
-
-    <!-- ══════════════ EMPRUNTS ══════════════ -->
-    <div class="tab-content" id="tab-emprunts">
-      <div class="page-hdr">
-        <div>
-          <div class="page-title">EMPRUNTS</div>
-          <div class="page-sub">Suivi des emprunts et comptabilisation des échéances mensuelles</div>
-        </div>
-        <div class="page-actions">
-          <button class="btn btn-sm" onclick="downloadEmpruntTemplate()">⬇ MODÈLE EXCEL</button>
-          <button class="btn btn-sm btn-primary" onclick="openEmpruntModal()">+ AJOUTER UN EMPRUNT</button>
-        </div>
-      </div>
-      <input type="file" id="emprunt-import-input" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleEmpruntImport(event)">
-      <table style="table-layout:fixed;width:100%;">
-        <colgroup>
-          <col style="width:120px">
-          <col style="width:46px">
-          <col style="width:46px">
-          <col style="width:46px">
-          <col style="width:62px">
-          <col style="width:62px">
-          <col>
-          <col style="width:150px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th style="overflow:hidden;">Libellé / Banque</th>
-            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Emprunt</th>
-            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Intérêts</th>
-            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Crédit</th>
-            <th class="td-num" style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Restant dû</th>
-            <th style="font-size:9px;padding:8px 3px;letter-spacing:0;overflow:hidden;">Tableau</th>
-            <th>Suivi mensuel (clic = comptabiliser)</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="emprunts-body"></tbody>
-      </table>
-      <div id="emprunts-empty" style="display:none;text-align:center;padding:40px;color:var(--text2);font-size:12px;">
-        Aucun emprunt enregistré. Cliquez sur "+ AJOUTER UN EMPRUNT" pour commencer.
       </div>
     </div>
 
@@ -2741,6 +2752,18 @@ function togglePieceFormalisee(id) {
   renderPostItPieces();
 }
 
+// Montant de l'opération liée à une pièce du post-it : total des débits des écritures
+// portant ce n° de pièce à cette date (à défaut de date correspondante : ce n° de pièce seul).
+// Calculé à l'affichage → fonctionne aussi pour les pièces déjà présentes dans le post-it.
+function montantPiecePostIt(p) {
+  if(!p || !p.numDoc) return null;
+  const ecr = DB.ecritures || [];
+  let lignes = ecr.filter(e => e.numDoc === p.numDoc && (!p.date || e.date === p.date));
+  if(!lignes.length) lignes = ecr.filter(e => e.numDoc === p.numDoc);
+  if(!lignes.length) return null;
+  return Math.round(lignes.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0) * 100) / 100;
+}
+
 // Rendu du post-it : (a) met à jour le badge du bouton en haut à droite,
 // (b) affiche/masque le panneau ancré sous ce bouton selon _postItOpen.
 function renderPostItPieces() {
@@ -2802,7 +2825,7 @@ function renderPostItPieces() {
       ${sorted.map(p => `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${p.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
         <input type="checkbox" ${p.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
         <div style="flex:1;font-size:11px;line-height:1.35;min-width:0;">
-          <div style="font-family:var(--mono);font-weight:600;color:${p.coche?'var(--text2)':'var(--amber)'};${p.coche?'text-decoration:line-through;':''}">${p.numDoc}</div>
+          <div style="font-family:var(--mono);font-weight:600;color:${p.coche?'var(--text2)':'var(--amber)'};${p.coche?'text-decoration:line-through;':''}display:flex;justify-content:space-between;gap:8px;"><span>${p.numDoc}</span>${(() => { const m = montantPiecePostIt(p); return m !== null ? `<span style="white-space:nowrap;">${fmt(m)} €</span>` : ''; })()}</div>
           <div style="color:${p.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;${p.coche?'text-decoration:line-through;':''}">${p.libelle||''}</div>
           <div style="color:var(--text2);font-size:9px;margin-top:2px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>
         </div>
@@ -2923,7 +2946,7 @@ function startLiveSync() {
     Object.assign(DB, remote);
     renum(); updateNavCounts();
     const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-    const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
+    const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
     if(active && renders[active]) renders[active]();
     renderPostItPieces();
   });
@@ -2950,7 +2973,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -9616,6 +9639,13 @@ function checkEcheanciersExpiration() {
   const in30str = in30.toISOString().slice(0,10);
   const expires = list.filter(e => e.periodeFin && e.periodeFin < today);
   const bientot = list.filter(e => e.periodeFin && e.periodeFin >= today && e.periodeFin <= in30str);
+  // L'alerte globale (affichée à l'ouverture) se met à jour d'elle-même : elle disparaît
+  // dès qu'aucun échéancier n'est plus expiré ni proche de l'expiration.
+  const globalAlert = document.getElementById('global-echeancier-alert');
+  if(globalAlert) {
+    if(!expires.length && !bientot.length) globalAlert.remove();
+    else checkEcheanciersExpirationAuBoot();
+  }
   const banner = document.getElementById('echeanciers-expiration-banner');
   if(banner) {
     if(!expires.length && !bientot.length) { banner.innerHTML = ''; }
@@ -9712,7 +9742,6 @@ function renderEcheanciers() {
   if(!groupsWrap) return;
 
   checkEcheanciersExpiration();
-  renderKmModule();
 
   if(!list.length) {
     groupsWrap.innerHTML = '';
@@ -11058,7 +11087,7 @@ async function boot() {
   // vers un onglet pendant ce chargement, celui-ci peut s'être affiché avec des données
   // encore vides. On force ici un nouveau rendu de l'onglet actif, maintenant que tout est chargé.
   const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
+  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
   if(activeTabId && allRenders[activeTabId]) allRenders[activeTabId]();
 }
 // ══════════════════════════════════════════════
