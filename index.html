@@ -963,7 +963,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
             <button class="btn btn-primary" onclick="exportAllExercisesBackup()">⬇ EXPORTER TOUS LES EXERCICES</button>
           </div>
           <div style="border-top:1px solid var(--line2);padding-top:10px;">
-            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px;">Restaurer depuis un fichier de sauvegarde :</label>
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:6px;">Restaurer depuis un fichier de sauvegarde : <span style="color:var(--text2);font-style:italic;">(pour simplement vérifier un fichier, faites-le depuis un exercice test — les exercices clôturés ne peuvent jamais être écrasés)</span></label>
             <input type="file" id="backup-restore-input" accept=".json" onchange="handleBackupRestoreFile(event)">
           </div>
         </div>
@@ -2300,10 +2300,14 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 <!-- ══════════════ RESTAURATION SAUVEGARDE ══════════════ -->
 <div id="backup-restore-modal" class="modal-overlay">
   <div class="modal" style="width:480px;">
-    <div class="modal-title"><span style="color:var(--red);">⚠</span> RESTAURER CETTE SAUVEGARDE ?</div>
+    <div class="modal-title" id="backup-restore-title"><span style="color:var(--red);">⚠</span> RESTAURER CETTE SAUVEGARDE ?</div>
     <p style="font-size:12px;color:var(--text1);margin-bottom:12px;line-height:1.6;" id="backup-restore-msg"></p>
+    <div id="backup-restore-confirm-zone" style="display:none;margin-bottom:12px;">
+      <label id="backup-restore-confirm-label" style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;"></label>
+      <input type="text" id="backup-restore-confirm-input" autocomplete="off" style="width:160px;font-family:var(--mono);">
+    </div>
     <div class="flex gap8">
-      <button class="btn btn-danger" onclick="confirmBackupRestore()">OUI, ÉCRASER LES DONNÉES ACTUELLES</button>
+      <button class="btn btn-danger" id="backup-restore-btn" onclick="confirmBackupRestore()">OUI, ÉCRASER LES DONNÉES ACTUELLES</button>
       <button class="btn ml-auto" onclick="closeBackupRestoreModal()">ANNULER</button>
     </div>
   </div>
@@ -2613,52 +2617,132 @@ function showBackupExportedModal(nbExercices) {
 }
 
 let _pendingRestoreData = null;
+// Restauration d'une sauvegarde JSON — 3 cas, du plus sûr au plus sensible :
+//  1) On est sur un exercice TEST  → le contenu du fichier est chargé DANS cet exercice test (bac à sable).
+//     Les vrais exercices ne sont jamais touchés.
+//  2) On est sur un vrai exercice et l'exercice du fichier est CLÔTURÉ dans Firebase → restauration REFUSÉE.
+//  3) L'exercice du fichier est ouvert (ou n'existe plus dans Firebase) → restauration possible (secours),
+//     mais seulement après avoir retapé le nom de l'exercice pour confirmer.
 function handleBackupRestoreFile(evt) {
   const file = evt.target.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const parsed = JSON.parse(reader.result);
-      const data = parsed.data || parsed; // tolère un JSON "brut" (juste DB) ou le format avec _backupMeta
-      if(!data || typeof data !== 'object' || !Array.isArray(data.ecritures)) {
-        toast("Fichier invalide — ce n'est pas une sauvegarde reconnue", "error");
-        evt.target.value = '';
-        return;
-      }
-      const meta = parsed._backupMeta;
-      // L'exercice cible est celui indiqué DANS le fichier — jamais celui actuellement affiché à l'écran
-      const targetYear = meta ? String(meta.exercice) : String(CURRENT_YEAR);
-      _pendingRestoreData = {data, targetYear};
-      const infoTxt = meta ? `Exercice ${meta.exercice}, exporté le ${fmtDateFr(meta.dateExport.slice(0,10))}` : 'Fichier de sauvegarde (année non identifiée dans le fichier — traité comme l\'exercice actuellement affiché)';
-      const mismatchWarn = (meta && targetYear !== String(CURRENT_YEAR))
-        ? `<br><br><span style="color:var(--amber);">⚠ Vous consultez actuellement l'exercice ${CURRENT_YEAR}, mais ce fichier sera restauré sur l'exercice ${targetYear} — le bon document Firebase sera ciblé automatiquement.</span>`
-        : '';
-      document.getElementById('backup-restore-msg').innerHTML = `${infoTxt}<br><br>Cette opération va <strong style="color:var(--red);">remplacer intégralement</strong> les données de l'exercice <strong>${targetYear}</strong> dans Firebase par le contenu de ce fichier. Cette action est irréversible.${mismatchWarn}`;
-      document.getElementById('backup-restore-modal').style.display = 'flex';
-    } catch(e) {
-      toast('Fichier illisible ou corrompu', 'error');
-    }
+  reader.onload = async () => {
     evt.target.value = '';
+    let parsed;
+    try { parsed = JSON.parse(reader.result); } catch(e) { toast('Fichier illisible ou corrompu', 'error'); return; }
+    const data = parsed.data || parsed; // tolère un JSON "brut" (juste DB) ou le format avec _backupMeta
+    if(!data || typeof data !== 'object' || !Array.isArray(data.ecritures)) {
+      toast("Fichier invalide — ce n'est pas une sauvegarde reconnue", "error");
+      return;
+    }
+    const meta = parsed._backupMeta;
+    const fileYear = meta ? String(meta.exercice) : null;
+    const infoTxt = meta ? `Fichier : exercice <strong>${meta.exercice}</strong>, exporté le ${fmtDateFr(meta.dateExport.slice(0,10))}` : 'Fichier de sauvegarde (exercice non identifié dans le fichier)';
+    const msg = document.getElementById('backup-restore-msg');
+    const btn = document.getElementById('backup-restore-btn');
+    const confirmZone = document.getElementById('backup-restore-confirm-zone');
+    const confirmInput = document.getElementById('backup-restore-confirm-input');
+    confirmInput.value = '';
+
+    // ── Cas 1 : exercice test → import dans le bac à sable ──
+    if(isTestExercise(CURRENT_YEAR)) {
+      _pendingRestoreData = { data, mode: 'test', targetYear: String(CURRENT_YEAR) };
+      document.getElementById('backup-restore-title').innerHTML = '🧪 CHARGER CETTE SAUVEGARDE DANS L\'EXERCICE TEST';
+      msg.innerHTML = `${infoTxt}<br><br>Le contenu du fichier va être chargé dans l'exercice test <strong style="color:#a78bfa;">${CURRENT_YEAR}</strong>, à la place de son contenu actuel.<br><br><span style="color:var(--green);">✓ Aucun vrai exercice n'est modifié${fileYear ? ` — l'exercice ${fileYear} dans Firebase reste strictement intact` : ''}.</span>`;
+      btn.textContent = 'CHARGER DANS L\'EXERCICE TEST';
+      btn.className = 'btn btn-primary';
+      btn.disabled = false;
+      confirmZone.style.display = 'none';
+      document.getElementById('backup-restore-modal').style.display = 'flex';
+      return;
+    }
+
+    if(!fileYear) {
+      toast("Ce fichier n'indique pas son exercice — restauration impossible sur un vrai exercice", 'error');
+      return;
+    }
+
+    // ── Vérifie l'état actuel de l'exercice cible dans Firebase ──
+    let remote = null;
+    try { remote = (window._fbReady && window._fbLoad) ? await window._fbLoad(fileYear) : null; } catch(e) { remote = null; }
+    const cibleCloturee = (remote && remote._status === 'closed') || (String(fileYear) === String(CURRENT_YEAR) && EXERCISE_STATUS === 'closed');
+
+    document.getElementById('backup-restore-title').innerHTML = '<span style="color:var(--red);">⚠</span> RESTAURER CETTE SAUVEGARDE ?';
+
+    // ── Cas 2 : exercice clôturé → refus ──
+    if(cibleCloturee) {
+      _pendingRestoreData = null;
+      msg.innerHTML = `${infoTxt}<br><br><strong style="color:var(--red);">⛔ Restauration impossible :</strong> l'exercice <strong>${fileYear}</strong> est clôturé. Ses données sont définitivement figées et ne peuvent pas être remplacées.<br><br><span style="color:var(--text2);">Pour vérifier le contenu de ce fichier sans risque, créez ou ouvrez un exercice <strong>test</strong>, puis importez-le depuis cet exercice test.</span>`;
+      btn.textContent = 'RESTAURATION BLOQUÉE';
+      btn.className = 'btn';
+      btn.disabled = true;
+      confirmZone.style.display = 'none';
+      document.getElementById('backup-restore-modal').style.display = 'flex';
+      return;
+    }
+
+    // ── Cas 3 : restauration de secours sur un exercice ouvert (ou disparu) ──
+    _pendingRestoreData = { data, mode: 'secours', targetYear: fileYear };
+    const mismatch = fileYear !== String(CURRENT_YEAR)
+      ? `<br><br><span style="color:var(--amber);">⚠ Vous êtes sur l'exercice ${CURRENT_YEAR}, mais c'est l'exercice <strong>${fileYear}</strong> qui serait remplacé.</span>` : '';
+    const etat = remote ? `L'exercice ${fileYear} existe dans Firebase et est <strong>ouvert</strong>.` : `L'exercice ${fileYear} n'existe plus dans Firebase : il sera recréé à partir du fichier.`;
+    msg.innerHTML = `${infoTxt}<br><br>${etat}<br>Cette opération va <strong style="color:var(--red);">remplacer intégralement</strong> ses données par le contenu du fichier. Action irréversible, réservée à une récupération après perte de données.${mismatch}<br><br><span style="color:var(--text2);">Pour simplement vérifier le contenu d'un fichier, utilisez plutôt un exercice test.</span>`;
+    btn.textContent = 'OUI, ÉCRASER LES DONNÉES ACTUELLES';
+    btn.className = 'btn btn-danger';
+    btn.disabled = true;
+    confirmZone.style.display = 'block';
+    document.getElementById('backup-restore-confirm-label').textContent = `Pour confirmer, tapez le nom de l'exercice : ${fileYear}`;
+    confirmInput.oninput = () => { btn.disabled = confirmInput.value.trim() !== fileYear; };
+    document.getElementById('backup-restore-modal').style.display = 'flex';
   };
   reader.readAsText(file);
 }
 function closeBackupRestoreModal() { document.getElementById('backup-restore-modal').style.display = 'none'; _pendingRestoreData = null; }
 async function confirmBackupRestore() {
   if(!_pendingRestoreData) return;
-  const {data, targetYear} = _pendingRestoreData;
+  const { data, mode, targetYear } = _pendingRestoreData;
 
+  if(mode === 'test') {
+    if(!isTestExercise(CURRENT_YEAR)) { toast('Exercice test introuvable','error'); return; }
+    const copie = JSON.parse(JSON.stringify(data));
+    Object.keys(DB).forEach(k => delete DB[k]);
+    Object.assign(DB, copie);
+    // Valeurs par défaut si le fichier est incomplet
+    ['ecritures','tbData','rappelsMensuelList','rappelsAnnuelList','immobilisations','locataires','echeanciers','emprunts','pvApprobations'].forEach(k => { if(!Array.isArray(DB[k])) DB[k] = []; });
+    if(!DB.rappelsMensuel) DB.rappelsMensuel = {};
+    if(!DB.rappelsAnnuel) DB.rappelsAnnuel = {};
+    if(!DB.journalNums) DB.journalNums = {VE:1,HA:1,IMMO:1,OD:1,TRESO:1};
+    if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], compteDebit:'', compteCredit:'', trajets:[], fiches:[], moisMarquesSansEcriture:[]};
+    initDefaults();
+    DB._status = 'open';
+    setTestFlag(CURRENT_YEAR, true);
+    EXERCISE_STATUS = 'open';
+    await saveDBNow(true);
+    closeBackupRestoreModal();
+    renum(); updateNavCounts(); applyExerciseStatus();
+    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
+    renderPostItPieces();
+    showTab('saisie');
+    toast(`Sauvegarde chargée dans l'exercice test ${CURRENT_YEAR}`, 'success');
+    return;
+  }
+
+  // Mode secours : dernière vérification que la cible n'est pas clôturée
+  if(document.getElementById('backup-restore-confirm-input').value.trim() !== String(targetYear)) return;
+  let remote = null;
+  try { remote = (window._fbReady && window._fbLoad) ? await window._fbLoad(targetYear) : null; } catch(e) {}
+  if((remote && remote._status === 'closed') || (String(targetYear) === String(CURRENT_YEAR) && EXERCISE_STATUS === 'closed')) {
+    toast(`Exercice ${targetYear} clôturé — restauration refusée`, 'error'); closeBackupRestoreModal(); return;
+  }
   if(String(targetYear) === String(CURRENT_YEAR)) {
-    // Même exercice que celui affiché : on remplace la mémoire vive puis on sauvegarde normalement
     Object.keys(DB).forEach(k => delete DB[k]);
     Object.assign(DB, data);
     await saveDBNow(true);
   } else {
-    // Exercice différent : on écrit directement dans le bon document Firebase, sans toucher à l'exercice affiché
     if(!(window._fbReady && window._fbSave)) { toast('Connexion Firebase indisponible','error'); return; }
     await window._fbSave(data, targetYear);
   }
-
   closeBackupRestoreModal();
   toast(`Sauvegarde restaurée sur l'exercice ${targetYear}${String(targetYear)===String(CURRENT_YEAR)?' — rechargement...':''}`, 'success');
   if(String(targetYear) === String(CURRENT_YEAR)) setTimeout(() => location.reload(), 1200);
