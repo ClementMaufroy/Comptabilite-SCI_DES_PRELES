@@ -3510,6 +3510,9 @@ function saveEcriture() {
       renderPostItPieces();
     }
     // Si le numDoc n'a pas changé, on ne touche à rien (changements de date/libellé neutres pour le post-it)
+  } else {
+    // Nouvelle écriture saisie manuellement → la pièce rejoint le post-it "Pièces à formaliser"
+    notifierPieceGeneree('saisie', newNumDoc, lines[0]?.libelleEcriture || '', date);
   }
 
   renum(); saveDB(); updateNavCounts();
@@ -8399,7 +8402,7 @@ function renderLocataires() {
       docsHtml = historique.map(h => {
         const isAppel = h.type === 'appel';
         const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
-        const montant = isAppel ? h.echeance : h.montantPaye;
+        const montant = isAppel ? montantAppelHistorique(h) : h.montantPaye;
         // Barre latérale gauche selon le statut du document (subtle, pas de fond global)
         let barColor = 'var(--line2)';
         let warning = '';
@@ -8565,6 +8568,20 @@ function confirmDeleteLocataire() {
 }
 
 // ── En-tête commun aux documents locatifs (appel + quittance) ──
+// Montant affiché pour un appel de loyer dans la liste des documents :
+// le "MONTANT DE L'ECHEANCE" figurant sur le document (loyer + provisions - APL à recevoir + impayés).
+// Pour les appels déjà générés (sans le champ montantAppel), on le relit dans le HTML du document.
+function montantAppelHistorique(h) {
+  if(typeof h.montantAppel === 'number') return h.montantAppel;
+  if(h.docHtml) {
+    const m = h.docHtml.match(/MONTANT DE L'ECHEANCE<\/td><td[^>]*>([^<€]+)€/);
+    if(m) {
+      const v = parseFloat(m[1].replace(/[\s\u00a0\u202f]/g,'').replace(/\./g,'').replace(',','.'));
+      if(!isNaN(v)) return v;
+    }
+  }
+  return h.echeance;
+}
 function renderLocDocHeader(loc, dateEmission) {
   const occ2 = loc.nom2 ? `<br>${loc.civ2} ${loc.prenom2} ${loc.nom2},` : '';
   return `
@@ -8793,7 +8810,7 @@ function generateAppelLoyerV2() {
     type: 'appel',
     mois, moisPrec,
     dateEmission: dateEmission.toISOString().slice(0,10),
-    echeance: partACharge, totalDu: totalLoyerProvision,
+    echeance: partACharge, totalDu: totalLoyerProvision, montantAppel: montantAppelTotal,
     apl, commentaire,
     docHtml: html,
     docTitle: `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`,
