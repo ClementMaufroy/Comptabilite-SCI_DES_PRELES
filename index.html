@@ -2254,6 +2254,19 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
   </div>
 </div>
 
+<!-- ══════════════ TAUX À METTRE À JOUR (nouvel exercice) ══════════════ -->
+<div id="taux-maj-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-title">📅 MISE À JOUR DES TAUX DU NOUVEL EXERCICE</div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Les véhicules et les associés ont été repris de l'exercice précédent. Vérifiez et saisissez les taux applicables à cet exercice (pré-remplis avec ceux de l'an dernier). Validez même si un taux est inchangé.</div>
+    <div id="taux-maj-body"></div>
+    <div class="flex gap8" style="margin-top:18px;">
+      <button class="btn btn-primary" onclick="confirmTauxMaj()">✓ VALIDER LES TAUX</button>
+      <button class="btn ml-auto" onclick="closeTauxMajModal()">PLUS TARD</button>
+    </div>
+  </div>
+</div>
+
 <div id="km-marquer-modal" class="modal-overlay">
   <div class="modal" style="width:440px;">
     <div class="modal-title">⚙ MARQUER UN MOIS COMME DÉJÀ COMPTABILISÉ</div>
@@ -2355,6 +2368,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       <div id="cloture-step1">
         <button class="btn btn-sm btn-danger" onclick="clotureStep1()" id="btn-cloture">🔒 CLÔTURER L'EXERCICE EN COURS</button>
       </div>
+      <div id="cloture-blocages" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);font-size:11px;line-height:1.5;max-height:320px;overflow-y:auto;"></div>
       <div id="cloture-confirm" style="display:none;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);">
         <div id="cloture-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
         <div style="display:flex;gap:8px;">
@@ -2401,6 +2415,7 @@ function doLogin() {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('app-wrapper').style.display = 'flex';
     checkEcheanciersExpirationAuBoot();
+    checkAlerteTauxAuBoot();
     renderPostItPieces();
   } else {
     document.getElementById('login-err').textContent = 'Mot de passe incorrect';
@@ -4918,10 +4933,12 @@ async function switchExercise(year) {
   updateNextNum(); upTotals();
   showTab('saisie');
   startLiveSync();
+  refreshAlerteTaux();
   toast('Exercice ' + year + ' chargé', 'success');
 }
 
 function showExerciseModal() {
+  afficherBlocagesCloture([]);
   const options = Array.from(document.getElementById('ex-year-select').options);
   const listEl = document.getElementById('exercise-list');
 
@@ -5145,7 +5162,94 @@ async function createNewExerciseConfirm() {
 }
 function createNewExercise() { createNewExerciseStep1(); }
 
+// ══════════════════════════════════════════════
+// CONTRÔLES AVANT CLÔTURE — la clôture est refusée tant qu'un point reste en suspens
+// ══════════════════════════════════════════════
+function controlesAvantCloture() {
+  const Y = parseInt(CURRENT_YEAR, 10);
+  const blocages = [];
+  if(isNaN(Y)) return blocages; // exercice test sans année : pas de contrôle
+  const mois12 = Array.from({length:12}, (_,i) => `${Y}-${String(i+1).padStart(2,'0')}`);
+  const lbl = m => moisLabelFromYYYYMM(m);
+  const liste = arr => arr.length > 4 ? arr.slice(0,4).join(', ') + ` … (+${arr.length-4})` : arr.join(', ');
+
+  // 1. Pièces à formaliser
+  const pieces = grouperPostItParPiece(ensurePiecesAFormaliser()).filter(g => !g.coche);
+  if(pieces.length) blocages.push({ module: 'Pièces à formaliser', detail: `${pieces.length} pièce(s) non cochée(s) dans le post-it : ${liste(pieces.map(g => g.ref.numDoc))}` });
+
+  // 2. Échéanciers
+  ensureEcheanciersArray().forEach(ech => {
+    const done = ech.moisComptabilises || [];
+    const manquants = computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => m.startsWith(Y + '-') && !done.includes(m));
+    if(manquants.length) blocages.push({ module: 'Échéanciers', detail: `${ech.libelle} : ${liste(manquants.map(lbl))}` });
+  });
+
+  // 3. Emprunts
+  ensureEmpruntsArray().forEach(emp => {
+    const done = emp.moisComptabilises || [];
+    const manquants = (emp.tableau || []).map(r => r.mois).filter(m => m.startsWith(Y + '-') && !done.includes(m));
+    if(manquants.length) blocages.push({ module: 'Emprunts', detail: `${emp.libelle} : ${liste(manquants.map(lbl))}` });
+  });
+
+  // 4. Frais kilométriques : chaque mois doit être comptabilisé ou marqué sans frais
+  const km = ensureKm();
+  const kmManquants = mois12.filter(m => !kmMoisComptabilise(km, m));
+  if(kmManquants.length) blocages.push({ module: 'Frais kilométriques', detail: `Mois non comptabilisés / non marqués sans frais : ${liste(kmManquants.map(lbl))}` });
+
+  // 5. Dotations aux amortissements de l'exercice
+  const dotations = ensureImmoArray().filter(i => !i.nonAmortissable).filter(immo => {
+    const row = computeAmortSchedule(immo).find(s => s.annee === Y);
+    return row && row.dotation > 0 && !isDotationAlreadyPosted(immo);
+  });
+  if(dotations.length) blocages.push({ module: 'Immobilisations', detail: `Dotation ${Y} non comptabilisée : ${liste(dotations.map(i => i.libelle))}` });
+
+  // 6. Appels de loyer : un appel par mois de l'exercice, pour chaque locataire,
+  //    à partir de son 1er appel (ou de son 1er mouvement) et jusqu'à décembre (ou son dernier mois s'il est inactif)
+  ensureLocatairesArray().forEach(loc => {
+    const hist = loc.historique || [];
+    const appels = new Set(hist.filter(h => h.type === 'appel' && h.mois).map(h => h.mois));
+    let impliques = [];
+    try { impliques = moisImpliques(loc); } catch(e) {}
+    const premier = appels.size ? [...appels].sort()[0] : impliques[0];
+    if(!premier) return;
+    let dernier = `${Y}-12`;
+    if(loc.actif === false) {
+      const tous = [...appels, ...impliques].sort();
+      dernier = tous[tous.length-1] || premier;
+    }
+    const manquants = mois12.filter(m => m >= premier && m <= dernier && !appels.has(m));
+    if(manquants.length) blocages.push({ module: 'Gestion locative', detail: `${[loc.prenom1, loc.nom1].filter(Boolean).join(' ')} — appel de loyer manquant : ${liste(manquants.map(lbl))}` });
+  });
+
+  // 7. Écritures d'inventaire : intérêts des comptes courants (si un taux > 0 est paramétré)
+  const cfg = ensureCcInteretsConfig();
+  const ccAvecTaux = getComptes455().filter(c => (cfg[c.compte]?.taux || 0) > 0);
+  if(ccAvecTaux.length && !ccInteretsDejaComptabilises()) blocages.push({ module: "Écritures d'inventaire", detail: "Intérêts des comptes courants d'associés non comptabilisés" });
+  // … et constatation du résultat
+  if(!resultatDejaConstate()) blocages.push({ module: "Écritures d'inventaire", detail: `Résultat ${Y} non constaté` });
+
+  // 8. Approbation du résultat de l'exercice précédent (hors écriture de constatation de cet exercice)
+  const net120 = soldeCompteApprobation(['120']);
+  const net129 = soldeCompteApprobation(['129']);
+  if(Math.abs(net120) > 0.005 || Math.abs(net129) > 0.005) blocages.push({ module: 'Approbation du résultat', detail: `Le résultat ${Y-1} n'a pas encore été affecté (PV d'AGO à générer)` });
+
+  return blocages;
+}
+function afficherBlocagesCloture(blocages) {
+  const zone = document.getElementById('cloture-blocages');
+  if(!zone) return;
+  if(!blocages.length) { zone.style.display = 'none'; zone.innerHTML = ''; return; }
+  const parModule = {};
+  blocages.forEach(b => { (parModule[b.module] = parModule[b.module] || []).push(b.detail); });
+  zone.innerHTML = `<div style="font-weight:700;color:var(--red);margin-bottom:8px;">⛔ Clôture impossible — ${blocages.length} point(s) à régler avant de clôturer ${CURRENT_YEAR} :</div>` +
+    Object.keys(parModule).map(m => `<div style="margin-bottom:6px;"><div style="font-weight:700;color:var(--text0);">${m}</div>${parModule[m].map(d => `<div style="color:var(--text1);padding-left:10px;">• ${d}</div>`).join('')}</div>`).join('');
+  zone.style.display = 'block';
+}
+
 function clotureStep1() {
+  const blocages = controlesAvantCloture();
+  afficherBlocagesCloture(blocages);
+  if(blocages.length) return;
   document.getElementById('cloture-step1').style.display = 'none';
   document.getElementById('cloture-confirm-msg').innerHTML =
     `⚠️ Clôturer définitivement l'exercice <strong style="color:var(--red)">${CURRENT_YEAR}</strong> ?<br>
@@ -5158,9 +5262,14 @@ function clotureCancel() {
   document.getElementById('cloture-next').style.display = 'none';
 }
 async function clotureGoToNext() {
+  // Sécurité : on revérifie au moment de clôturer
+  const blocages = controlesAvantCloture();
+  if(blocages.length) { afficherBlocagesCloture(blocages); clotureCancel(); return; }
   // Capture écritures BEFORE closing (for FNO generation)
   window._closingEcritures = JSON.parse(JSON.stringify(DB.ecritures));
   window._closingTbData = JSON.parse(JSON.stringify(DB.tbData));
+  window._closingLabel = CURRENT_YEAR;
+  window._closingDB = JSON.parse(JSON.stringify(DB)); // pour la reprise des modules dans N+1
   // Close the exercise immediately
   DB._status = 'closed';
   EXERCISE_STATUS = 'closed';
@@ -5199,6 +5308,15 @@ async function clotureOpenExisting(year) {
   // Generate FNO from closing exercise into this one
   const closingEcritures = window._closingEcritures || [];
   const closingTbData = window._closingTbData || DB.tbData;
+  // Reprise des modules (uniquement ceux encore vides dans l'exercice ouvert)
+  if(window._closingDB) {
+    appliquerReprisesSurExercice(construireReprisesModules(window._closingDB, year));
+    window._closingDB = null;
+    await saveDBNow();
+    refreshAlerteTaux();
+    const r = tauxAMettreAJour();
+    if(r.km.length || r.cc.length) openTauxMajModal();
+  }
   if(closingEcritures.length && !DB.ecritures.length) {
     const fno = buildFNO(closingEcritures, closingTbData);
     if(fno.length) {
@@ -5231,6 +5349,8 @@ async function clotureCreateNext() {
   // Capture bilan soldes from the closing exercise BEFORE switching
   const closingEcritures = window._closingEcritures || JSON.parse(JSON.stringify(DB.ecritures));
   const fnoEcritures = buildFNO(closingEcritures, tbDataCopy);
+  const reprises = construireReprisesModules(window._closingDB || DB, label);
+  window._closingDB = null;
   input.value = '';
   closeExerciseModal();
   await flushPendingSave();
@@ -5238,6 +5358,9 @@ async function clotureCreateNext() {
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
   EXERCISE_STATUS = 'open';
+  // Reprise des modules de l'exercice clôturé
+  Object.assign(DB, reprises);
+  if(!reprises.tauxAMettreAJour.km.length && !reprises.tauxAMettreAJour.cc.length) delete DB.tauxAMettreAJour;
   // Inject FNO écritures
   if(fnoEcritures.length) {
     DB.ecritures = fnoEcritures;
@@ -5250,10 +5373,171 @@ async function clotureCreateNext() {
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
   startLiveSync();
   const fnoMsg = fnoEcritures.length ? ` — ${fnoEcritures.length} FNO générées` : '';
-  toast(`Exercice "${label}" créé et ouvert${fnoMsg}.`, 'success');
+  toast(`Exercice "${label}" créé et ouvert${fnoMsg} — modules repris.`, 'success');
+  refreshAlerteTaux();
+  const rt = tauxAMettreAJour();
+  if(rt.km.length || rt.cc.length) openTauxMajModal();
 }
 function clotureConfirm() { clotureGoToNext(); } // alias
 function confirmCloseExercise() { clotureStep1(); } // alias
+
+// ══════════════════════════════════════════════
+// REPRISE DES MODULES À LA CLÔTURE (exercice N → N+1)
+// ══════════════════════════════════════════════
+// Ce qui est repris :
+//  - Immobilisations : toutes (les amortissements / la VNC se recalculent pour le nouvel exercice)
+//  - Gestion locative : intégralité (locataires, types, mouvements, historique des documents)
+//  - Échéanciers : ceux qui courent encore sur le nouvel exercice (sans fin ou fin ≥ 01/01/N+1)
+//  - Emprunts : ceux dont le tableau d'amortissement a encore des échéances en N+1
+//  - Frais km : uniquement les véhicules et les comptes (barème à mettre à jour)
+//  - Comptes courants d'associés : les associés et leur taux (taux à mettre à jour)
+//  - Paramétrage des types de pièces
+function anneeNumDeLabel(label) { const n = parseInt(label, 10); return isNaN(n) ? null : n; }
+function construireReprisesModules(src, newLabel) {
+  const clone = o => JSON.parse(JSON.stringify(o === undefined ? null : o));
+  const n1 = anneeNumDeLabel(newLabel);
+  const debutN1 = n1 ? `${n1}-01-01` : null;
+  const moisDebutN1 = n1 ? `${n1}-01` : null;
+
+  const immobilisations = clone(src.immobilisations || []);
+  const locataires = clone(src.locataires || []);
+  const echeanciers = clone((src.echeanciers || []).filter(e => !debutN1 || !e.periodeFin || e.periodeFin >= debutN1));
+  const emprunts = clone((src.emprunts || []).filter(emp => {
+    const t = emp.tableau || [];
+    return !moisDebutN1 || !t.length || t.some(r => r.mois >= moisDebutN1);
+  }));
+
+  const kmSrc = src.km || {};
+  const vehicules = clone((kmSrc.vehicules || []).filter(v => !v.supprime));
+  const km = {
+    vehicules, compteDebit: kmSrc.compteDebit || '', compteCredit: kmSrc.compteCredit || '',
+    crediteDouble: !!kmSrc.crediteDouble, compteCredit2: kmSrc.compteCredit2 || '',
+    trajets: [], fiches: [], moisMarquesSansEcriture: []
+  };
+
+  const ccInterets = clone(src.ccInterets || {});
+  const comptesCC = Object.keys(ccInterets).filter(c => ccInterets[c] && ccInterets[c].taux !== undefined);
+
+  const out = {
+    immobilisations, locataires, echeanciers, emprunts, km, ccInterets,
+    piecesAFormaliser: [], // la clôture est impossible tant qu'il reste des pièces à formaliser
+    tauxAMettreAJour: { km: vehicules.map(v => v.id), cc: comptesCC }
+  };
+  if(Array.isArray(src.piecesTypes) && src.piecesTypes.length) out.piecesTypes = clone(src.piecesTypes);
+  return out;
+}
+// Applique les reprises sur un exercice existant : on ne remplace que les modules encore vides.
+function appliquerReprisesSurExercice(reprises) {
+  const vide = v => !v || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length);
+  ['immobilisations','locataires','echeanciers','emprunts','piecesAFormaliser','piecesTypes','ccInterets'].forEach(k => {
+    if(reprises[k] !== undefined && vide(DB[k])) DB[k] = reprises[k];
+  });
+  const kmVide = !DB.km || !(DB.km.vehicules || []).length;
+  if(kmVide) DB.km = reprises.km;
+  const flags = { km: kmVide ? reprises.tauxAMettreAJour.km : [], cc: [] };
+  if(reprises.ccInterets === DB.ccInterets) flags.cc = reprises.tauxAMettreAJour.cc;
+  if(flags.km.length || flags.cc.length) DB.tauxAMettreAJour = flags;
+}
+
+// ══════════════════════════════════════════════
+// TAUX À METTRE À JOUR (barème km + intérêts CCA) après ouverture d'un nouvel exercice
+// ══════════════════════════════════════════════
+function tauxAMettreAJour() {
+  const f = DB.tauxAMettreAJour;
+  if(!f) return { km: [], cc: [] };
+  const vehIds = (DB.km?.vehicules || []).filter(v => !v.supprime).map(v => v.id);
+  return { km: (f.km || []).filter(id => vehIds.includes(id)), cc: (f.cc || []).filter(c => DB.ccInterets && DB.ccInterets[c]) };
+}
+function marquerTauxAJour(type, cle) {
+  if(!DB.tauxAMettreAJour) return;
+  DB.tauxAMettreAJour[type] = (DB.tauxAMettreAJour[type] || []).filter(x => x !== cle);
+  const r = tauxAMettreAJour();
+  if(!r.km.length && !r.cc.length) delete DB.tauxAMettreAJour;
+  refreshAlerteTaux();
+}
+function getGlobalAlertsContainer() {
+  let c = document.getElementById('global-alerts');
+  if(!c) {
+    c = document.createElement('div');
+    c.id = 'global-alerts';
+    c.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;display:flex;flex-direction:column;gap:8px;max-width:600px;width:max-content;';
+    document.body.appendChild(c);
+  }
+  return c;
+}
+// Alerte persistante (affichée à chaque ouverture tant que les taux ne sont pas mis à jour)
+function refreshAlerteTaux() {
+  const existing = document.getElementById('global-taux-alert');
+  const r = tauxAMettreAJour();
+  if(EXERCISE_STATUS === 'closed' || (!r.km.length && !r.cc.length)) { if(existing) existing.remove(); return; }
+  const km = DB.km || {}; const cc = DB.ccInterets || {};
+  const lignes = [];
+  if(r.km.length) lignes.push(`Barème km : ${r.km.map(id => (km.vehicules.find(v => v.id === id) || {}).nom).join(', ')}`);
+  if(r.cc.length) lignes.push(`Taux d'intérêts CCA : ${r.cc.map(c => c + ' ' + (getLib(c) || '')).join(', ')}`);
+  const html = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+    <div>
+      <div style="font-weight:700;color:var(--amber);margin-bottom:4px;">⚠ Taux à mettre à jour pour l'exercice ${CURRENT_YEAR}</div>
+      ${lignes.map(l => `<div>${l}</div>`).join('')}
+      <button class="btn btn-sm" onclick="openTauxMajModal()" style="margin-top:8px;">METTRE À JOUR</button>
+    </div>
+    <span onclick="document.getElementById('global-taux-alert').remove()" title="Masquer jusqu'à la prochaine ouverture" style="cursor:pointer;font-weight:700;color:var(--text2);">✕</span>
+  </div>`;
+  if(existing) { existing.innerHTML = html; return; }
+  const div = document.createElement('div');
+  div.id = 'global-taux-alert';
+  div.style.cssText = 'background:#2a2414;border:1px solid rgba(255,190,60,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  div.innerHTML = html;
+  getGlobalAlertsContainer().appendChild(div);
+}
+// N'affiche l'alerte que si elle n'a pas été fermée manuellement dans cette session
+function checkAlerteTauxAuBoot() { refreshAlerteTaux(); }
+
+function openTauxMajModal() {
+  const r = tauxAMettreAJour();
+  const km = DB.km || {}; const cc = DB.ccInterets || {};
+  const body = document.getElementById('taux-maj-body');
+  let html = '';
+  if(r.km.length) {
+    html += `<div style="font-size:11px;font-weight:700;color:var(--text2);margin:4px 0 6px;">BARÈME FISCAL — FRAIS KILOMÉTRIQUES (€/km)</div>`;
+    html += r.km.map(id => { const v = km.vehicules.find(x => x.id === id); return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <span style="flex:1;font-size:11px;">🚗 ${v.nom}</span>
+      <span style="font-size:10px;color:var(--text2);">${CURRENT_YEAR - 1 || 'N-1'} : ${String(v.taux||0).replace('.',',')}</span>
+      <input type="number" step="0.001" class="taux-maj-input" data-type="km" data-cle="${id}" value="${v.taux||0}" style="width:90px;font-family:var(--mono);height:28px;text-align:right;">
+    </div>`; }).join('');
+  }
+  if(r.cc.length) {
+    html += `<div style="font-size:11px;font-weight:700;color:var(--text2);margin:14px 0 6px;">TAUX D'INTÉRÊTS — COMPTES COURANTS D'ASSOCIÉS (%)</div>`;
+    html += r.cc.map(c => `<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--cyan);width:65px;">${c}</span>
+      <span style="flex:1;font-size:11px;">${getLib(c) || ''}</span>
+      <span style="font-size:10px;color:var(--text2);">${CURRENT_YEAR - 1 || 'N-1'} : ${String(cc[c].taux ?? '').replace('.',',')}</span>
+      <input type="number" step="0.01" class="taux-maj-input" data-type="cc" data-cle="${c}" value="${cc[c].taux ?? ''}" style="width:90px;font-family:var(--mono);height:28px;text-align:right;">
+    </div>`).join('');
+  }
+  if(!html) { toast('Tous les taux sont à jour','success'); return; }
+  body.innerHTML = html;
+  document.getElementById('taux-maj-modal').style.display = 'flex';
+}
+function closeTauxMajModal() {
+  document.getElementById('taux-maj-modal').style.display = 'none';
+  refreshAlerteTaux();
+}
+function confirmTauxMaj() {
+  document.querySelectorAll('.taux-maj-input').forEach(inp => {
+    const val = parseFloat(inp.value);
+    if(isNaN(val)) return;
+    const { type, cle } = inp.dataset;
+    if(type === 'km') { const v = (DB.km.vehicules || []).find(x => x.id === cle); if(v) v.taux = val; }
+    else { ensureCcInteretsConfig()[cle] = { taux: val }; }
+    marquerTauxAJour(type, cle);
+  });
+  saveDB();
+  document.getElementById('taux-maj-modal').style.display = 'none';
+  refreshAlerteTaux();
+  if(typeof renderKmModule === 'function' && document.getElementById('tab-km')?.classList.contains('active')) renderKmModule();
+  if(document.getElementById('tab-inventaire')?.classList.contains('active')) renderCCInteretsTauxList();
+  toast('Taux mis à jour','success');
+}
 
 // ── GÉNÉRATION DES FNO (Fonds / Reports à Nouveau) ──
 // Calcule les soldes de bilan (classes 1-5) depuis DB.ecritures de l'exercice clôturé
@@ -9301,6 +9585,7 @@ function removeKmVehicule(id) {
   if(!v) return;
   if(km.trajets.some(t => t.vehiculeId === id)) v.supprime = true;
   else km.vehicules = km.vehicules.filter(x => x.id !== id);
+  marquerTauxAJour('km', id);
   saveDB();
   renderKmParams();
   renderKmSaisieMois();
@@ -9310,6 +9595,7 @@ function saveKmVehiculeBareme(id, taux) {
   const v = kmVehicule(km, id);
   if(!v) return;
   v.taux = parseFloat(taux) || 0;
+  marquerTauxAJour('km', id);
   saveDB();
   renderKmSaisieMois();
   renderKmFichesList();
@@ -9886,7 +10172,7 @@ function checkEcheanciersExpirationAuBoot() {
   if(existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'global-echeancier-alert';
-  div.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:99999;background:#2a1a1a;border:1px solid rgba(255,107,107,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;max-width:600px;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  div.style.cssText = 'background:#2a1a1a;border:1px solid rgba(255,107,107,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
   div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
     <div>
       <div style="font-weight:700;color:var(--red);margin-bottom:4px;">⚠ Échéanciers à vérifier</div>
@@ -9895,7 +10181,7 @@ function checkEcheanciersExpirationAuBoot() {
     </div>
     <span onclick="document.getElementById('global-echeancier-alert').remove()" style="cursor:pointer;font-weight:700;color:var(--text2);">✕</span>
   </div>`;
-  document.body.appendChild(div);
+  getGlobalAlertsContainer().appendChild(div);
 }
 
 // ── Aperçu du mois ──
@@ -9905,10 +10191,17 @@ function checkEcheanciersExpirationAuBoot() {
 //  - les mois passés non comptabilisés (orange) restent affichés sans limite d'antériorité ;
 //  - toutes les bandes partent d'un même mois de départ commun (moisDepartCommun), pour que
 //    les carrés d'un même mois soient alignés verticalement d'un échéancier à l'autre.
+// Premier mois de l'exercice ouvert (null pour un exercice test sans année) : les mois antérieurs
+// appartiennent à l'exercice précédent et ne sont plus ni affichés ni comptabilisables ici.
+function moisDebutExerciceCourant() { const n = parseInt(CURRENT_YEAR, 10); return isNaN(n) ? null : `${n}-01`; }
+function moisEcheancierExercice(ech) {
+  const debut = moisDebutExerciceCourant();
+  return computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => !debut || m >= debut);
+}
 function moisVisiblesEcheancier(ech) {
   const done = ech.moisComptabilises || [];
   const seuilVert = moisPrecedent(moisActuelYYYYMM());
-  return computeMoisRange(ech.periodeDebut, effectiveFin(ech))
+  return moisEcheancierExercice(ech)
     .filter(m => !done.includes(m) || m >= seuilVert);
 }
 function moisDepartCommunEcheanciers() {
@@ -9977,7 +10270,7 @@ function renderEcheanciers() {
   groupsWrap.innerHTML = sortedCats.map(cat => {
     const items = groups[cat].slice().sort((a,b) => (a.libelle||'').localeCompare(b.libelle||''));
     const rowsHtml = items.map(ech => {
-      const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+      const allMois = moisEcheancierExercice(ech);
       const done = ech.moisComptabilises || [];
       const nbDone = allMois.filter(m => done.includes(m)).length;
       const moisEnRetard = allMois.filter(m => m <= moisActuelYYYYMM() && !done.includes(m));
@@ -10150,7 +10443,7 @@ function openEcheancierDetailModal(id) {
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
   document.getElementById('echeancier-detail-title').textContent = '📋 ' + ech.libelle;
-  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+  const allMois = moisEcheancierExercice(ech);
   const done = ech.moisComptabilises || [];
   document.getElementById('echeancier-detail-body').innerHTML = allMois.map(mois => {
     const isDone = done.includes(mois);
@@ -10328,7 +10621,7 @@ function comptabiliserEcheancierRetard(id) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
-  const allMois = computeMoisRange(ech.periodeDebut, effectiveFin(ech));
+  const allMois = moisEcheancierExercice(ech);
   const done = ech.moisComptabilises || [];
   const aTraiter = allMois.filter(m => m <= moisActuelYYYYMM() && !done.includes(m));
   if(!aTraiter.length) { toast('Aucun mois en retard pour cet échéancier','info'); return; }
@@ -10458,7 +10751,8 @@ function anneesCommunesEmprunts() {
     (emp.tableau || []).forEach(r => {
       const y = parseInt(r.mois.split('-')[0], 10);
       toutes.add(y);
-      if(y < anneeN - 1 && !done.includes(r.mois) && r.mois <= moisActuel) anciennesAGarder.add(y);
+      const debutEx = moisDebutExerciceCourant();
+      if(y < anneeN - 1 && !done.includes(r.mois) && r.mois <= moisActuel && (!debutEx || r.mois >= debutEx)) anciennesAGarder.add(y);
     });
   });
   if(!toutes.size) return [];
@@ -10493,8 +10787,11 @@ function empruntMoisGridHtml(emp, anneesCommunes) {
       if(!row) { html += `<td style="padding:1px;border:none;"></td>`; return; }
       const isDone = done.includes(mois);
       const isFuture = mois > moisActuel;
+      const debutEx = moisDebutExerciceCourant();
+      const horsExercice = debutEx && mois < debutEx;
       let bg, fg, title, onclickAttr = '', cursor = 'default';
-      if(isDone) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(mois)+' — comptabilisée (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
+      if(horsExercice) { bg = isDone ? 'var(--green)' : 'var(--line2)'; fg = isDone ? '#0a2e1a' : 'var(--text2)'; title = moisLabelFromYYYYMM(mois)+' — exercice précédent'; }
+      else if(isDone) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(mois)+' — comptabilisée (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
       else if(isFuture) { bg='var(--line2)'; fg='var(--text2)'; title=moisLabelFromYYYYMM(mois)+' — à venir'; }
       else { bg='var(--amber)'; fg='#332200'; title=moisLabelFromYYYYMM(mois)+' — cliquer pour comptabiliser'; onclickAttr=` onclick="comptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
       html += cell(bg, fg, title, onclickAttr, cursor, lettre);
@@ -10849,6 +11146,7 @@ function saveTauxCC(compte, value) {
   const config = ensureCcInteretsConfig();
   const taux = parseFloat(value) || 0;
   config[compte] = {taux};
+  marquerTauxAJour('cc', compte);
   saveDB();
 }
 
@@ -11085,10 +11383,19 @@ function confirmerConstatationResultat() {
 // ══════════════════════════════════════════════
 
 // Lit le solde net (débit-crédit) d'un ou plusieurs préfixes de compte, sur l'exercice courant
+// Écriture de constatation du résultat DE L'EXERCICE EN COURS (31/12/N) : elle mouvemente aussi
+// le 120/129 mais concerne le résultat N, qui ne sera affecté qu'à l'AG de N+1 → exclue ici.
+// Le résultat N-1 à affecter arrive, lui, par la balance d'ouverture (pièce BAO au 01/01/N).
+function estConstatationResultatExercice(e) {
+  const c = String(e.compte);
+  if(!c.startsWith('120') && !c.startsWith('129')) return false;
+  return e.numDoc === 'CLOTURE' || e.date === `${CURRENT_YEAR}-12-31`;
+}
 function soldeCompteApprobation(prefixes) {
   let net = 0;
   DB.ecritures.forEach(e => {
     const c = String(e.compte);
+    if(estConstatationResultatExercice(e)) return;
     if(prefixes.some(p => c.startsWith(p))) net += (e.debit||0) - (e.credit||0);
   });
   return Math.round(net*100)/100;
@@ -11318,7 +11625,7 @@ async function boot() {
   // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
   if(sessionStorage.getItem('sci_auth') === '1') renderPostItPieces();
   // L'alerte ne doit jamais apparaître avant que l'utilisateur soit connecté
-  if(sessionStorage.getItem('sci_auth') === '1') checkEcheanciersExpirationAuBoot();
+  if(sessionStorage.getItem('sci_auth') === '1') { checkEcheanciersExpirationAuBoot(); checkAlerteTauxAuBoot(); }
 
   // Le chargement des données (Firebase) est asynchrone : si l'utilisateur a déjà navigué
   // vers un onglet pendant ce chargement, celui-ci peut s'être affiché avec des données
@@ -11581,7 +11888,14 @@ function renderImmos() {
     const items = groups[root].slice().sort((a,b) => String(a.compteImmo||'').localeCompare(String(b.compteImmo||'')));
     const rowsHtml = items.map(immo => {
       const schedule = computeAmortSchedule(immo);
-      const cumulActuel = immo.nonAmortissable ? 0 : schedule.filter(s => s.annee <= parseInt(yearNow)).reduce((max,s) => s.cumul, 0);
+      // Amortissements cumulés = années antérieures + dotation de l'exercice UNIQUEMENT si elle a été comptabilisée
+      const anneeEx = parseInt(yearNow);
+      const cumulAnterieur = immo.nonAmortissable ? 0 : schedule.filter(s => s.annee < anneeEx).reduce((max,s) => s.cumul, 0);
+      const rowEx = immo.nonAmortissable ? null : schedule.find(s => s.annee === anneeEx);
+      const dotationPostee = rowEx ? isDotationAlreadyPosted(immo) : false;
+      const cumulActuel = Math.round((cumulAnterieur + (rowEx && dotationPostee ? rowEx.dotation : 0)) * 100) / 100;
+      const noteDotation = (rowEx && rowEx.dotation > 0 && !dotationPostee)
+        ? `<div style="font-size:9px;color:var(--text2);font-weight:400;">dotation ${yearNow} à comptabiliser : ${rn(rowEx.dotation)}</div>` : '';
       const vncActuelle = immo.nonAmortissable ? parseFloat(immo.valeurBrute) : Math.round((parseFloat(immo.valeurBrute) - cumulActuel) * 100) / 100;
       const scheduleBtn = immo.nonAmortissable
         ? ''
@@ -11594,7 +11908,7 @@ function renderImmos() {
         <td style="font-size:11px;text-align:center;">${immo.nonAmortissable ? '—' : immo.dureeAnnees+' ans'}</td>
         <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.nonAmortissable ? '—' : (immo.compteDotation||'')}</td>
         <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${immo.nonAmortissable ? '—' : (immo.compteAmort||'')}</td>
-        <td class="td-num" style="font-size:11px;color:var(--amber);">${immo.nonAmortissable ? '—' : rn(cumulActuel)}</td>
+        <td class="td-num" style="font-size:11px;color:var(--amber);">${immo.nonAmortissable ? '—' : rn(cumulActuel) + noteDotation}</td>
         <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
         <td style="text-align:center;white-space:nowrap;">
           ${scheduleBtn}
@@ -11804,7 +12118,7 @@ function confirmDotationEcritures() {
   renum(); saveDB(); updateNavCounts();
   closeDotationModal();
   toast(`${count} écriture(s) de dotation comptabilisée(s) — total ${fmt(total)} €`, 'success');
-  renderImmos();
+  renderImmos(); // les amortissements cumulés et la VNC intègrent maintenant la dotation de l'exercice
 }
 
 function askDeleteImmo(id) {
