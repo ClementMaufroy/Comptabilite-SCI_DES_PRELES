@@ -2777,7 +2777,7 @@ let DB = {
   nextGlobalNum: 1,
   journalNums: {VE:1,HA:1,IMMO:1,OD:1,TRESO:1},
 };
-let undoStack = [];
+var undoStack = [];
 let glSortCol = 'num', glSortAsc = true;
 let deleteTargetId = null;
 let importParsed = [];
@@ -3039,7 +3039,10 @@ function saveDB() {
   // débouncé de 800ms, l'écho revient donc ~1-1.5s après cet appel).
   markLocalWrite();
   const lsKey = 'ledger_' + CURRENT_YEAR;
-  try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
+  let _json = null;
+  try { _json = JSON.stringify(DB); } catch(e) {}
+  if(_json !== null) histRecord(_json);
+  try { if(_json !== null) localStorage.setItem(lsKey, _json); } catch(e) {}
   clearTimeout(_saveTimeout);
   _pendingSave = { db: DB, year: CURRENT_YEAR };
   _saveTimeout = setTimeout(flushPendingSave, 800);
@@ -3064,7 +3067,11 @@ async function saveDBNow(force) {
   if(EXERCISE_STATUS === 'closed' && !force) return;
   markLocalWrite();
   const lsKey = 'ledger_' + CURRENT_YEAR;
-  try { localStorage.setItem(lsKey, JSON.stringify(DB)); } catch(e) {}
+  let _json = null;
+  try { _json = JSON.stringify(DB); } catch(e) {}
+  // V72 : une sauvegarde forcée (clôture, changement d'exercice…) remet l'historique à zéro
+  if(force) histClear(); else if(_json !== null) histRecord(_json);
+  try { if(_json !== null) localStorage.setItem(lsKey, _json); } catch(e) {}
   clearTimeout(_saveTimeout);
   _pendingSave = null;
   if(window._fbReady && window._fbSave) {
@@ -3126,6 +3133,10 @@ function startLiveSync() {
     if(sig(remote) === sig(DB)) return;
     Object.assign(DB, remote);
     renum(); updateNavCounts();
+    // V72 : modification reçue d'un autre poste — l'historique local n'est plus fiable, on le réinitialise
+    const _hadHist = undoStack.length || redoStack.length;
+    histClear();
+    if(_hadHist) toast("Données mises à jour depuis un autre poste — historique d'annulation réinitialisé", 'warn', 4000);
     const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
     const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
     if(active && renders[active]) renders[active]();
@@ -3664,8 +3675,7 @@ function saveEcriture() {
   const totC=lines.reduce((s,l)=>s+l.credit,0);
   if(Math.abs(totD-totC)>0.005){toast('Écriture non équilibrée','error');return;}
   const snap=JSON.parse(JSON.stringify(DB.ecritures));
-  undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
-  redoStack = []; updUndoRedo();
+  // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
 
   const isEditing = editingNum !== null;
   let io, origGroup;
@@ -3744,26 +3754,82 @@ function saveEcriture() {
 // ══════════════════════════════════════════════
 // UNDO / REDO
 // ══════════════════════════════════════════════
-let redoStack = [];
+// V72 : historique GLOBAL. Chaque action qui enregistre (saveDB) mémorise l'état complet
+// de l'exercice AVANT l'action. Annuler restaure cet état, quel que soit le module concerné.
+// Les appels de saveDB rapprochés (< 700 ms, même action) sont regroupés en une seule étape.
+var redoStack = [];
+var HIST_MAX = 40;
+var _histBase = null, _histYear = null, _histLastPush = 0, _histRestoring = false;
+var HIST_TAB_LABELS = {saisie:'Saisie',journaux:'Journaux',grandlivre:'Grand livre',balance:'Balance',tbdata:'Plan comptable',mensuel:'Mensuel',annuel:'Annuel',editions:'Éditions',immos:'Immobilisations',locataires:'Gestion locative',echeanciers:'Échéanciers',emprunts:'Emprunts',km:'Frais km',inventaire:'Inventaire',approbation:'Approbation',parametres:'Paramètres'};
+function _histLabel() {
+  const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','') || '';
+  const h = new Date();
+  return (HIST_TAB_LABELS[active] || active || 'action') + ' · ' + String(h.getHours()).padStart(2,'0') + ':' + String(h.getMinutes()).padStart(2,'0') + ':' + String(h.getSeconds()).padStart(2,'0');
+}
+function histClear() {
+  undoStack = []; redoStack = [];
+  try { _histBase = JSON.stringify(DB); } catch(e) { _histBase = null; }
+  _histYear = String(CURRENT_YEAR); _histLastPush = 0;
+  updUndoRedo();
+}
+// Appelé par saveDB / saveDBNow avec l'état sérialisé courant
+function histRecord(curJson) {
+  if(_histRestoring) return;
+  if(_histBase === null || String(CURRENT_YEAR) !== _histYear) { histClear(); return; }
+  if(curJson === _histBase) return;
+  const now = Date.now();
+  if(now - _histLastPush > 700 || !undoStack.length) {
+    undoStack.push({ state: _histBase, label: _histLabel() });
+    if(undoStack.length > HIST_MAX) undoStack.shift();
+  }
+  _histLastPush = now;
+  redoStack = [];
+  _histBase = curJson;
+  updUndoRedo();
+}
 function updUndoRedo() {
-  document.getElementById('btn-undo').disabled = undoStack.length === 0;
-  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+  const closed = (typeof EXERCISE_STATUS !== 'undefined' && EXERCISE_STATUS === 'closed');
+  const bu = document.getElementById('btn-undo'), br = document.getElementById('btn-redo');
+  if(bu) { bu.disabled = closed || undoStack.length === 0; bu.title = undoStack.length ? `Annuler : ${undoStack[undoStack.length-1].label} (${undoStack.length} étape${undoStack.length>1?'s':''} disponible${undoStack.length>1?'s':''})` : 'Rien à annuler'; }
+  if(br) { br.disabled = closed || redoStack.length === 0; br.title = redoStack.length ? `Rétablir : ${redoStack[redoStack.length-1].label}` : 'Rien à rétablir'; }
+}
+function _histApply(json) {
+  const obj = JSON.parse(json);
+  Object.keys(DB).forEach(k => { if(!(k in obj)) delete DB[k]; });
+  Object.assign(DB, obj);
+}
+function _histAfterRestore(msg, type) {
+  // ferme les fenêtres éventuellement ouvertes (elles pointeraient sur un état périmé)
+  document.querySelectorAll('.modal-overlay').forEach(m => { if(m.style.display === 'flex') m.style.display = 'none'; });
+  _histRestoring = true;
+  try { renum(); saveDB(); } finally { _histRestoring = false; }
+  try { _histBase = JSON.stringify(DB); } catch(e) {}
+  _histLastPush = 0;
+  updateNavCounts(); updUndoRedo();
+  const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,parametres:renderParametres};
+  try { if(active && renders[active]) renders[active](); } catch(e) { console.error(e); }
+  try { renderPostItPieces(); } catch(e) {}
+  try { updateNextNum(); } catch(e) {}
+  toast(msg, type);
 }
 function undoLast() {
+  if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — annulation impossible','error'); return; }
   if(!undoStack.length) return;
-  redoStack.push({snap: JSON.parse(JSON.stringify(DB.ecritures))});
-  if(redoStack.length > 50) redoStack.shift();
-  DB.ecritures = undoStack.pop().snap;
-  renum(); saveDB(); updateNavCounts(); updUndoRedo();
-  toast('Annulation effectuée','warn'); updateNextNum();
+  const e = undoStack.pop();
+  redoStack.push({ state: JSON.stringify(DB), label: e.label });
+  if(redoStack.length > HIST_MAX) redoStack.shift();
+  _histApply(e.state);
+  _histAfterRestore('Annulé : ' + e.label, 'warn');
 }
 function redoNext() {
+  if(EXERCISE_STATUS === 'closed') return;
   if(!redoStack.length) return;
-  undoStack.push({snap: JSON.parse(JSON.stringify(DB.ecritures))});
-  if(undoStack.length > 50) undoStack.shift();
-  DB.ecritures = redoStack.pop().snap;
-  renum(); saveDB(); updateNavCounts(); updUndoRedo();
-  toast('Rétablissement effectué','success'); updateNextNum();
+  const e = redoStack.pop();
+  undoStack.push({ state: JSON.stringify(DB), label: e.label });
+  if(undoStack.length > HIST_MAX) undoStack.shift();
+  _histApply(e.state);
+  _histAfterRestore('Rétabli : ' + e.label, 'success');
 }
 
 // ══════════════════════════════════════════════
@@ -3789,8 +3855,7 @@ function confirmDelete() {
   DB.ecritures.filter(x => x.num === numToDelete).forEach(x => {
     if(x.numDoc) piecesCandidates.add(x.journal + '||' + x.date + '||' + x.numDoc);
   });
-  undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
-  redoStack = []; updUndoRedo();
+  // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
   DB.ecritures=DB.ecritures.filter(x=>x.num!==numToDelete);
   // Synchronisation post-it : si plus aucune écriture ne partage un triplet, on retire la pièce
   piecesCandidates.forEach(key => {
@@ -4430,8 +4495,7 @@ function previewImport(){
 }
 async function confirmImport(){
   if(!importParsed.length) return;
-  undoStack.push({snap:JSON.parse(JSON.stringify(DB.ecritures))});
-  redoStack = []; updUndoRedo();
+  // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
   const t=Date.now();
   importParsed.forEach((r,i)=>{
     DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,_origGroup:r._origGroup||0,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
@@ -4909,8 +4973,7 @@ function applyExerciseStatus() {
   }
   const btnCloture = document.getElementById('btn-cloture');
   if(btnCloture) btnCloture.disabled = isClosed;
-  document.getElementById('btn-undo').disabled = isClosed || undoStack.length === 0;
-  document.getElementById('btn-redo').disabled = isClosed || redoStack.length === 0;
+  updUndoRedo();
   // Show/hide closed overlay on saisie tab
   let overlay = document.getElementById('saisie-closed-overlay');
   if(isClosed) {
@@ -7663,6 +7726,7 @@ function openLocataireDetail(locId) {
   if(!loc) { toast('Locataire introuvable','error'); return; }
   ensureLocV2(loc);
   _locDetailId = locId;
+  _locDetailScrollBottom = true;
   renderLocataires(); // renderLocataires bascule sur la vue détail si _locDetailId est défini
 }
 
@@ -7672,6 +7736,7 @@ function closeLocataireDetail() {
 }
 
 // Rendu de la vue détail (appelé par renderLocataires quand _locDetailId est défini)
+var _locDetailScrollBottom = false, _locDetailScrollPos = null;
 function renderLocataireDetail() {
   const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
   const wrap = document.getElementById('locataires-list-wrap');
@@ -7687,9 +7752,17 @@ function renderLocataireDetail() {
   const creditEnAttente = computeCreditEnAttente(loc);
 
   // Résumé des soldes par mois impliqué (les plus anciens en premier)
-  const moisList = moisImpliques(loc);
+  const moisTous = moisImpliques(loc);
+  // V72 : affichage limité — tout l'historique depuis le 1er mois non soldé, précédé d'au plus 2 mois soldés.
+  // Sans aucun mois non soldé : seuls les 2 derniers mois. (Les mois masqués sont tous à 0 : la Σ n'est pas affectée.)
+  const moisList = (() => {
+    const i = moisTous.findIndex(m => Math.abs(computeSoldeMois(loc, m)) >= 0.01);
+    if(i === -1) return moisTous.slice(-2);
+    return moisTous.slice(Math.max(0, i - 2));
+  })();
+  const nbMoisMasques = moisTous.length - moisList.length;
   const soldesParMoisHtml = moisList.length
-    ? moisList.map(m => {
+    ? (nbMoisMasques ? `<div style="padding:3px 10px;font-size:9px;color:var(--text3);font-style:italic;border-bottom:1px solid var(--bg3);">${nbMoisMasques} mois antérieur${nbMoisMasques>1?'s':''} soldé${nbMoisMasques>1?'s':''} masqué${nbMoisMasques>1?'s':''}</div>` : '') + moisList.map(m => {
         const s = computeSoldeMois(loc, m);
         const color = s > 0.005 ? 'var(--amber)' : (s < -0.005 ? 'var(--green)' : 'var(--text2)');
         // Bouton "générer quittance" : si le mois est soldé (à 1 centime près) ET qu'aucune quittance n'existe encore
@@ -7752,7 +7825,7 @@ function renderLocataireDetail() {
     affs.forEach((a, idx) => ajouterLigne(a.mois, { mvt, montant: parseFloat(a.montant)||0, partiel: affs.length > 1, dernier: idx === affs.length - 1 }));
   });
   const moisMvts = Object.keys(lignesParMois).sort();
-  const thS = 'padding:5px 8px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);';
+  const thS = 'position:sticky;top:0;z-index:2;padding:5px 8px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);box-shadow:0 1px 0 var(--line);';
   const tdS = 'padding:4px 8px;border-bottom:1px solid var(--bg3);';
   // V71 : groupes par mois sans en-tête ni sous-total ; le mois apparaît une seule fois dans la 1re colonne (fusionnée).
   const ligneHtml = (l, moisCell, bg) => {
@@ -7797,7 +7870,7 @@ function renderLocataireDetail() {
   const groupeHtml = (label, lignes, idx, couleurLabel) => {
     const bg = idx % 2 ? 'var(--bg2)' : 'var(--bg1)';
     const sepStyle = idx ? 'border-top:3px solid var(--bg0);' : '';
-    const cell = `<td rowspan="${lignes.length}" style="padding:4px 10px;vertical-align:top;white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:${couleurLabel};background:${bg};border-right:2px solid var(--line);${sepStyle}">${label}</td>`;
+    const cell = `<td rowspan="${lignes.length}" style="padding:4px 10px;vertical-align:middle;white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:${couleurLabel};background:${bg};border-right:2px solid var(--line);${sepStyle}">${label}</td>`;
     return lignes.map((l, i) => {
       let html = ligneHtml(l, i === 0 ? cell : '', bg);
       if(i === 0 && idx) html = html.replace(/<td style="padding:4px 8px;/g, `<td style="${sepStyle}padding:4px 8px;`).replace(/<td class="td-num" style="padding:4px 8px;/g, `<td class="td-num" style="${sepStyle}padding:4px 8px;`);
@@ -7842,7 +7915,7 @@ function renderLocataireDetail() {
       <span style="color:var(--text2);">Causes possibles : mouvement non comptabilisé, écriture saisie ou modifiée directement sur le ${ctl.compte||'411'}, écriture supprimée, solde initial non repris au GL.</span>
     </div>`}
 
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;align-items:start;">
       <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--line2);">
           <div style="font-size:11px;font-weight:600;color:var(--text0);">TYPES PARAMÉTRÉS</div>
@@ -7869,9 +7942,19 @@ function renderLocataireDetail() {
         <div style="font-size:11px;font-weight:600;color:var(--text0);">MOUVEMENTS</div>
         <button class="btn btn-sm btn-primary" onclick="openMouvementModal('${loc.id}')" style="padding:3px 10px;font-size:10px;">+ Nouveau mouvement</button>
       </div>
-      ${mvtsHtml}
+      <div id="loc-mvts-scroll" style="max-height:calc(100vh - 380px);min-height:160px;overflow-y:auto;">${mvtsHtml}</div>
     </div>
   `;
+  // V73 : à l'ouverture de la fiche, on se place sur les derniers mouvements (comme le GL) ;
+  // lors d'un simple rafraîchissement (modification, suppression…), on conserve la position.
+  const _sc = document.getElementById('loc-mvts-scroll');
+  if(_sc) {
+    if(_locDetailScrollBottom || _locDetailScrollPos === null) _sc.scrollTop = _sc.scrollHeight;
+    else _sc.scrollTop = _locDetailScrollPos;
+    _sc.onscroll = () => { _locDetailScrollPos = _sc.scrollTop; };
+    _locDetailScrollPos = _sc.scrollTop;
+  }
+  _locDetailScrollBottom = false;
   updateNavCounts();
 }
 
@@ -9013,7 +9096,6 @@ function renderLocataires() {
         ${checkboxHtml}
         ${labelHtml}
         <span style="color:var(--text0);text-align:right;font-family:var(--mono);white-space:nowrap;min-width:72px;">${fmt(montant)} €</span>
-        <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:0 5px;font-size:9px;flex:none;">📦</button>
       </div>`;
     };
     const historique = (loc.historique||[]).filter(h => h.mois);
@@ -9026,7 +9108,11 @@ function renderLocataires() {
       });
       const cles = Object.keys(parMois).sort();
       const moisSuite = [];
-      for(let m = cles[0]; m <= cles[cles.length-1]; m = moisSuivant(m)) moisSuite.push(m);
+      const _masques = new Set(loc.moisDocsMasques || []);
+      for(let m = cles[0]; m <= cles[cles.length-1]; m = moisSuivant(m)) {
+        if(!parMois[m] && _masques.has(m)) continue; // V73 : mois vide archivé
+        moisSuite.push(m);
+      }
       const byDate = (a,b) => (a.dateEmission||'').localeCompare(b.dateEmission||'');
       const sep = 'border-top:1px solid var(--bg3);';
       const rows = moisSuite.map((k,i) => {
@@ -9036,11 +9122,14 @@ function renderLocataires() {
         const vide = !left && !right;
         const t = i ? sep : '';
         return `<div style="${t}padding:1px 10px;min-height:26px;">${left}</div>
-          <div style="${t}display:flex;align-items:center;justify-content:center;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;color:${vide?'var(--text3)':'var(--text1)'};">${moisLabelFromYYYYMM(k)}</div>
+          <div style="${t}display:flex;align-items:center;justify-content:center;gap:8px;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;color:${vide?'var(--text3)':'var(--text1)'};">
+            <span>${moisLabelFromYYYYMM(k)}</span>
+            <button class="btn btn-sm" onclick="askArchiveMoisDocs('${loc.id}','${k}')" title="${vide ? `Archiver la ligne vide de ${moisLabelFromYYYYMM(k)}` : `Archiver tous les documents de ${moisLabelFromYYYYMM(k)}`}" style="padding:0 5px;font-size:9px;">📦</button>
+          </div>
           <div style="${t}padding:1px 10px;min-height:26px;">${right}</div>`;
       }).join('');
       const headStyle = 'padding:4px 10px;font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);';
-      docsHtml = `<div style="display:grid;grid-template-columns:1fr 150px 1fr;">
+      docsHtml = `<div style="display:grid;grid-template-columns:1fr 180px 1fr;">
         <div style="${headStyle}">📄 Appels de loyer</div>
         <div style="${headStyle}text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);">Mois</div>
         <div style="${headStyle}">🧾 Quittances</div>
@@ -9664,13 +9753,41 @@ function askArchiveHistoriqueEntry(locId, entryId) {
   btn.setAttribute('onclick', 'confirmArchiveHistoriqueEntry()');
   document.getElementById('loc-delete-modal').style.display = 'flex';
 }
+// V72 : archivage de tous les documents (appels + quittances) d'un mois
+function askArchiveMoisDocs(locId, mois) {
+  const loc = ensureLocatairesArray().find(l => l.id === locId);
+  if(!loc) return;
+  const docs = (loc.historique||[]).filter(h => h.mois === mois);
+  if(!docs.length) {
+    // V73 : mois sans document — on masque simplement la ligne (pas de confirmation nécessaire, annulable via ↩)
+    if(!Array.isArray(loc.moisDocsMasques)) loc.moisDocsMasques = [];
+    if(!loc.moisDocsMasques.includes(mois)) loc.moisDocsMasques.push(mois);
+    saveDB();
+    toast(`Ligne ${moisLabelFromYYYYMM(mois)} archivée`, 'success');
+    renderLocataires();
+    return;
+  }
+  archiveTarget = {locId, mois};
+  const nbA = docs.filter(h => h.type === 'appel').length, nbQ = docs.length - nbA;
+  const det = [nbA ? `${nbA} appel${nbA>1?'s':''} de loyer` : '', nbQ ? `${nbQ} quittance${nbQ>1?'s':''}` : ''].filter(Boolean).join(' et ');
+  document.getElementById('loc-delete-msg').innerHTML = `Archiver les documents de <strong style="color:var(--cyan)">${moisLabelFromYYYYMM(mois)}</strong> (${det}) ?<br>Ils seront retirés de la liste. Aucun impact sur les mouvements ni les soldes comptables.`;
+  document.getElementById('loc-delete-modal').querySelector('.modal-title').innerHTML = '📦 ARCHIVER LE MOIS';
+  const btn = document.getElementById('loc-delete-modal').querySelector('.btn-danger');
+  btn.textContent = 'ARCHIVER';
+  btn.setAttribute('onclick', 'confirmArchiveHistoriqueEntry()');
+  document.getElementById('loc-delete-modal').style.display = 'flex';
+}
 function confirmArchiveHistoriqueEntry() {
   if(!archiveTarget) return;
   const loc = ensureLocatairesArray().find(l => l.id === archiveTarget.locId);
   if(!loc) { closeLocataireDeleteModal(); return; }
+  if(archiveTarget.mois) {
+    loc.historique = (loc.historique||[]).filter(h => h.mois !== archiveTarget.mois);
+  } else {
   const idx = (loc.historique||[]).findIndex(h => h.id === archiveTarget.entryId);
   if(idx === -1) { closeLocataireDeleteModal(); return; }
   loc.historique.splice(idx, 1);
+  }
   saveDB();
   closeLocataireDeleteModal();
   archiveTarget = null;
@@ -12336,8 +12453,7 @@ function confirmDotationEcritures() {
   if(!checks.length) { toast('Aucune dotation sélectionnée','error'); return; }
 
   const snap = JSON.parse(JSON.stringify(DB.ecritures));
-  undoStack.push({snap}); if(undoStack.length>50) undoStack.shift();
-  redoStack = []; updUndoRedo();
+  // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
 
   const date = `${anneeCompta()}-12-31`;
   const base = Date.now();
