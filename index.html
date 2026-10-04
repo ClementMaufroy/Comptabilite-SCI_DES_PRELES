@@ -8874,8 +8874,10 @@ function renderLocataires() {
 
     // ── Sous-ligne : impayés (une seule ligne discrète) + liste des docs (barre latérale colorée) ──
     // Impayés : mois avec solde débiteur, listés en texte sobre (pas de fond coloré dense)
+    // V69 : un mois n'est impayé qu'une fois échu — le mois en cours (date du jour) n'est jamais compté comme impayé
     const moisAvecSolde = [];
-    moisImpliques(loc).forEach(m => {
+    const _moisCourant = new Date().toISOString().slice(0,7);
+    moisImpliques(loc).filter(m => m < _moisCourant).forEach(m => {
       const s = computeSoldeMoisAvantAppel(loc, m);
       if(s > 0.01) moisAvecSolde.push({ mois: m, montant: s });
     });
@@ -8886,43 +8888,63 @@ function renderLocataires() {
         </div>`
       : '';
 
-    // Documents : chaque doc a une petite barre verticale à gauche indiquant son statut (jaune / vert / orange / gris)
-    const historique = (loc.historique||[]).slice().sort((a,b) => (b.dateEmission||'').localeCompare(a.dateEmission||''));
+    // V69 : documents en 2 colonnes (appels à gauche / quittances à droite), un rang par mois,
+    // du plus ancien au plus récent ; une case reste vide si le mois n'a pas de document de ce type.
+    const docItemHtml = (h) => {
+      const isAppel = h.type === 'appel';
+      const label = moisLabelFromYYYYMM(h.mois);
+      const montant = isAppel ? montantAppelHistorique(h) : h.montantPaye;
+      let barColor = 'var(--line2)';
+      let warning = '';
+      if(!isAppel && h._v2) {
+        const soldeMois = computeSoldeMoisAvantAppel(loc, h.mois);
+        if(soldeMois > 0.01) {
+          barColor = 'var(--amber)';
+          warning = ` <span style="color:var(--amber);font-weight:600;" title="Solde du mois repassé à +${fmt(soldeMois)}€">⚠ +${fmt(soldeMois)}€</span>`;
+        } else if(h._consulted) {
+          barColor = 'var(--green)';
+        } else {
+          barColor = '#e5c800'; // jaune vif = à imprimer
+        }
+      } else if(isAppel) {
+        barColor = 'var(--cyan)';
+      }
+      const checkboxHtml = h.docHtml
+        ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:12px;height:12px;cursor:pointer;margin:0;">`
+        : `<span style="width:12px;display:inline-block;"></span>`;
+      const labelHtml = h.docHtml
+        ? `<span style="flex:1;min-width:0;cursor:pointer;color:var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
+        : `<span style="flex:1;min-width:0;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}${warning}</span>`;
+      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px 3px 6px;font-size:10px;border-left:3px solid ${barColor};">
+        ${checkboxHtml}
+        ${labelHtml}
+        <span style="color:var(--text2);text-align:right;font-family:var(--mono);white-space:nowrap;">${fmt(montant)} €</span>
+        <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:0 5px;font-size:9px;">📦</button>
+      </div>`;
+    };
+    const historique = (loc.historique||[]).slice();
     let docsHtml = '';
     if(historique.length) {
-      docsHtml = historique.map(h => {
-        const isAppel = h.type === 'appel';
-        const label = isAppel ? `📄 Appel de loyer — ${moisLabelFromYYYYMM(h.mois)}` : `🧾 Quittance — ${moisLabelFromYYYYMM(h.mois)}`;
-        const montant = isAppel ? montantAppelHistorique(h) : h.montantPaye;
-        // Barre latérale gauche selon le statut du document (subtle, pas de fond global)
-        let barColor = 'var(--line2)';
-        let warning = '';
-        if(!isAppel && h._v2) {
-          const soldeMois = computeSoldeMoisAvantAppel(loc, h.mois);
-          if(soldeMois > 0.01) {
-            barColor = 'var(--amber)';
-            warning = ` <span style="color:var(--amber);font-weight:600;">⚠ solde repassé à +${fmt(soldeMois)}€</span>`;
-          } else if(h._consulted) {
-            barColor = 'var(--green)';
-          } else {
-            barColor = '#e5c800'; // jaune vif = à imprimer
-          }
-        } else if(isAppel) {
-          barColor = 'var(--cyan)';
-        }
-        const checkboxHtml = h.docHtml
-          ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:13px;height:13px;cursor:pointer;margin:0;">`
-          : `<span style="width:13px;display:inline-block;"></span>`;
-        const labelHtml = h.docHtml
-          ? `<span style="flex:1;cursor:pointer;color:var(--cyan);" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
-          : `<span style="flex:1;color:var(--text1);">${label}${warning}</span>`;
-        return `<div style="display:flex;align-items:center;gap:10px;padding:4px 10px 4px 6px;border-bottom:1px solid var(--line1);font-size:10px;border-left:3px solid ${barColor};">
-          ${checkboxHtml}
-          ${labelHtml}
-          <span style="color:var(--text2);width:70px;text-align:right;font-family:var(--mono);">${fmt(montant)} €</span>
-          <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
-        </div>`;
+      const parMois = {};
+      historique.forEach(h => {
+        const k = h.mois || '';
+        if(!parMois[k]) parMois[k] = { appels: [], quittances: [] };
+        (h.type === 'appel' ? parMois[k].appels : parMois[k].quittances).push(h);
+      });
+      const byDate = (a,b) => (a.dateEmission||'').localeCompare(b.dateEmission||'');
+      const cellStyle = 'border-bottom:1px solid var(--line1);display:flex;flex-direction:column;justify-content:center;';
+      const rows = Object.keys(parMois).sort().map(k => {
+        const g = parMois[k];
+        const left = g.appels.sort(byDate).map(docItemHtml).join('');
+        const right = g.quittances.sort(byDate).map(docItemHtml).join('');
+        return `<div style="${cellStyle}border-right:1px solid var(--line1);">${left}</div><div style="${cellStyle}">${right}</div>`;
       }).join('');
+      const headStyle = 'padding:3px 8px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line2);';
+      docsHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;">
+        <div style="${headStyle}border-right:1px solid var(--line1);">📄 Appels de loyer</div>
+        <div style="${headStyle}">🧾 Quittances</div>
+        ${rows}
+      </div>`;
     } else {
       docsHtml = `<div style="padding:6px 10px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
     }
