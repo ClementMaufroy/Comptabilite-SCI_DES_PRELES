@@ -109,8 +109,8 @@
   --text2: #a0a0be;
   --text3: #686880;
   --cyan: #2aebff;
-  --cyan-dim: rgba(42,235,255,0.16);
-  --cyan-glow: rgba(42,235,255,0.10);
+  --cyan-dim: rgba(var(--accent-rgb),0.16);
+  --cyan-glow: rgba(var(--accent-rgb),0.10);
   --gold: #f5d060;
   --gold-dim: rgba(245,208,96,0.18);
   --green: #44e87a;
@@ -191,8 +191,8 @@ body::before {
   text-transform: uppercase;
 }
 .btn:hover { border-color: var(--text2); background: var(--bg4); color: var(--text0); }
-.btn-primary { background: var(--cyan-dim); border-color: rgba(24,224,255,0.4); color: var(--cyan); }
-.btn-primary:hover { background: rgba(24,224,255,0.22); border-color: var(--cyan); box-shadow: 0 0 12px var(--cyan-glow); }
+.btn-primary { background: var(--cyan-dim); border-color: rgba(var(--accent-rgb),0.4); color: var(--cyan); }
+.btn-primary:hover { background: rgba(var(--accent-rgb),0.22); border-color: var(--cyan); box-shadow: 0 0 12px var(--cyan-glow); }
 .btn-gold { background: var(--gold-dim); border-color: rgba(224,187,90,0.4); color: var(--gold); }
 .btn-gold:hover { background: rgba(224,187,90,0.25); border-color: var(--gold); }
 .btn-danger { background: var(--red-dim); border-color: rgba(255,85,85,0.35); color: var(--red); }
@@ -296,7 +296,7 @@ tbody tr:hover td { background: var(--bg3); }
 .j-HA { background: rgba(255,85,85,0.13); color: #ff7070; border: 1px solid rgba(255,85,85,0.35); }
 .j-IMMO { background: rgba(167,139,250,0.14); color: #c4b5fd; border: 1px solid rgba(167,139,250,0.35); }
 .j-OD { background: rgba(255,176,32,0.13); color: #fcd34d; border: 1px solid rgba(255,176,32,0.35); }
-.j-TRESO { background: rgba(24,224,255,0.12); color: var(--cyan); border: 1px solid rgba(24,224,255,0.35); }
+.j-TRESO { background: rgba(var(--accent-rgb),0.12); color: var(--cyan); border: 1px solid rgba(var(--accent-rgb),0.35); }
 
 /* ── CUSTOM COMPTE DROPDOWN ── */
 .ac-wrap { position: relative; }
@@ -331,7 +331,7 @@ tbody tr:hover td { background: var(--bg3); }
 
 /* ── STAT CHIPS ── */
 .chip { font-family: var(--mono); font-size: 10px; color: var(--text1); background: var(--bg3); border: 1px solid var(--line2); padding: 2px 8px; border-radius: 2px; }
-.chip-cyan { color: var(--cyan); background: var(--cyan-dim); border-color: rgba(24,224,255,0.3); }
+.chip-cyan { color: var(--cyan); background: var(--cyan-dim); border-color: rgba(var(--accent-rgb),0.3); }
 
 /* ── COLORS ── */
 .c-debit { color: var(--cyan); }
@@ -350,7 +350,7 @@ tbody tr:hover td { background: var(--bg3); }
 .jcard::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--line2); transition: background 0.15s; }
 .jcard:hover::before { background: var(--cyan); }
 .jcard:hover { border-color: var(--line2); background: var(--bg2); }
-.jcard.active { border-color: rgba(0,212,255,0.3); background: var(--cyan-glow); }
+.jcard.active { border-color: rgba(var(--accent-rgb),0.3); background: var(--cyan-glow); }
 .jcard.active::before { background: var(--cyan); }
 .jcard-code { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; color: var(--text2); margin-bottom: 6px; }
 .jcard-name { font-size: 13px; font-weight: 500; color: var(--text0); margin-bottom: 8px; }
@@ -511,6 +511,95 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 #locataires-list-wrap tr.loc-mainrow:hover > td { background:var(--bg4); }
 #locataires-list-wrap tr.loc-subrow:hover > td, #locataires-list-wrap tr.loc-spacer:hover > td { background:var(--bg0) !important; }
 </style>
+<style>
+/* ══ V77 : THÈMES (mode clair + couleur dominante) — n'affecte pas les documents édités ══ */
+:root { --accent-rgb: 42,235,255; --logo-filter: none; }
+.logo-img, .login-logo-img { filter: var(--logo-filter); transition: filter .2s; }
+html[data-theme="light"] {
+  --bg0: #f3f1ea; --bg1: #fcfbf7; --bg2: #efece3; --bg3: #e6e2d6; --bg4: #dad5c6;
+  --line: #d2ccbd; --line2: #b0a998;
+  --text0: #1d1c19; --text1: #3b3934; --text2: #6a665c; --text3: #9a958a;
+  --gold: #9a7410; --gold-dim: rgba(154,116,16,0.12);
+  --green: #1d8a4a; --green-dim: rgba(29,138,74,0.12);
+  --red: #c93838; --red-dim: rgba(201,56,56,0.10);
+  --amber: #a86d00; --amber-dim: rgba(168,109,0,0.12);
+  color-scheme: light;
+}
+html[data-theme="light"] body::before { display: none; }
+html[data-theme="light"] .modal-overlay { background: rgba(45,40,30,0.35); }
+html[data-theme="light"] .j-VE { color: #1d8a4a; }
+html[data-theme="light"] .j-HA { color: #c93838; }
+html[data-theme="light"] .j-IMMO { color: #6d4cc2; }
+html[data-theme="light"] .j-OD { color: #a86d00; }
+html[data-theme="light"] .c-credit { color: #c93838; }
+html[data-theme="light"] .hdr-status .dot { box-shadow: none; }
+html[data-theme="light"] .tab-content input[type=date]::-webkit-calendar-picker-indicator { filter: none; }
+.th-switch { position: relative; width: 46px; height: 24px; border-radius: 12px; background: var(--bg4); border: 1px solid var(--line2); cursor: pointer; transition: background .2s; flex: none; }
+.th-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--text0); transition: left .2s; }
+.th-switch.on { background: var(--cyan); border-color: var(--cyan); }
+.th-switch.on::after { left: 24px; background: #fff; }
+.th-swatch { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 8px 4px; border-radius: var(--radius); border: 1px solid transparent; cursor: pointer; font-size: 10px; color: var(--text1); text-align: center; line-height: 1.15; }
+.th-swatch:hover { background: var(--bg2); }
+.th-swatch.sel { border-color: var(--cyan); background: var(--cyan-glow); }
+.th-dot { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15); }
+</style>
+<script>
+// Palette de couleurs dominantes : chaque teinte a une version pour le mode sombre (lumineuse)
+// et une pour le mode clair (plus profonde, lisible sur fond crème).
+window.ATRIUM_ACCENTS = [
+  { id:'turquoise', nom:'Turquoise électrique', dark:'#2aebff', light:'#0b8798' },
+  { id:'glacier',   nom:'Bleu glacier',         dark:'#86d6ee', light:'#2b7891' },
+  { id:'azur',      nom:'Bleu azur',            dark:'#4da3ff', light:'#1f62c2' },
+  { id:'roi',       nom:'Bleu roi',             dark:'#7590ff', light:'#3550c4' },
+  { id:'indigo',    nom:'Indigo',               dark:'#958cff', light:'#4b3fbd' },
+  { id:'violet',    nom:'Violet',               dark:'#b88fff', light:'#7044c4' },
+  { id:'orchidee',  nom:'Orchidée',             dark:'#e08ef0', light:'#963aa6' },
+  { id:'framboise', nom:'Framboise',            dark:'#ff7fab', light:'#bd2f5e' },
+  { id:'corail',    nom:'Corail',               dark:'#ff8d74', light:'#bf462b' },
+  { id:'terracotta',nom:'Terracotta',           dark:'#e69a70', light:'#a3532b' },
+  { id:'or',        nom:'Or ancien',            dark:'#dcbd70', light:'#86691c' },
+  { id:'olive',     nom:'Olive',                dark:'#bcc76e', light:'#66751c' },
+  { id:'sauge',     nom:'Vert sauge',           dark:'#9fcca8', light:'#46785a' },
+  { id:'emeraude',  nom:'Émeraude',             dark:'#52dfaa', light:'#11845a' },
+  { id:'sarcelle',  nom:'Sarcelle',             dark:'#45c9c1', light:'#127a75' },
+  { id:'ardoise',   nom:'Bleu ardoise',         dark:'#9aaecb', light:'#475d7e' },
+  { id:'sable',     nom:'Sable',                dark:'#d8c6a3', light:'#7f6a45' },
+  { id:'graphite',  nom:'Graphite',             dark:'#c0c0cc', light:'#4f4f5a' },
+];
+function thHexToRgb(h) { h = String(h||'').replace('#',''); if(h.length===3) h = h.split('').map(c=>c+c).join(''); const n = parseInt(h,16)||0; return [(n>>16)&255,(n>>8)&255,n&255]; }
+function thRgbToHsl(r,g,b) { r/=255; g/=255; b/=255; const mx=Math.max(r,g,b), mn=Math.min(r,g,b); let h=0,s=0; const l=(mx+mn)/2;
+  if(mx!==mn){ const d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn); h = mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4); h*=60; } return [h,s*100,l*100]; }
+function thHslToHex(h,s,l) { s/=100; l/=100; const k=n=>(n+h/30)%12, a=s*Math.min(l,1-l), f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+  return '#'+[f(0),f(8),f(4)].map(x=>Math.round(x*255).toString(16).padStart(2,'0')).join(''); }
+// Couleur personnalisée : on ajuste la luminosité pour qu'elle reste lisible dans le mode choisi
+function thAdapt(hex, mode) { const [h,s,l] = thRgbToHsl(...thHexToRgb(hex));
+  return mode === 'light' ? thHslToHex(h, Math.min(s, 75), Math.min(Math.max(l, 26), 40)) : thHslToHex(h, Math.min(s, 95), Math.min(Math.max(l, 62), 76)); }
+function thLoad() { try { return Object.assign({ mode:'dark', accent:'turquoise', custom:'#2aebff' }, JSON.parse(localStorage.getItem('atrium_theme')||'{}')); } catch(e) { return { mode:'dark', accent:'turquoise', custom:'#2aebff' }; } }
+function thSave(t) { try { localStorage.setItem('atrium_theme', JSON.stringify(t)); } catch(e) {} }
+function thAccentHex(t) {
+  if(t.accent === 'custom') return thAdapt(t.custom || '#2aebff', t.mode);
+  const a = window.ATRIUM_ACCENTS.find(x => x.id === t.accent) || window.ATRIUM_ACCENTS[0];
+  return t.mode === 'light' ? a.light : a.dark;
+}
+function applyTheme(t) {
+  t = t || thLoad();
+  const root = document.documentElement;
+  root.setAttribute('data-theme', t.mode === 'light' ? 'light' : 'dark');
+  const hex = thAccentHex(t);
+  const [r,g,b] = thHexToRgb(hex);
+  root.style.setProperty('--cyan', hex);
+  root.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+  root.style.setProperty('--cyan-dim', `rgba(${r},${g},${b},${t.mode==='light'?0.12:0.16})`);
+  root.style.setProperty('--cyan-glow', `rgba(${r},${g},${b},${t.mode==='light'?0.10:0.10})`);
+  // Logo : rotation de teinte depuis le turquoise d'origine (≈187°) vers la couleur choisie
+  const [h,s] = thRgbToHsl(r,g,b);
+  const rot = Math.round(h - 187);
+  const sat = Math.max(0.15, Math.min(1.2, s / 100));
+  root.style.setProperty('--logo-filter', (t.accent === 'turquoise' && t.mode !== 'light') ? 'none' : `hue-rotate(${rot}deg) saturate(${sat.toFixed(2)})${t.mode==='light'?' brightness(0.85)':''}`);
+}
+applyTheme();
+</script>
+
 </head>
 <body>
 
@@ -1269,6 +1358,15 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
       </div>
 
       <div style="max-width:900px;">
+        <!-- V77 : Section Apparence -->
+        <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--line2);">
+            <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">🎨 APPARENCE</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px;">Propre à ce poste et à ce navigateur. N'affecte ni les documents édités (PDF, appels, quittances…) ni les couleurs de contrôle (rouge / vert / orange).</div>
+          </div>
+          <div id="params-theme" style="padding:14px;"></div>
+        </div>
+
         <!-- Section : Types de pièces comptables -->
         <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line2);">
@@ -1624,7 +1722,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
     <div id="types-list-body" style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:14px;"></div>
 
     <!-- Formulaire d'édition (caché par défaut) -->
-    <div id="type-edit-form" style="display:none;border:1px solid var(--cyan);border-radius:var(--radius);padding:14px;background:rgba(0,229,255,0.03);margin-bottom:14px;">
+    <div id="type-edit-form" style="display:none;border:1px solid var(--cyan);border-radius:var(--radius);padding:14px;background:rgba(var(--accent-rgb),0.03);margin-bottom:14px;">
       <div style="font-size:12px;font-weight:600;color:var(--cyan);margin-bottom:10px;" id="type-form-title">+ Nouveau type</div>
       <input type="hidden" id="type-edit-id">
 
@@ -2436,7 +2534,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
           <button class="btn btn-sm" onclick="clotureCancel()">ANNULER</button>
         </div>
       </div>
-      <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(42,235,255,0.06);border:1px solid rgba(42,235,255,0.2);border-radius:var(--radius);">
+      <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(var(--accent-rgb),0.06);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:var(--radius);">
         <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">CRÉER L'EXERCICE SUIVANT</div>
         <div id="cloture-next-existing" style="display:none;"></div>
         <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">L'exercice suivant est toujours créé à neuf : balance d'ouverture et reprise des modules automatiques.</div>
@@ -3110,7 +3208,7 @@ async function flushPendingSave() {
   if(window._fbReady && window._fbSave) {
     await window._fbSave(db, year);
     const dot = document.querySelector('.dot');
-    if(dot) { dot.style.background='#00d4ff'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
+    if(dot) { dot.style.background='var(--cyan)'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
   }
 }
 async function saveDBNow(force) {
@@ -3127,7 +3225,7 @@ async function saveDBNow(force) {
   if(window._fbReady && window._fbSave) {
     await window._fbSave(DB, CURRENT_YEAR);
     const dot = document.querySelector('.dot');
-    if(dot) { dot.style.background='#00d4ff'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
+    if(dot) { dot.style.background='var(--cyan)'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
   }
 }
 async function loadDB() {
@@ -4747,8 +4845,49 @@ Object.defineProperty(window, 'TYPEDOC_LIST', { get: () => getTypedocList() });
 // MODULE PARAMÈTRES
 // ══════════════════════════════════════════════
 function renderParametres() {
+  renderThemeSettings();
   renderPiecesTypesList();
 }
+
+// V77 : réglages d'apparence (mode clair/sombre + couleur dominante), stockés localement
+function renderThemeSettings() {
+  const el = document.getElementById('params-theme'); if(!el) return;
+  const t = thLoad();
+  const light = t.mode === 'light';
+  const sw = window.ATRIUM_ACCENTS.map(a => `<div class="th-swatch${t.accent===a.id?' sel':''}" onclick="setThemeAccent('${a.id}')" title="${a.nom}">
+      <span class="th-dot" style="background:${light?a.light:a.dark};"></span><span>${a.nom}</span></div>`).join('');
+  const customHex = thAdapt(t.custom||'#2aebff', t.mode);
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+      <span style="font-size:11px;color:${light?'var(--text2)':'var(--text0)'};font-weight:${light?400:700};">🌙 Mode sombre</span>
+      <div class="th-switch${light?' on':''}" onclick="setThemeMode('${light?'dark':'light'}')" role="switch" aria-checked="${light}"></div>
+      <span style="font-size:11px;color:${light?'var(--text0)':'var(--text2)'};font-weight:${light?700:400};">☀ Mode clair</span>
+    </div>
+    <div style="font-size:10px;color:var(--text2);letter-spacing:.05em;margin-bottom:6px;">COULEUR DOMINANTE</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:4px;margin-bottom:10px;">
+      ${sw}
+      <label class="th-swatch${t.accent==='custom'?' sel':''}" title="Choisir n'importe quelle couleur" style="text-transform:none;font-family:var(--sans);letter-spacing:0;font-size:10px;font-weight:400;margin:0;color:var(--text1);">
+        <span class="th-dot" style="background:conic-gradient(#f66,#fc6,#6f9,#6cf,#96f,#f6c,#f66);position:relative;">
+          ${t.accent==='custom'?`<span style="position:absolute;inset:7px;border-radius:50%;background:${customHex};"></span>`:''}</span>
+        <span>Personnalisée</span>
+        <input type="color" value="${t.custom||'#2aebff'}" onchange="setThemeCustom(this.value)" style="position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;">
+      </label>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg2);border-radius:var(--radius);">
+      <span style="font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:.12em;color:var(--cyan);">ATRIUM</span>
+      <button class="btn btn-sm btn-primary" style="pointer-events:none;">Aperçu bouton</button>
+      <span style="font-size:11px;color:var(--cyan);">Lien / élément actif</span>
+      <span style="flex:1;"></span>
+      <button class="btn btn-sm" onclick="resetTheme()">↺ Thème d'origine</button>
+    </div>`;
+  // le sélecteur de couleur s'ouvre au clic sur la pastille « Personnalisée »
+  const lab = el.querySelector('label.th-swatch'); const inp = lab && lab.querySelector('input[type=color]');
+  if(lab && inp) { lab.style.position = 'relative'; lab.onclick = (ev) => { if(ev.target !== inp) { ev.preventDefault(); inp.click(); } }; }
+}
+function setThemeMode(mode) { const t = thLoad(); t.mode = mode; thSave(t); applyTheme(t); renderThemeSettings(); }
+function setThemeAccent(id) { const t = thLoad(); t.accent = id; thSave(t); applyTheme(t); renderThemeSettings(); }
+function setThemeCustom(hex) { const t = thLoad(); t.accent = 'custom'; t.custom = hex; thSave(t); applyTheme(t); renderThemeSettings(); }
+function resetTheme() { const t = { mode:'dark', accent:'turquoise', custom:'#2aebff' }; thSave(t); applyTheme(t); renderThemeSettings(); }
 
 // Rendu de la liste des types de pièces dans le module Paramètres
 function renderPiecesTypesList() {
@@ -5170,7 +5309,7 @@ function showExerciseModal() {
     const isTest = isTestExercise(y);
     const isClosed = String(y) === String(CURRENT_YEAR) ? (EXERCISE_STATUS === 'closed') : (getExerciseStatus(y) === 'closed');
     const statusColor = isCurrent ? (EXERCISE_STATUS==='closed'?'var(--amber)':'var(--cyan)') : 'var(--text1)';
-    const borderColor = isCurrent ? 'rgba(42,235,255,0.25)' : 'var(--line)';
+    const borderColor = isCurrent ? 'rgba(var(--accent-rgb),0.25)' : 'var(--line)';
 
     const row = document.createElement('div');
     row.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;background:${isCurrent?'var(--bg3)':'var(--bg2)'};border:1px solid ${borderColor};border-radius:var(--radius);margin-bottom:6px;`;
@@ -5727,7 +5866,7 @@ function refreshAlerteTaux() {
   if(existing) { existing.innerHTML = html; return; }
   const div = document.createElement('div');
   div.id = 'global-taux-alert';
-  div.style.cssText = 'background:#2a2414;border:1px solid rgba(255,190,60,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  div.style.cssText = 'background:var(--bg2);border:1px solid rgba(255,190,60,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:var(--text0);box-shadow:0 8px 24px rgba(0,0,0,0.4);';
   div.innerHTML = html;
   getGlobalAlertsContainer().appendChild(div);
 }
@@ -10592,7 +10731,7 @@ function checkEcheanciersExpirationAuBoot() {
   if(existing) existing.remove();
   const div = document.createElement('div');
   div.id = 'global-echeancier-alert';
-  div.style.cssText = 'background:#2a1a1a;border:1px solid rgba(255,107,107,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,0.4);';
+  div.style.cssText = 'background:var(--bg2);border:1px solid rgba(255,107,107,0.5);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:var(--text0);box-shadow:0 8px 24px rgba(0,0,0,0.4);';
   div.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
     <div>
       <div style="font-weight:700;color:var(--red);margin-bottom:4px;">⚠ Échéanciers à vérifier</div>
@@ -11334,7 +11473,7 @@ function viewEmpruntSchedule(id) {
     else if(r.mois > moisActuel) statut = '<span style="color:var(--text3);font-size:10px;">à venir</span>';
     else statut = `<span style="color:var(--amber);font-size:10px;cursor:pointer;text-decoration:underline;" onclick="closeEmpruntScheduleModal();comptabiliserEmpruntMois('${emp.id}','${r.mois}')" title="Comptabiliser cette échéance">à comptabiliser</span>`;
     const courant = r.mois === moisActuel;
-    const bg = courant ? 'background:rgba(42,235,255,0.08);' : '';
+    const bg = courant ? 'background:rgba(var(--accent-rgb),0.08);' : '';
     const fg = (!isDone && r.mois > moisActuel) ? 'color:var(--text2);' : '';
     html += `<tr ${courant?'id="emprunt-schedule-current"':''} style="${bg}${fg}">
       <td style="${td}white-space:nowrap;${courant?'border-left:3px solid var(--cyan);':''}">${moisLabelFromYYYYMM(r.mois)}</td>
