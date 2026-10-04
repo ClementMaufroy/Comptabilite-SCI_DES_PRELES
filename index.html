@@ -2130,6 +2130,39 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 </div>
 
 <!-- ══════════════ EMPRUNT DELETE MODAL ══════════════ -->
+<!-- V74 : TABLEAU D'AMORTISSEMENT D'UN EMPRUNT -->
+<div id="emprunt-schedule-modal" class="modal-overlay">
+  <div class="modal" style="width:960px;max-width:96vw;max-height:88vh;display:flex;flex-direction:column;">
+    <div class="modal-title" id="emprunt-schedule-title">📊 TABLEAU D'AMORTISSEMENT</div>
+    <div id="emprunt-schedule-info" style="font-size:11px;color:var(--text2);margin-bottom:10px;"></div>
+    <div id="emprunt-schedule-scroll" style="flex:1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius);">
+      <table style="font-size:11px;width:100%;border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th style="position:sticky;top:0;z-index:2;background:var(--bg2);">Échéance</th>
+            <th style="position:sticky;top:0;z-index:2;background:var(--bg2);">Date</th>
+            <th class="td-num" style="position:sticky;top:0;z-index:2;background:var(--bg2);">Capital début</th>
+            <th class="td-num" style="position:sticky;top:0;z-index:2;background:var(--bg2);">Intérêts</th>
+            <th class="td-num" style="position:sticky;top:0;z-index:2;background:var(--bg2);">Capital remboursé</th>
+            <th class="td-num" style="position:sticky;top:0;z-index:2;background:var(--bg2);">Mensualité</th>
+            <th class="td-num" style="position:sticky;top:0;z-index:2;background:var(--bg2);">Capital restant dû</th>
+            <th style="position:sticky;top:0;z-index:2;background:var(--bg2);text-align:center;">Statut</th>
+          </tr>
+        </thead>
+        <tbody id="emprunt-schedule-body"></tbody>
+      </table>
+    </div>
+    <div class="flex gap8" style="margin-top:14px;align-items:center;">
+      <span style="font-size:10px;color:var(--text2);">
+        <span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--green);vertical-align:middle;"></span> comptabilisée
+        &nbsp;·&nbsp;<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--amber);vertical-align:middle;"></span> à comptabiliser
+        &nbsp;·&nbsp;<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--line2);vertical-align:middle;"></span> à venir / exercice précédent
+      </span>
+      <button class="btn ml-auto" onclick="closeEmpruntScheduleModal()">FERMER</button>
+    </div>
+  </div>
+</div>
+
 <div id="emprunt-delete-modal" class="modal-overlay">
   <div class="modal" style="width:440px;">
     <div class="modal-title"><span style="color:var(--red);">⚠</span> SUPPRIMER UN EMPRUNT</div>
@@ -9122,9 +9155,9 @@ function renderLocataires() {
         const vide = !left && !right;
         const t = i ? sep : '';
         return `<div style="${t}padding:1px 10px;min-height:26px;">${left}</div>
-          <div style="${t}display:flex;align-items:center;justify-content:center;gap:8px;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;color:${vide?'var(--text3)':'var(--text1)'};">
+          <div style="${t}position:relative;display:flex;align-items:center;justify-content:center;padding:0 30px;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;color:${vide?'var(--text3)':'var(--text1)'};">
             <span>${moisLabelFromYYYYMM(k)}</span>
-            <button class="btn btn-sm" onclick="askArchiveMoisDocs('${loc.id}','${k}')" title="${vide ? `Archiver la ligne vide de ${moisLabelFromYYYYMM(k)}` : `Archiver tous les documents de ${moisLabelFromYYYYMM(k)}`}" style="padding:0 5px;font-size:9px;">📦</button>
+            <button class="btn btn-sm" onclick="askArchiveMoisDocs('${loc.id}','${k}')" style="position:absolute;right:7px;top:50%;transform:translateY(-50%);padding:0 5px;font-size:9px;" title="${vide ? `Archiver la ligne vide de ${moisLabelFromYYYYMM(k)}` : `Archiver tous les documents de ${moisLabelFromYYYYMM(k)}`}">📦</button>
           </div>
           <div style="${t}padding:1px 10px;min-height:26px;">${right}</div>`;
       }).join('');
@@ -11215,6 +11248,7 @@ function renderEmprunts() {
       <td style="overflow-x:auto;max-width:0;">${empruntMoisGridHtml(emp, anneesCommunes)}</td>
       <td style="text-align:center;white-space:nowrap;padding-top:8px;">
         ${btnMoisCourant}
+        <button class="btn btn-sm btn-icon" onclick="viewEmpruntSchedule('${emp.id}')" ${tableau.length?'':'disabled'} title="${tableau.length?'Voir le tableau d\'amortissement':'Aucun tableau importé'}" style="padding:1px 5px;font-size:10px;${tableau.length?'':'opacity:0.3;cursor:default;'}">📊</button>
         <button class="btn btn-sm btn-icon" onclick="openEmpruntMarquerModal('${emp.id}')" title="Marquer des mois comme déjà comptabilisés (sans écriture)" style="padding:1px 5px;font-size:10px;">⚙</button>
         <button class="btn btn-sm btn-icon" onclick="openEmpruntModal('${emp.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteEmprunt('${emp.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
@@ -11229,6 +11263,91 @@ function renderEmprunts() {
   </tr>`;
 
   updateNavCounts();
+}
+
+// V74 : vue du tableau d'amortissement d'un emprunt — une ligne par échéance, regroupées par année
+// avec sous-total annuel (intérêts / capital remboursé / mensualités), statut de comptabilisation de chaque échéance.
+function viewEmpruntSchedule(id) {
+  const emp = ensureEmpruntsArray().find(e => e.id === id);
+  if(!emp || !(emp.tableau||[]).length) return;
+  const tableau = emp.tableau.slice().sort((a,b) => (a.mois||'').localeCompare(b.mois||''));
+  const done = emp.moisComptabilises || [];
+  const moisActuel = moisActuelYYYYMM();
+  const debutEx = moisDebutExerciceCourant();
+  const derniere = tableau[tableau.length-1];
+  const totI = tableau.reduce((t,r)=>t+(r.interets||0),0);
+  const totC = tableau.reduce((t,r)=>t+(r.capitalRembourse||0),0);
+  const totM = tableau.reduce((t,r)=>t+(r.mensualite||0),0);
+  const derniereCompta = tableau.slice().reverse().find(r => done.includes(r.mois));
+  const crd = derniereCompta ? derniereCompta.capitalRestant : (tableau[0].capitalDebut||0);
+  const nbRestantes = tableau.filter(r => r.mois > (derniereCompta ? derniereCompta.mois : '')).length;
+
+  document.getElementById('emprunt-schedule-title').textContent = '📊 ' + (emp.libelle || 'Emprunt');
+  document.getElementById('emprunt-schedule-info').innerHTML =
+    `${emp.banque ? `<strong>${emp.banque}</strong> · ` : ''}Compte emprunt <strong style="color:var(--cyan)">${emp.compteEmprunt||'—'}</strong> · intérêts <strong style="color:var(--cyan)">${emp.compteInterets||'—'}</strong>`
+    + `<br>${tableau.length} échéances, de ${moisLabelFromYYYYMM(tableau[0].mois)} à ${moisLabelFromYYYYMM(derniere.mois)}`
+    + ` · Montant emprunté <strong>${fmt(emp.montantInitial || tableau[0].capitalDebut || 0)} €</strong>`
+    + ` · Coût total des intérêts <strong style="color:var(--amber)">${fmt(totI)} €</strong>`
+    + `<br>Capital restant dû (dernière échéance comptabilisée) : <strong style="color:var(--cyan)">${fmt(crd)} €</strong> · ${nbRestantes} échéance${nbRestantes>1?'s':''} restante${nbRestantes>1?'s':''}`;
+
+  const td = 'padding:3px 8px;border-bottom:1px solid var(--bg3);';
+  let html = '', anneeCour = null, sI = 0, sC = 0, sM = 0;
+  const flushAnnee = () => {
+    if(anneeCour === null) return;
+    html += `<tr style="background:var(--bg2);font-weight:700;">
+      <td colspan="3" style="padding:4px 8px;font-size:10px;color:var(--text1);border-bottom:2px solid var(--line);">Total ${anneeCour}</td>
+      <td class="td-num" style="padding:4px 8px;color:var(--amber);border-bottom:2px solid var(--line);">${fmt(sI)}</td>
+      <td class="td-num" style="padding:4px 8px;border-bottom:2px solid var(--line);">${fmt(sC)}</td>
+      <td class="td-num" style="padding:4px 8px;border-bottom:2px solid var(--line);">${fmt(sM)}</td>
+      <td colspan="2" style="border-bottom:2px solid var(--line);"></td>
+    </tr>`;
+  };
+  tableau.forEach(r => {
+    const y = (r.mois||'').slice(0,4);
+    if(y !== anneeCour) { flushAnnee(); anneeCour = y; sI = sC = sM = 0; }
+    sI += r.interets||0; sC += r.capitalRembourse||0; sM += r.mensualite||0;
+    const isDone = done.includes(r.mois);
+    const horsEx = debutEx && r.mois < debutEx;
+    let statut;
+    if(isDone) statut = '<span style="color:var(--green);font-size:10px;">✓ comptabilisée</span>';
+    else if(horsEx) statut = '<span style="color:var(--text3);font-size:10px;">exercice précédent</span>';
+    else if(r.mois > moisActuel) statut = '<span style="color:var(--text3);font-size:10px;">à venir</span>';
+    else statut = `<span style="color:var(--amber);font-size:10px;cursor:pointer;text-decoration:underline;" onclick="closeEmpruntScheduleModal();comptabiliserEmpruntMois('${emp.id}','${r.mois}')" title="Comptabiliser cette échéance">à comptabiliser</span>`;
+    const courant = r.mois === moisActuel;
+    const bg = courant ? 'background:rgba(42,235,255,0.08);' : '';
+    const fg = (!isDone && r.mois > moisActuel) ? 'color:var(--text2);' : '';
+    html += `<tr ${courant?'id="emprunt-schedule-current"':''} style="${bg}${fg}">
+      <td style="${td}white-space:nowrap;${courant?'border-left:3px solid var(--cyan);':''}">${moisLabelFromYYYYMM(r.mois)}</td>
+      <td style="${td}font-family:var(--mono);font-size:10px;">${r.dateEcheance ? fmtDateGL(r.dateEcheance) : ''}</td>
+      <td class="td-num" style="${td}">${fmt(r.capitalDebut||0)}</td>
+      <td class="td-num" style="${td}color:var(--amber);">${fmt(r.interets||0)}</td>
+      <td class="td-num" style="${td}">${fmt(r.capitalRembourse||0)}</td>
+      <td class="td-num" style="${td}">${fmt(r.mensualite||0)}</td>
+      <td class="td-num" style="${td}font-weight:600;">${fmt(r.capitalRestant||0)}</td>
+      <td style="${td}text-align:center;white-space:nowrap;">${statut}</td>
+    </tr>`;
+  });
+  flushAnnee();
+  html += `<tr style="font-weight:700;background:var(--bg3);">
+    <td colspan="3" style="padding:6px 8px;">TOTAL DU PRÊT</td>
+    <td class="td-num" style="padding:6px 8px;color:var(--amber);">${fmt(totI)}</td>
+    <td class="td-num" style="padding:6px 8px;">${fmt(totC)}</td>
+    <td class="td-num" style="padding:6px 8px;">${fmt(totM)}</td>
+    <td colspan="2"></td>
+  </tr>`;
+  document.getElementById('emprunt-schedule-body').innerHTML = html;
+  document.getElementById('emprunt-schedule-modal').style.display = 'flex';
+  // Positionne la vue sur l'échéance du mois en cours (ou la fin du tableau si le prêt est terminé)
+  const sc = document.getElementById('emprunt-schedule-scroll');
+  const cur = document.getElementById('emprunt-schedule-current');
+  if(sc) {
+    if(cur) sc.scrollTop = Math.max(0, cur.offsetTop - sc.clientHeight / 3);
+    else if(derniere.mois < moisActuel) sc.scrollTop = sc.scrollHeight;
+    else sc.scrollTop = 0;
+  }
+}
+function closeEmpruntScheduleModal() {
+  document.getElementById('emprunt-schedule-modal').style.display = 'none';
 }
 
 function openEmpruntModal(editId) {
