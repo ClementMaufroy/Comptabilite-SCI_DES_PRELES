@@ -504,6 +504,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .w100 { width: 100%; }
 .text-right { text-align: right; }
 textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
+
+/* V70 — gestion locative : bandeau par locataire */
+#locataires-list-wrap tr.loc-mainrow > td { background:var(--bg3); border-top:2px solid var(--cyan); border-bottom:1px solid var(--line); padding-top:9px; padding-bottom:9px; }
+#locataires-list-wrap tr.loc-mainrow > td:first-child { border-left:3px solid var(--cyan); }
+#locataires-list-wrap tr.loc-mainrow:hover > td { background:var(--bg4); }
+#locataires-list-wrap tr.loc-subrow:hover > td { background:var(--bg0) !important; }
 </style>
 </head>
 <body>
@@ -7697,44 +7703,118 @@ function renderLocataireDetail() {
       </span>`).join('')
     : '<span style="color:var(--text2);font-size:11px;font-style:italic;">Aucun type paramétré. Cliquez sur ⚙ pour en ajouter.</span>';
 
-  // Mouvements — tableau chronologique (plus récents en premier)
-  const mvts = (loc.mouvements||[]).slice().sort((a,b) => (b.dateOperation||'').localeCompare(a.dateOperation||''));
-  const mvtsHtml = mvts.length
+  // V70 : mouvements présentés en "relevé de compte" groupé par mois d'affectation,
+  // du plus ancien au plus récent. Dans chaque mois : d'abord les + (loyer puis provision), puis les − par date.
+  // Colonnes Dû (+) / Réglé (−), sous-total et solde du mois en pied de bloc.
+  const _moisCourantDet = new Date().toISOString().slice(0,7);
+  const rangType = (mvt) => {
+    if(mvt.sens !== '+') return 9;
+    const t = loc.types.find(x => x.id === mvt.typeId);
+    const n = ((t && t.nom) || mvt.libelle || '').toLowerCase();
+    if(n.includes('loyer')) return 0;
+    if(n.includes('provision') || n.includes('teom') || n.includes('charge')) return 1;
+    return 2;
+  };
+  const lignesParMois = {};
+  const ajouterLigne = (mois, ligne) => { (lignesParMois[mois] = lignesParMois[mois] || []).push(ligne); };
+  (loc.soldesInitiaux||[]).forEach(si => {
+    const v = parseFloat(si.montant)||0;
+    if(si.mois && Math.abs(v) > 0.005) ajouterLigne(si.mois, { initial: true, montant: v });
+  });
+  const nonAffectes = [];
+  (loc.mouvements||[]).forEach(mvt => {
+    const affs = (mvt.affectations||[]).filter(a => a.mois);
+    if(!affs.length) { nonAffectes.push(mvt); return; }
+    affs.forEach((a, idx) => ajouterLigne(a.mois, { mvt, montant: parseFloat(a.montant)||0, partiel: affs.length > 1, dernier: idx === affs.length - 1 }));
+  });
+  const moisMvts = Object.keys(lignesParMois).sort();
+  const thS = 'padding:5px 8px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);';
+  const tdS = 'padding:4px 8px;border-bottom:1px solid var(--bg3);';
+  const ligneHtml = (l) => {
+    if(l.initial) {
+      return `<tr style="line-height:1.25;">
+        <td style="${tdS}color:var(--text3);font-family:var(--mono);font-size:10px;">—</td>
+        <td style="${tdS}color:var(--text2);" colspan="2"><i>Solde initial (antérieur à l'outil)</i></td>
+        <td style="${tdS}"></td>
+        <td class="td-num" style="${tdS}color:var(--amber);font-weight:600;">${l.montant>0?fmt(l.montant):''}</td>
+        <td class="td-num" style="${tdS}color:var(--green);font-weight:600;">${l.montant<0?fmt(-l.montant):''}</td>
+        <td style="${tdS}"></td>
+      </tr>`;
+    }
+    const mvt = l.mvt;
+    const t = loc.types.find(x => x.id === mvt.typeId);
+    const plus = mvt.sens === '+';
+    const color = plus ? 'var(--amber)' : 'var(--green)';
+    const statut = mvt.ecritureId
+      ? '<span style="color:var(--green);font-size:9px;white-space:nowrap;">✓ comptabilisé</span>'
+      : '<span style="color:var(--amber);font-size:9px;white-space:nowrap;">◯ non compta.</span>';
+    const notes = [];
+    if(l.partiel) notes.push(`<span style="color:var(--text3);">part de ${fmt(mvt.montant)} € répartis</span>`);
+    if(l.dernier && mvt.creditEnAttente > 0.005) notes.push(`<span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)} € en attente</span>`);
+    return `<tr style="line-height:1.25;">
+      <td style="${tdS}font-family:var(--mono);font-size:10px;white-space:nowrap;">${fmtDateFr(mvt.dateOperation)}</td>
+      <td style="${tdS}white-space:nowrap;"><span style="color:${color};font-weight:700;">${mvt.sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
+      <td style="${tdS}">${mvt.libelle||''}${notes.length?`<div style="font-size:9px;">${notes.join(' · ')}</div>`:''}</td>
+      <td style="${tdS}text-align:center;">${statut}</td>
+      <td class="td-num" style="${tdS}color:var(--amber);font-weight:600;">${plus?fmt(l.montant):''}</td>
+      <td class="td-num" style="${tdS}color:var(--green);font-weight:600;">${plus?'':fmt(l.montant)}</td>
+      <td style="${tdS}text-align:center;white-space:nowrap;">
+        <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+      </td>
+    </tr>`;
+  };
+  const blocMois = (m) => {
+    const lignes = lignesParMois[m].slice().sort((a,b) => {
+      const ra = a.initial ? -1 : rangType(a.mvt), rb = b.initial ? -1 : rangType(b.mvt);
+      const pa = ra < 9 ? 0 : 1, pb = rb < 9 ? 0 : 1;   // les + (et solde initial) avant les −
+      if(pa !== pb) return pa - pb;
+      if(pa === 0 && ra !== rb) return ra - rb;          // loyer puis provision
+      const da = a.initial ? '' : (a.mvt.dateOperation||''), db = b.initial ? '' : (b.mvt.dateOperation||'');
+      return da.localeCompare(db);
+    });
+    let du = 0, regle = 0;
+    lignes.forEach(l => {
+      if(l.initial) { if(l.montant > 0) du += l.montant; else regle += -l.montant; }
+      else if(l.mvt.sens === '+') du += l.montant; else regle += l.montant;
+    });
+    const solde = Math.round((du - regle) * 100) / 100;
+    let badge;
+    if(Math.abs(solde) < 0.01) badge = '<span style="color:var(--green);">✓ soldé</span>';
+    else if(solde < 0) badge = `<span style="color:var(--cyan);">crédit ${fmt(-solde)} €</span>`;
+    else if(m < _moisCourantDet) badge = `<span style="color:var(--red);">⚠ impayé ${fmt(solde)} €</span>`;
+    else badge = `<span style="color:var(--amber);">reste dû ${fmt(solde)} € · mois en cours</span>`;
+    return `<tr><td colspan="7" style="padding:10px 8px 5px;background:var(--bg0);border-bottom:2px solid var(--line2);">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text0);">${moisLabelFromYYYYMM(m)}</span>
+          <span style="font-size:10px;font-weight:600;">${badge}</span>
+        </div></td></tr>
+      ${lignes.map(ligneHtml).join('')}
+      <tr style="background:var(--bg2);">
+        <td colspan="4" style="padding:4px 8px;font-size:10px;color:var(--text2);text-align:right;border-bottom:1px solid var(--line);">Total ${moisLabelFromYYYYMM(m)}</td>
+        <td class="td-num" style="padding:4px 8px;font-weight:700;color:var(--amber);border-top:1px solid var(--line2);border-bottom:1px solid var(--line);">${fmt(du)}</td>
+        <td class="td-num" style="padding:4px 8px;font-weight:700;color:var(--green);border-top:1px solid var(--line2);border-bottom:1px solid var(--line);">${fmt(regle)}</td>
+        <td style="padding:4px 8px;font-family:var(--mono);font-size:10px;font-weight:700;text-align:center;border-bottom:1px solid var(--line);color:${Math.abs(solde)<0.01?'var(--green)':(solde<0?'var(--cyan)':(m<_moisCourantDet?'var(--red)':'var(--amber)'))};" title="Solde du mois">${fmt(solde)}</td>
+      </tr>`;
+  };
+  const blocNonAffectes = nonAffectes.length ? `<tr><td colspan="7" style="padding:10px 8px 5px;background:var(--bg0);border-bottom:2px solid var(--line2);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--cyan);">Non affectés</td></tr>
+      ${nonAffectes.sort((a,b)=>(a.dateOperation||'').localeCompare(b.dateOperation||'')).map(mvt => ligneHtml({ mvt, montant: parseFloat(mvt.montant)||0, partiel:false, dernier:true })).join('')}` : '';
+  const mvtsHtml = (moisMvts.length || nonAffectes.length)
     ? `<table style="width:100%;font-size:11px;border-collapse:collapse;">
         <thead>
           <tr>
-            <th style="width:90px;white-space:nowrap;padding:4px 6px;">Date opé.</th>
-            <th style="width:180px;white-space:nowrap;padding:4px 6px;">Type</th>
-            <th style="padding:4px 6px;">Libellé</th>
-            <th style="width:140px;padding:4px 6px;">Affectation(s)</th>
-            <th class="td-num" style="width:80px;padding:4px 6px;">Montant</th>
-            <th style="width:120px;text-align:center;padding:4px 6px;">Statut</th>
-            <th style="width:60px;text-align:center;padding:4px 6px;"></th>
+            <th style="${thS}width:90px;white-space:nowrap;">Date opé.</th>
+            <th style="${thS}width:180px;white-space:nowrap;">Type</th>
+            <th style="${thS}">Libellé</th>
+            <th style="${thS}width:110px;text-align:center;">Statut</th>
+            <th class="td-num" style="${thS}width:95px;color:var(--amber);">Dû (+)</th>
+            <th class="td-num" style="${thS}width:95px;color:var(--green);">Réglé (−)</th>
+            <th style="${thS}width:70px;text-align:center;"></th>
           </tr>
         </thead>
         <tbody>
-          ${mvts.map(mvt => {
-            const t = loc.types.find(x => x.id === mvt.typeId);
-            const sens = mvt.sens;
-            const color = sens === '+' ? 'var(--amber)' : 'var(--green)';
-            const affLabels = (mvt.affectations||[]).map(a => moisLabelFromYYYYMM(a.mois)).join('<br>');
-            // Statut : tick + libellé sur une même ligne (nowrap)
-            const statut = mvt.ecritureId
-              ? '<span style="color:var(--green);font-size:9px;white-space:nowrap;">✓ comptabilisé</span>'
-              : '<span style="color:var(--amber);font-size:9px;white-space:nowrap;">◯ non compta.</span>';
-            return `<tr style="line-height:1.2;">
-              <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;padding:3px 6px;">${fmtDateFr(mvt.dateOperation)}</td>
-              <td style="white-space:nowrap;padding:3px 6px;"><span style="color:${color};font-weight:600;">${sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
-              <td style="padding:3px 6px;">${mvt.libelle||''}</td>
-              <td style="font-size:10px;padding:3px 6px;">${affLabels}${mvt.creditEnAttente>0.005?`<br><span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)}€ en attente</span>`:''}</td>
-              <td class="td-num" style="color:${color};font-weight:600;padding:3px 6px;">${fmt(mvt.montant)}</td>
-              <td style="text-align:center;padding:3px 6px;">${statut}</td>
-              <td style="text-align:center;white-space:nowrap;padding:3px 6px;">
-                <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
-                <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
-              </td>
-            </tr>`;
-          }).join('')}
+          ${moisMvts.map(blocMois).join('')}
+          ${blocNonAffectes}
         </tbody>
       </table>`
     : '<div style="padding:14px;color:var(--text2);font-size:11px;font-style:italic;text-align:center;">Aucun mouvement enregistré pour ce locataire.</div>';
@@ -8856,10 +8936,10 @@ function renderLocataires() {
     const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
     const rowOpacity = loc.actif ? '' : 'opacity:0.5;';
 
-    const mainRow = `<tr style="${rowOpacity}">
+    const mainRow = `<tr class="loc-mainrow" style="${rowOpacity}">
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${loc.numClient||''}</td>
       <td style="font-size:11px;">${loc.adresse1||''}<br><span style="color:var(--text2);font-size:9px;">${loc.adresse2||''}</span></td>
-      <td style="font-size:11px;">${noms}${inactifBadge}</td>
+      <td style="font-size:12px;font-weight:600;color:var(--text0);">${noms}${inactifBadge}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
       <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
@@ -8882,17 +8962,17 @@ function renderLocataires() {
       if(s > 0.01) moisAvecSolde.push({ mois: m, montant: s });
     });
     const impayesHtml = moisAvecSolde.length
-      ? `<div style="padding:5px 10px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line1);display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
+      ? `<div style="padding:5px 10px;font-size:10px;color:var(--red);border-bottom:1px solid var(--line);background:rgba(255,104,104,0.07);display:flex;flex-wrap:wrap;align-items:center;gap:8px;">
           <span style="color:var(--text1);">⚠ Impayés :</span>
           ${moisAvecSolde.map(item => `<span style="color:var(--red);font-family:var(--mono);">${moisLabelFromYYYYMM(item.mois)} · ${fmt(item.montant)}€</span>`).join('<span style="color:var(--text2);">·</span>')}
         </div>`
       : '';
 
-    // V69 : documents en 2 colonnes (appels à gauche / quittances à droite), un rang par mois,
-    // du plus ancien au plus récent ; une case reste vide si le mois n'a pas de document de ce type.
+    // V70 : documents en "registre" 3 colonnes — appels | mois | quittances.
+    // Un rang par mois, du plus ancien au plus récent, sans trou (les mois sans document restent visibles, vides).
     const docItemHtml = (h) => {
       const isAppel = h.type === 'appel';
-      const label = moisLabelFromYYYYMM(h.mois);
+      const nom = isAppel ? 'Appel de loyer' : 'Quittance';
       const montant = isAppel ? montantAppelHistorique(h) : h.montantPaye;
       let barColor = 'var(--line2)';
       let warning = '';
@@ -8909,39 +8989,47 @@ function renderLocataires() {
       } else if(isAppel) {
         barColor = 'var(--cyan)';
       }
+      const dateEm = h.dateEmission ? `<span style="color:var(--text3);font-family:var(--mono);font-size:9px;margin-left:6px;">${fmtDateFr(h.dateEmission)}</span>` : '';
       const checkboxHtml = h.docHtml
-        ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:12px;height:12px;cursor:pointer;margin:0;">`
-        : `<span style="width:12px;display:inline-block;"></span>`;
+        ? `<input type="checkbox" class="doc-mail-check" data-loc-id="${loc.id}" data-entry-id="${h.id}" style="width:12px;height:12px;cursor:pointer;margin:0;flex:none;">`
+        : `<span style="width:12px;display:inline-block;flex:none;"></span>`;
       const labelHtml = h.docHtml
-        ? `<span style="flex:1;min-width:0;cursor:pointer;color:var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${label}${warning}</span>`
-        : `<span style="flex:1;min-width:0;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}${warning}</span>`;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:3px 6px 3px 6px;font-size:10px;border-left:3px solid ${barColor};">
+        ? `<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="cursor:pointer;color:var(--cyan);" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${nom}</span>${dateEm}${warning}</span>`
+        : `<span style="flex:1;min-width:0;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nom}${dateEm}${warning}</span>`;
+      return `<div style="display:flex;align-items:center;gap:10px;margin:3px 0;padding:4px 8px;font-size:10px;background:var(--bg2);border-radius:3px;border-left:3px solid ${barColor};">
         ${checkboxHtml}
         ${labelHtml}
-        <span style="color:var(--text2);text-align:right;font-family:var(--mono);white-space:nowrap;">${fmt(montant)} €</span>
-        <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:0 5px;font-size:9px;">📦</button>
+        <span style="color:var(--text0);text-align:right;font-family:var(--mono);white-space:nowrap;min-width:72px;">${fmt(montant)} €</span>
+        <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver" style="padding:0 5px;font-size:9px;flex:none;">📦</button>
       </div>`;
     };
-    const historique = (loc.historique||[]).slice();
+    const historique = (loc.historique||[]).filter(h => h.mois);
     let docsHtml = '';
     if(historique.length) {
       const parMois = {};
       historique.forEach(h => {
-        const k = h.mois || '';
-        if(!parMois[k]) parMois[k] = { appels: [], quittances: [] };
-        (h.type === 'appel' ? parMois[k].appels : parMois[k].quittances).push(h);
+        if(!parMois[h.mois]) parMois[h.mois] = { appels: [], quittances: [] };
+        (h.type === 'appel' ? parMois[h.mois].appels : parMois[h.mois].quittances).push(h);
       });
+      const cles = Object.keys(parMois).sort();
+      const moisSuite = [];
+      for(let m = cles[0]; m <= cles[cles.length-1]; m = moisSuivant(m)) moisSuite.push(m);
       const byDate = (a,b) => (a.dateEmission||'').localeCompare(b.dateEmission||'');
-      const cellStyle = 'border-bottom:1px solid var(--line1);display:flex;flex-direction:column;justify-content:center;';
-      const rows = Object.keys(parMois).sort().map(k => {
-        const g = parMois[k];
+      const sep = 'border-top:1px solid var(--bg3);';
+      const rows = moisSuite.map((k,i) => {
+        const g = parMois[k] || { appels: [], quittances: [] };
         const left = g.appels.sort(byDate).map(docItemHtml).join('');
         const right = g.quittances.sort(byDate).map(docItemHtml).join('');
-        return `<div style="${cellStyle}border-right:1px solid var(--line1);">${left}</div><div style="${cellStyle}">${right}</div>`;
+        const vide = !left && !right;
+        const t = i ? sep : '';
+        return `<div style="${t}padding:1px 10px;min-height:26px;">${left}</div>
+          <div style="${t}display:flex;align-items:center;justify-content:center;background:var(--bg2);border-left:1px solid var(--line);border-right:1px solid var(--line);font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.5px;color:${vide?'var(--text3)':'var(--text1)'};">${moisLabelFromYYYYMM(k)}</div>
+          <div style="${t}padding:1px 10px;min-height:26px;">${right}</div>`;
       }).join('');
-      const headStyle = 'padding:3px 8px;font-size:9px;letter-spacing:.5px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line2);';
-      docsHtml = `<div style="display:grid;grid-template-columns:1fr 1fr;">
-        <div style="${headStyle}border-right:1px solid var(--line1);">📄 Appels de loyer</div>
+      const headStyle = 'padding:4px 10px;font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);';
+      docsHtml = `<div style="display:grid;grid-template-columns:1fr 150px 1fr;">
+        <div style="${headStyle}">📄 Appels de loyer</div>
+        <div style="${headStyle}text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);">Mois</div>
         <div style="${headStyle}">🧾 Quittances</div>
         ${rows}
       </div>`;
@@ -8949,8 +9037,8 @@ function renderLocataires() {
       docsHtml = `<div style="padding:6px 10px;color:var(--text2);font-size:10px;font-style:italic;">Aucun document généré pour ce locataire.</div>`;
     }
 
-    const subRow = `<tr><td colspan="7" style="padding:0 0 8px 0;background:var(--bg1);">
-      <div style="margin:0 8px;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">
+    const subRow = `<tr class="loc-subrow"><td colspan="7" style="padding:0 0 26px 0;background:var(--bg0);border-bottom:none;">
+      <div style="margin:0 0 0 14px;border:1px solid var(--line);border-top:none;border-radius:0 0 var(--radius) var(--radius);overflow:hidden;background:var(--bg1);">
         ${impayesHtml}
         ${docsHtml}
       </div>
