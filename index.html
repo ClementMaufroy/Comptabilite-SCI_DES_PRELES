@@ -509,7 +509,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 #locataires-list-wrap tr.loc-mainrow > td { background:var(--bg3); border-top:2px solid var(--cyan); border-bottom:1px solid var(--line); padding-top:9px; padding-bottom:9px; }
 #locataires-list-wrap tr.loc-mainrow > td:first-child { border-left:3px solid var(--cyan); }
 #locataires-list-wrap tr.loc-mainrow:hover > td { background:var(--bg4); }
-#locataires-list-wrap tr.loc-subrow:hover > td { background:var(--bg0) !important; }
+#locataires-list-wrap tr.loc-subrow:hover > td, #locataires-list-wrap tr.loc-spacer:hover > td { background:var(--bg0) !important; }
 </style>
 </head>
 <body>
@@ -7584,6 +7584,18 @@ function computeSoldeMoisAvantAppel(loc, yyyymm) {
   return Math.round(solde*100)/100;
 }
 
+// V71 : contrôle de cohérence  Σ soldes par mois − crédits en attente  =  solde du compte 411 au GL.
+// (les soldes initiaux sont réputés déjà présents au 411, les crédits en attente sont comptabilisés au 411 mais non affectés à un mois)
+function controleSolde411(loc) {
+  ensureLocV2(loc);
+  const sommeMois = Math.round(moisImpliques(loc).reduce((t, m) => t + computeSoldeMois(loc, m), 0) * 100) / 100;
+  const credit = computeCreditEnAttente(loc);
+  const theorique = Math.round((sommeMois - credit) * 100) / 100;
+  const gl = computeSoldeLocataire(loc);
+  const ecart = Math.round((gl - theorique) * 100) / 100;
+  return { sommeMois, credit, theorique, gl, ecart, ok: Math.abs(ecart) < 0.01, compte: loc.compteClient || '' };
+}
+
 // Renvoie tous les mois YYYY-MM impliqués sur un locataire (soldes initiaux + affectations), triés du plus ancien au plus récent
 function moisImpliques(loc) {
   ensureLocV2(loc);
@@ -7696,6 +7708,19 @@ function renderLocataireDetail() {
       }).join('')
     : '<div style="padding:10px;color:var(--text2);font-size:11px;font-style:italic;">Aucun mois n\'a encore de solde ou de mouvement.</div>';
 
+  // V71 : rapprochement Σ soldes par mois = solde 411 (GL)
+  const ctl = controleSolde411(loc);
+  const rapprochementHtml = `<div style="border-top:2px solid var(--line2);padding:6px 10px;font-size:11px;background:${ctl.ok?'var(--bg2)':'rgba(255,104,104,0.12)'};">
+      <div style="display:flex;justify-content:space-between;"><span style="color:var(--text2);">Σ soldes par mois</span><span style="font-family:var(--mono);">${fmt(ctl.sommeMois)} €</span></div>
+      ${ctl.credit>0.005?`<div style="display:flex;justify-content:space-between;"><span style="color:var(--text2);">− crédit en attente</span><span style="font-family:var(--mono);color:var(--cyan);">${fmt(-ctl.credit)} €</span></div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:3px;font-weight:700;">
+        <span>${ctl.ok
+          ? `<span style="color:var(--green);">✓ = Solde ${ctl.compte||'411'} (GL)</span>`
+          : `<span style="color:var(--red);">⚠ ≠ Solde ${ctl.compte||'411'} (GL) : ${fmt(ctl.gl)} € — écart ${fmt(ctl.ecart)} €</span>`}</span>
+        <span style="font-family:var(--mono);color:${ctl.ok?'var(--green)':'var(--red)'};">${fmt(ctl.theorique)} €</span>
+      </div>
+    </div>`;
+
   // Types paramétrés — résumé
   const typesHtml = loc.types.length
     ? loc.types.map(t => `<span style="display:inline-flex;align-items:center;gap:5px;background:${t.sens==='+'?'rgba(255,200,64,0.12)':'rgba(0,229,160,0.12)'};color:${t.sens==='+'?'var(--amber)':'var(--green)'};border-radius:3px;padding:3px 8px;font-size:10px;margin:2px;">
@@ -7706,7 +7731,6 @@ function renderLocataireDetail() {
   // V70 : mouvements présentés en "relevé de compte" groupé par mois d'affectation,
   // du plus ancien au plus récent. Dans chaque mois : d'abord les + (loyer puis provision), puis les − par date.
   // Colonnes Dû (+) / Réglé (−), sous-total et solde du mois en pied de bloc.
-  const _moisCourantDet = new Date().toISOString().slice(0,7);
   const rangType = (mvt) => {
     if(mvt.sens !== '+') return 9;
     const t = loc.types.find(x => x.id === mvt.typeId);
@@ -7730,92 +7754,73 @@ function renderLocataireDetail() {
   const moisMvts = Object.keys(lignesParMois).sort();
   const thS = 'padding:5px 8px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);';
   const tdS = 'padding:4px 8px;border-bottom:1px solid var(--bg3);';
-  const ligneHtml = (l) => {
+  // V71 : groupes par mois sans en-tête ni sous-total ; le mois apparaît une seule fois dans la 1re colonne (fusionnée).
+  const ligneHtml = (l, moisCell, bg) => {
+    const base = `background:${bg};`;
     if(l.initial) {
-      return `<tr style="line-height:1.25;">
-        <td style="${tdS}color:var(--text3);font-family:var(--mono);font-size:10px;">—</td>
-        <td style="${tdS}color:var(--text2);" colspan="2"><i>Solde initial (antérieur à l'outil)</i></td>
-        <td style="${tdS}"></td>
-        <td class="td-num" style="${tdS}color:var(--amber);font-weight:600;">${l.montant>0?fmt(l.montant):''}</td>
-        <td class="td-num" style="${tdS}color:var(--green);font-weight:600;">${l.montant<0?fmt(-l.montant):''}</td>
-        <td style="${tdS}"></td>
+      return `<tr style="line-height:1.25;">${moisCell}
+        <td style="${tdS}${base}color:var(--text3);font-family:var(--mono);font-size:10px;">—</td>
+        <td style="${tdS}${base}color:var(--text2);" colspan="2"><i>Solde initial (antérieur à l'outil)</i></td>
+        <td class="td-num" style="${tdS}${base}color:var(--amber);font-weight:600;">${l.montant>0?fmt(l.montant):''}</td>
+        <td class="td-num" style="${tdS}${base}color:var(--green);font-weight:600;">${l.montant<0?fmt(-l.montant):''}</td>
+        <td style="${tdS}${base}"></td>
       </tr>`;
     }
     const mvt = l.mvt;
     const t = loc.types.find(x => x.id === mvt.typeId);
     const plus = mvt.sens === '+';
     const color = plus ? 'var(--amber)' : 'var(--green)';
-    const statut = mvt.ecritureId
-      ? '<span style="color:var(--green);font-size:9px;white-space:nowrap;">✓ comptabilisé</span>'
-      : '<span style="color:var(--amber);font-size:9px;white-space:nowrap;">◯ non compta.</span>';
     const notes = [];
     if(l.partiel) notes.push(`<span style="color:var(--text3);">part de ${fmt(mvt.montant)} € répartis</span>`);
     if(l.dernier && mvt.creditEnAttente > 0.005) notes.push(`<span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)} € en attente</span>`);
-    return `<tr style="line-height:1.25;">
-      <td style="${tdS}font-family:var(--mono);font-size:10px;white-space:nowrap;">${fmtDateFr(mvt.dateOperation)}</td>
-      <td style="${tdS}white-space:nowrap;"><span style="color:${color};font-weight:700;">${mvt.sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
-      <td style="${tdS}">${mvt.libelle||''}${notes.length?`<div style="font-size:9px;">${notes.join(' · ')}</div>`:''}</td>
-      <td style="${tdS}text-align:center;">${statut}</td>
-      <td class="td-num" style="${tdS}color:var(--amber);font-weight:600;">${plus?fmt(l.montant):''}</td>
-      <td class="td-num" style="${tdS}color:var(--green);font-weight:600;">${plus?'':fmt(l.montant)}</td>
-      <td style="${tdS}text-align:center;white-space:nowrap;">
+    if(!mvt.ecritureId) notes.push(`<span style="color:var(--amber);">◯ non comptabilisé</span>`);
+    return `<tr style="line-height:1.25;">${moisCell}
+      <td style="${tdS}${base}font-family:var(--mono);font-size:10px;white-space:nowrap;">${fmtDateFr(mvt.dateOperation)}</td>
+      <td style="${tdS}${base}white-space:nowrap;"><span style="color:${color};font-weight:700;">${mvt.sens}</span> ${t ? t.nom : '<i style="color:var(--red);">type supprimé</i>'}</td>
+      <td style="${tdS}${base}">${mvt.libelle||''}${notes.length?`<div style="font-size:9px;">${notes.join(' · ')}</div>`:''}</td>
+      <td class="td-num" style="${tdS}${base}color:var(--amber);font-weight:600;">${plus?fmt(l.montant):''}</td>
+      <td class="td-num" style="${tdS}${base}color:var(--green);font-weight:600;">${plus?'':fmt(l.montant)}</td>
+      <td style="${tdS}${base}text-align:center;white-space:nowrap;">
         <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
       </td>
     </tr>`;
   };
-  const blocMois = (m) => {
-    const lignes = lignesParMois[m].slice().sort((a,b) => {
-      const ra = a.initial ? -1 : rangType(a.mvt), rb = b.initial ? -1 : rangType(b.mvt);
-      const pa = ra < 9 ? 0 : 1, pb = rb < 9 ? 0 : 1;   // les + (et solde initial) avant les −
-      if(pa !== pb) return pa - pb;
-      if(pa === 0 && ra !== rb) return ra - rb;          // loyer puis provision
-      const da = a.initial ? '' : (a.mvt.dateOperation||''), db = b.initial ? '' : (b.mvt.dateOperation||'');
-      return da.localeCompare(db);
-    });
-    let du = 0, regle = 0;
-    lignes.forEach(l => {
-      if(l.initial) { if(l.montant > 0) du += l.montant; else regle += -l.montant; }
-      else if(l.mvt.sens === '+') du += l.montant; else regle += l.montant;
-    });
-    const solde = Math.round((du - regle) * 100) / 100;
-    let badge;
-    if(Math.abs(solde) < 0.01) badge = '<span style="color:var(--green);">✓ soldé</span>';
-    else if(solde < 0) badge = `<span style="color:var(--cyan);">crédit ${fmt(-solde)} €</span>`;
-    else if(m < _moisCourantDet) badge = `<span style="color:var(--red);">⚠ impayé ${fmt(solde)} €</span>`;
-    else badge = `<span style="color:var(--amber);">reste dû ${fmt(solde)} € · mois en cours</span>`;
-    return `<tr><td colspan="7" style="padding:10px 8px 5px;background:var(--bg0);border-bottom:2px solid var(--line2);">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text0);">${moisLabelFromYYYYMM(m)}</span>
-          <span style="font-size:10px;font-weight:600;">${badge}</span>
-        </div></td></tr>
-      ${lignes.map(ligneHtml).join('')}
-      <tr style="background:var(--bg2);">
-        <td colspan="4" style="padding:4px 8px;font-size:10px;color:var(--text2);text-align:right;border-bottom:1px solid var(--line);">Total ${moisLabelFromYYYYMM(m)}</td>
-        <td class="td-num" style="padding:4px 8px;font-weight:700;color:var(--amber);border-top:1px solid var(--line2);border-bottom:1px solid var(--line);">${fmt(du)}</td>
-        <td class="td-num" style="padding:4px 8px;font-weight:700;color:var(--green);border-top:1px solid var(--line2);border-bottom:1px solid var(--line);">${fmt(regle)}</td>
-        <td style="padding:4px 8px;font-family:var(--mono);font-size:10px;font-weight:700;text-align:center;border-bottom:1px solid var(--line);color:${Math.abs(solde)<0.01?'var(--green)':(solde<0?'var(--cyan)':(m<_moisCourantDet?'var(--red)':'var(--amber)'))};" title="Solde du mois">${fmt(solde)}</td>
-      </tr>`;
+  const trierLignes = (arr) => arr.slice().sort((a,b) => {
+    const ra = a.initial ? -1 : rangType(a.mvt), rb = b.initial ? -1 : rangType(b.mvt);
+    const pa = ra < 9 ? 0 : 1, pb = rb < 9 ? 0 : 1;   // les + (et solde initial) avant les −
+    if(pa !== pb) return pa - pb;
+    if(pa === 0 && ra !== rb) return ra - rb;          // loyer puis provision
+    const da = a.initial ? '' : (a.mvt.dateOperation||''), db = b.initial ? '' : (b.mvt.dateOperation||'');
+    return da.localeCompare(db);
+  });
+  const groupeHtml = (label, lignes, idx, couleurLabel) => {
+    const bg = idx % 2 ? 'var(--bg2)' : 'var(--bg1)';
+    const sepStyle = idx ? 'border-top:3px solid var(--bg0);' : '';
+    const cell = `<td rowspan="${lignes.length}" style="padding:4px 10px;vertical-align:top;white-space:nowrap;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:${couleurLabel};background:${bg};border-right:2px solid var(--line);${sepStyle}">${label}</td>`;
+    return lignes.map((l, i) => {
+      let html = ligneHtml(l, i === 0 ? cell : '', bg);
+      if(i === 0 && idx) html = html.replace(/<td style="padding:4px 8px;/g, `<td style="${sepStyle}padding:4px 8px;`).replace(/<td class="td-num" style="padding:4px 8px;/g, `<td class="td-num" style="${sepStyle}padding:4px 8px;`);
+      return html;
+    }).join('');
   };
-  const blocNonAffectes = nonAffectes.length ? `<tr><td colspan="7" style="padding:10px 8px 5px;background:var(--bg0);border-bottom:2px solid var(--line2);font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--cyan);">Non affectés</td></tr>
-      ${nonAffectes.sort((a,b)=>(a.dateOperation||'').localeCompare(b.dateOperation||'')).map(mvt => ligneHtml({ mvt, montant: parseFloat(mvt.montant)||0, partiel:false, dernier:true })).join('')}` : '';
+  let _gi = 0;
+  const groupesHtml = moisMvts.map(m => groupeHtml(moisLabelFromYYYYMM(m), trierLignes(lignesParMois[m]), _gi++, 'var(--text1)')).join('')
+    + (nonAffectes.length ? groupeHtml('Non affecté', nonAffectes.sort((a,b)=>(a.dateOperation||'').localeCompare(b.dateOperation||'')).map(mvt => ({ mvt, montant: parseFloat(mvt.montant)||0, partiel:false, dernier:true })), _gi++, 'var(--cyan)') : '');
   const mvtsHtml = (moisMvts.length || nonAffectes.length)
     ? `<table style="width:100%;font-size:11px;border-collapse:collapse;">
         <thead>
           <tr>
+            <th style="${thS}width:120px;white-space:nowrap;border-right:2px solid var(--line);">Mois</th>
             <th style="${thS}width:90px;white-space:nowrap;">Date opé.</th>
             <th style="${thS}width:180px;white-space:nowrap;">Type</th>
             <th style="${thS}">Libellé</th>
-            <th style="${thS}width:110px;text-align:center;">Statut</th>
             <th class="td-num" style="${thS}width:95px;color:var(--amber);">Dû (+)</th>
             <th class="td-num" style="${thS}width:95px;color:var(--green);">Réglé (−)</th>
             <th style="${thS}width:70px;text-align:center;"></th>
           </tr>
         </thead>
-        <tbody>
-          ${moisMvts.map(blocMois).join('')}
-          ${blocNonAffectes}
-        </tbody>
+        <tbody>${groupesHtml}</tbody>
       </table>`
     : '<div style="padding:14px;color:var(--text2);font-size:11px;font-style:italic;text-align:center;">Aucun mouvement enregistré pour ce locataire.</div>';
 
@@ -7829,8 +7834,13 @@ function renderLocataireDetail() {
       <div style="text-align:right;">
         <div style="font-size:10px;color:var(--text2);">Solde compte client (GL)</div>
         <div style="font-family:var(--mono);font-size:16px;font-weight:600;color:${soldeCptGL>0?'var(--amber)':(soldeCptGL<0?'var(--green)':'var(--text0)')};">${fmt(soldeCptGL)} €</div>
+        <div style="font-size:9px;margin-top:2px;color:${ctl.ok?'var(--green)':'var(--red)'};">${ctl.ok?'✓ = Σ soldes par mois':'⚠ ≠ Σ soldes par mois'}</div>
       </div>
     </div>
+    ${ctl.ok ? '' : `<div style="margin-bottom:14px;padding:8px 12px;border:1px solid var(--red);border-radius:var(--radius);background:rgba(255,104,104,0.10);color:var(--red);font-size:11px;">
+      ⚠ <strong>Incohérence détectée</strong> : la somme des soldes par mois (${fmt(ctl.theorique)} €) ne correspond pas au solde du compte ${ctl.compte||'client'} au Grand Livre (${fmt(ctl.gl)} €). Écart : ${fmt(ctl.ecart)} €.
+      <span style="color:var(--text2);">Causes possibles : mouvement non comptabilisé, écriture saisie ou modifiée directement sur le ${ctl.compte||'411'}, écriture supprimée, solde initial non repris au GL.</span>
+    </div>`}
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
       <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);">
@@ -7850,6 +7860,7 @@ function renderLocataireDetail() {
           </div>
         </div>
         <div style="max-height:180px;overflow-y:auto;">${soldesParMoisHtml}</div>
+        ${rapprochementHtml}
       </div>
     </div>
 
@@ -8923,6 +8934,7 @@ function renderLocataires() {
     filterBar.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:11px;color:var(--text2);';
     wrapEl.insertBefore(filterBar, wrapEl.firstChild);
   }
+  // (le bandeau d'écart GL est ajouté après le rendu des lignes)
   filterBar.innerHTML = nbInactifs > 0
     ? `<label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
         <input type="checkbox" ${_afficherInactifs?'checked':''} onchange="_afficherInactifs=this.checked;renderLocataires();" style="width:14px;height:14px;cursor:pointer;">
@@ -8930,7 +8942,8 @@ function renderLocataires() {
       </label>`
     : '';
 
-  body2.innerHTML = visible.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
+  const _ecartsGL = visible.filter(l => !controleSolde411(l).ok);
+  body2.innerHTML = `<tr class="loc-spacer"><td colspan="7" style="height:14px;padding:0;background:var(--bg0);border:none;"></td></tr>` + visible.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
     const solde = computeSoldeGlobalLocataireV2(loc);
     const noms = [loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & ');
     const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
@@ -8942,7 +8955,7 @@ function renderLocataires() {
       <td style="font-size:12px;font-weight:600;color:var(--text0);">${noms}${inactifBadge}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.loyer)}</td>
       <td class="td-num" style="font-size:11px;">${fmt(loc.provision)}</td>
-      <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${fmt(solde)}</td>
+      <td class="td-num" style="font-size:11px;font-weight:600;${solde>0?'color:var(--amber);':solde<0?'color:var(--green);':''}">${(() => { const c = controleSolde411(loc); return c.ok ? '' : `<span style="color:var(--red);cursor:help;margin-right:6px;" title="Écart avec le compte ${c.compte||'411'} au GL : ${fmt(c.gl)} € au GL ≠ ${fmt(c.theorique)} € (Σ soldes par mois). Écart ${fmt(c.ecart)} €">⚠</span>`; })()}${fmt(solde)}</td>
       <td style="text-align:center;white-space:nowrap;">
         <button class="btn btn-sm btn-primary btn-icon" onclick="openLocataireDetail('${loc.id}')" title="Ouvrir la fiche détaillée" style="padding:1px 7px;font-size:10px;">📊 OUVRIR</button>
         <button class="btn btn-sm btn-icon" onclick="openAppelModal('${loc.id}')" title="Appel de loyer" style="padding:1px 5px;font-size:10px;">📄</button>
@@ -9046,6 +9059,12 @@ function renderLocataires() {
 
     return mainRow + subRow;
   }).join('');
+  // V71 : alerte globale si au moins un locataire a un écart entre Σ soldes par mois et son 411
+  if(_ecartsGL.length) {
+    filterBar.innerHTML += `<div style="flex:1;padding:6px 10px;border:1px solid var(--red);border-radius:var(--radius);background:rgba(255,104,104,0.10);color:var(--red);">
+      ⚠ Écart entre soldes par mois et compte 411 (GL) pour : ${_ecartsGL.map(l => `<strong style="cursor:pointer;text-decoration:underline;" onclick="openLocataireDetail('${l.id}')">${l.nom1||l.numClient}</strong>`).join(', ')}
+    </div>`;
+  }
 
   updateNavCounts();
 }
