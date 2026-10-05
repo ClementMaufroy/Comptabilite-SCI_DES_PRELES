@@ -75,6 +75,8 @@
   };
   window._fbListYearsFresh = window._fbListYears;
 
+  // Retire un exercice de la liste (_meta) sans toucher à aucun document
+  window._fbForgetYear = async (year) => { await setDoc(metaRef(), { years: arrayRemove(String(year)) }, { merge: true }); };
   window._fbDelete = async (year) => {
     await deleteDoc(getRef(year));
     await setDoc(metaRef(), { years: arrayRemove(String(year)) }, { merge: true });
@@ -2711,7 +2713,11 @@ async function exportAllExercisesBackup() {
     else {
       try { data = await window._fbLoad(y); }
       catch(e) { echecs.push({ y, raison: 'lecture Firebase impossible' }); continue; }
-      if(!data) { echecs.push({ y, raison: 'introuvable dans Firebase' }); continue; }
+      if(!data) {
+        // Exercice encore listé mais supprimé : ce n'est pas un échec de sauvegarde, on nettoie la liste
+        try { await window._fbForgetYear(y); } catch(e) {}
+        ignores.push({ y, raison: "n'existe plus dans Firebase (retiré de la liste)" }); continue;
+      }
     }
     if(!Array.isArray(data.ecritures) || !data.ecritures.length) { ignores.push({ y, raison: 'exercice sans écriture' }); continue; }
     const test = (String(y) === String(CURRENT_YEAR)) ? !!DB._isTest : !!data._isTest;
@@ -3375,20 +3381,61 @@ function _recevoirChangementDistant({ data, rev }) {
   if(_pendingSave || (_saveFailure && !_saveFailure.conflict)) {  // modifications locales non envoyées : pas de fusion
     _signalerConflit(y); return;
   }
+  const avant = JSON.parse(JSON.stringify(DB));
   Object.keys(DB).forEach(k => delete DB[k]);
   Object.assign(DB, normaliserDB(data));
   if(DB._isTest === undefined) DB._isTest = false;
   LOADED_REV[y] = rev;
+  const detail = decrireChangements(avant, DB);
   EXERCISE_STATUS = DB._status || 'open';
   renum(); updateNavCounts(); applyExerciseStatus();
   // V72 : modification reçue d'un autre poste — l'historique local n'est plus fiable, on le réinitialise
   const _hadHist = undoStack.length || redoStack.length;
   histClear();
-  toast(_hadHist ? "Données mises à jour depuis un autre poste — historique d'annulation réinitialisé" : 'Données mises à jour depuis un autre poste', 'warn', 4000);
+  afficherAvisChangementDistant(detail, _hadHist);
   const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
   const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
   if(active && renders[active]) { try { renders[active](); } catch(e) { console.error(e); } }
   renderPostItPieces();
+}
+
+// V79v2 : ce qui a changé sur l'autre poste, en clair
+const LIBELLES_BLOCS = { tbData:'Plan comptable (TB Data)', immobilisations:'Immobilisations', locataires:'Gestion locative', echeanciers:'Échéanciers',
+  emprunts:'Emprunts', km:'Frais kilométriques', pvApprobations:"Approbation du résultat (PV d'AGO)", ccInterets:"Taux d'intérêts des comptes courants",
+  piecesAFormaliser:'Pièces à formaliser', piecesTypes:'Types de pièces', revision:'Révision comptable', rappelsMensuelList:'Rappels mensuels',
+  rappelsMensuel:'Rappels mensuels', rappelsAnnuelList:'Rappels annuels', rappelsAnnuel:'Rappels annuels', _status:"Statut de l'exercice", tauxAMettreAJour:'Taux à mettre à jour' };
+function decrireChangements(avant, apres) {
+  const lignes = [];
+  // Écritures : ajoutées / supprimées / modifiées (comparaison par identifiant de ligne, regroupée par écriture)
+  const cle = e => e._io !== undefined ? 'io' + e._io : 'n' + e.num;
+  const grp = arr => { const m = new Map(); (arr||[]).forEach(e => { const k = cle(e); if(!m.has(k)) m.set(k, []); m.get(k).push(e); }); return m; };
+  const ga = grp(avant.ecritures), gb = grp(apres.ecritures);
+  const sig = l => JSON.stringify(l.map(e => [e.date, e.compte, e.debit, e.credit, e.libelleEcriture, e.numDoc]).sort());
+  const lib = l => { const e = l[0]; return `${e.libelleEcriture || '(sans libellé)'}${e.numDoc ? ' — ' + e.numDoc : ''} (${fmtDateGL(e.date)})`; };
+  const ajout = [], supp = [], modif = [];
+  gb.forEach((l, k) => { if(!ga.has(k)) ajout.push(lib(l)); else if(sig(ga.get(k)) !== sig(l)) modif.push(lib(l)); });
+  ga.forEach((l, k) => { if(!gb.has(k)) supp.push(lib(l)); });
+  const liste = (titre, arr) => { if(arr.length) lignes.push(`${titre} : ${arr.slice(0,5).join(' · ')}${arr.length > 5 ? ` … (+${arr.length-5})` : ''}`); };
+  liste(`${ajout.length} écriture(s) ajoutée(s)`, ajout);
+  liste(`${modif.length} écriture(s) modifiée(s)`, modif);
+  liste(`${supp.length} écriture(s) supprimée(s)`, supp);
+  // Autres blocs de données
+  const autres = new Set();
+  Object.keys(LIBELLES_BLOCS).forEach(k => { if(JSON.stringify(avant[k]) !== JSON.stringify(apres[k])) autres.add(LIBELLES_BLOCS[k]); });
+  if(autres.size) lignes.push('Modifié aussi : ' + [...autres].join(', '));
+  return lignes;
+}
+function afficherAvisChangementDistant(lignes, historiqueReinitialise) {
+  const old = document.getElementById('remote-change-notice'); if(old) old.remove();
+  const el = document.createElement('div');
+  el.id = 'remote-change-notice';
+  el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99990;max-width:620px;background:var(--bg2);border:1px solid var(--amber);border-radius:var(--radius);padding:14px 18px;font-size:12px;color:var(--text0);box-shadow:0 8px 24px rgba(0,0,0,0.45);';
+  const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  el.innerHTML = `<div style="font-weight:700;color:var(--amber);margin-bottom:6px;">↻ Exercice ${esc(CURRENT_YEAR)} mis à jour depuis un autre poste</div>
+    ${lignes.length ? lignes.map(l => `<div style="margin-bottom:3px;">• ${esc(l)}</div>`).join('') : '<div>Changement technique sans effet visible.</div>'}
+    ${historiqueReinitialise ? '<div style="color:var(--text2);margin-top:6px;font-size:11px;">L\'historique Annuler / Rétablir de ce poste a été réinitialisé.</div>' : ''}
+    <div style="text-align:right;margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="document.getElementById('remote-change-notice').remove()">OK</button></div>`;
+  document.body.appendChild(el);
 }
 function startLiveSync() {
   if(_unsubscribeListen) { try { _unsubscribeListen(); } catch(e) {} }
