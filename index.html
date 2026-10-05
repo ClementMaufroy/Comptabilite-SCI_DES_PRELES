@@ -657,10 +657,15 @@ applyTheme();
     <span class="hdr-tag">EXERCICE</span>
     <select id="ex-year-select" onchange="switchExercise(this.value)" style="margin:0;"></select>
     <span id="ex-status-badge" class="ex-badge-open">OUVERT</span>
+    <span id="bao-prov-badge" onclick="recalculerBAODepuisN()" style="display:none;cursor:pointer;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:0.08em;color:#332200;background:var(--amber);padding:2px 7px;border-radius:2px;" title="Balance d'ouverture provisoire (calculée sur l'exercice précédent encore ouvert). Cliquer pour la recalculer une fois l'exercice précédent clôturé.">BAO PROVISOIRE</span>
   </div>
   <div class="hdr-sep"></div>
   <div class="hdr-status"><div class="dot"></div> AUTO-SAVE</div>
   <div class="hdr-actions">
+    <button class="btn btn-sm" onclick="ouvrirAReporter()" id="btn-areporter" style="display:none;letter-spacing:0.05em;border-color:var(--amber);">
+      <span id="btn-areporter-label">📮 À REPORTER EN N+1</span>
+      <span id="btn-areporter-badge" style="background:var(--amber);color:#332200;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
+    </button>
     <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" style="letter-spacing:0.05em;">
       <span>📌 PIÈCES À FORMALISER</span>
       <span id="btn-postit-badge" style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
@@ -1189,7 +1194,7 @@ applyTheme();
           <div class="page-sub">Écritures récurrentes comptabilisées automatiquement</div>
         </div>
         <div class="page-actions">
-          <button class="btn btn-sm" onclick="comptabiliserToutesEcheancesDuMois()">⚙ COMPTABILISER LE MOIS EN COURS (TOUS)</button>
+          <button class="btn btn-sm" id="btn-ech-mois-courant" onclick="comptabiliserToutesEcheancesDuMois()">⚙ COMPTABILISER LE MOIS EN COURS (TOUS)</button>
           <button class="btn btn-sm btn-primary" onclick="openEcheancierModal()">+ AJOUTER UN ÉCHÉANCIER</button>
         </div>
       </div>
@@ -2470,6 +2475,38 @@ applyTheme();
 </div>
 
 <!-- ══════════════ ARCHIVAGE GÉNÉRIQUE (fiches km, PV d'AGO...) ══════════════ -->
+<div id="bao-recalc-modal" class="modal-overlay">
+  <div class="modal" style="width:720px;max-width:95vw;">
+    <div class="modal-title"><span>⚖</span> <span id="bao-recalc-title">RECALCUL DE LA BALANCE D'OUVERTURE</span></div>
+    <div id="bao-recalc-msg" style="font-size:11px;color:var(--text1);line-height:1.6;margin-bottom:10px;"></div>
+    <div id="bao-recalc-table" style="max-height:50vh;overflow:auto;"></div>
+    <div class="flex gap8" style="margin-top:12px;">
+      <button class="btn btn-primary" onclick="confirmerRecalculBAO()">✓ METTRE À JOUR</button>
+      <button class="btn ml-auto" onclick="fermerRecalculBAO()">PLUS TARD</button>
+    </div>
+  </div>
+</div>
+<div id="areporter-modal" class="modal-overlay">
+  <div class="modal" style="width:640px;max-width:95vw;">
+    <div class="modal-title"><span>📮</span> <span id="areporter-title">À REPORTER EN N+1</span></div>
+    <div id="areporter-intro" style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px;"></div>
+    <div id="areporter-list" style="max-height:55vh;overflow:auto;"></div>
+    <div class="flex gap8" style="margin-top:12px;"><button class="btn btn-sm ml-auto" onclick="document.getElementById('areporter-modal').style.display='none'">FERMER</button></div>
+  </div>
+</div>
+<div id="pw-confirm-modal" class="modal-overlay">
+  <div class="modal" style="width:520px;max-width:95vw;">
+    <div class="modal-title"><span style="color:var(--red);">⚠</span> <span id="pw-confirm-title">CONFIRMATION</span></div>
+    <div id="pw-confirm-msg" style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:12px;"></div>
+    <div id="pw-confirm-extra" style="margin-bottom:10px;"></div>
+    <input type="password" id="pw-confirm-input" placeholder="Votre mot de passe" style="width:100%;height:30px;font-family:var(--mono);font-size:12px;margin-bottom:6px;" onkeydown="if(event.key==='Enter')validerPwConfirm()">
+    <div id="pw-confirm-err" style="color:var(--red);font-size:11px;min-height:16px;"></div>
+    <div class="flex gap8" style="margin-top:8px;">
+      <button class="btn btn-danger" id="pw-confirm-ok" onclick="validerPwConfirm()">CONFIRMER</button>
+      <button class="btn ml-auto" onclick="fermerPwConfirm()">ANNULER</button>
+    </div>
+  </div>
+</div>
 <div id="archives-modal" class="modal-overlay">
   <div class="modal" style="width:680px;max-width:95vw;">
     <div class="modal-title"><span>📦</span> <span id="archives-title">ARCHIVES</span></div>
@@ -2582,8 +2619,8 @@ applyTheme();
       <div id="cloture-next" style="display:none;padding:10px 12px;background:rgba(var(--accent-rgb),0.06);border:1px solid rgba(var(--accent-rgb),0.2);border-radius:var(--radius);">
         <div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:0.08em;margin-bottom:10px;">CRÉER L'EXERCICE SUIVANT</div>
         <div id="cloture-next-existing" style="display:none;"></div>
-        <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">L'exercice suivant est toujours créé à neuf : balance d'ouverture et reprise des modules automatiques.</div>
-        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="cloture-next-creer" style="font-size:10px;color:var(--text2);margin-bottom:6px;">L'exercice suivant est toujours créé à neuf : balance d'ouverture et reprise des modules automatiques.</div>
+        <div class="cloture-next-creer" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
           <div style="flex:1;min-width:100px;">
             <input type="text" id="cloture-next-name" style="height:32px;font-family:var(--mono);font-size:13px;" onkeydown="if(event.key==='Enter')clotureCreateNext()">
           </div>
@@ -3389,6 +3426,7 @@ function saveDB() {
   if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(CURRENT_YEAR)] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest };
+  try { detecterParametresAReporter(); } catch(e) { console.error(e); } // V83 (C5)
   let json, histJson; try { histJson = JSON.stringify(DB); json = jsonAEnregistrer(false); } catch(e) { console.error(e); return; }
   histRecord(histJson);
   if(json === null) { _signalerEchec(CURRENT_YEAR, 'exercice clôturé : contenu figé introuvable, rechargez la page', null); return; }
@@ -3411,6 +3449,7 @@ function flushPendingSave() {
 }
 async function saveDBNow(force) {
   if(window._fbBloque) return false;
+  try { detecterParametresAReporter(); } catch(e) { console.error(e); } // V83 (C5)
   let json, histJson; try { histJson = JSON.stringify(DB); json = jsonAEnregistrer(force); } catch(e) { console.error(e); return false; }
   if(json === null) return false;
   // V72 : une sauvegarde forcée (clôture, changement d'exercice…) remet l'historique à zéro
@@ -3455,9 +3494,219 @@ function installerExercice(year, r) {
   if(DB._status !== 'closed') (DB.ecritures||[]).forEach(e => { if(e.numDoc === 'BAO' && !e.id) { e.id = crypto.randomUUID(); e._io = 0; e._module = 'bao'; } });
   if(DB._status !== 'closed') migrerV82();
   if(r && r.data._status === 'closed') _baseCloture[String(year)] = JSON.stringify(r.data); else delete _baseCloture[String(year)];
+  initRefParametres(); // V83 (C5) : référence du paramétrage chargé
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(year)] = { _status: DB._status || 'open', _isTest: !!DB._isTest };
 }
+// ══════════════════════════════════════════════
+// V83 (C5) : PASSAGE D'ANNÉE
+// ══════════════════════════════════════════════
+// Libellé de l'exercice N+1 (réel, non test) s'il existe déjà dans Firebase, sinon null
+function exerciceSuivantLabel() {
+  if(isTestExercise(CURRENT_YEAR)) return null;
+  const n1 = String(anneeCompta() + 1);
+  return Object.keys(window._exerciseStatuses || {}).find(y => y === n1 && !isTestExercise(y)) || null;
+}
+function exercicePrecedentLabel() {
+  if(isTestExercise(CURRENT_YEAR)) return null;
+  const n = String(anneeCompta() - 1);
+  return Object.keys(window._exerciseStatuses || {}).find(y => y === n && !isTestExercise(y)) || null;
+}
+// Ouverture anticipée : N+1 créé depuis N encore ouvert
+function estOuvertureAnticipee(label, isTest) {
+  return !isTest && EXERCISE_STATUS !== 'closed' && !isTestExercise(CURRENT_YEAR) && String(label) === String(anneeCompta() + 1);
+}
+
+// ── Recalcul de la balance d'ouverture de l'exercice affiché (N+1) à partir de N clôturé ──
+let _baoRecalc = null;
+async function recalculerBAODepuisN() {
+  if(bloqueSiCloture()) return;
+  if(isTestExercise(CURRENT_YEAR)) { toast("Pas de recalcul sur un exercice test", 'error'); return; }
+  const N = anneeCompta() - 1;
+  const labelN = exercicePrecedentLabel() || String(N);
+  if(!(await toutEnregistrer())) { toast("Des modifications ne sont pas enregistrées : réessayez", 'error', 6000); return; }
+  let r;
+  try { r = await chargerExercice(labelN); } catch(e) { toast("Firebase ne répond pas : recalcul impossible pour l'instant", 'error', 6000); return; }
+  if(!r) { toast(`Exercice ${N} introuvable dans Firebase`, 'error', 6000); return; }
+  if(r.data._status !== 'closed') { toast(`L'exercice ${N} n'est pas encore clôturé : la balance d'ouverture sera recalculée après sa clôture.`, 'warn', 7000); return; }
+  const sauv = window._closingAnnee; window._closingAnnee = N;
+  let nouvelles;
+  try { nouvelles = buildFNO(r.data.ecritures || [], r.data.tbData || DB.tbData); } finally { window._closingAnnee = sauv; }
+  const anciennes = DB.ecritures.filter(e => moduleDeLaLigne(e) === 'bao');
+  const soldes = arr => { const m = {}; arr.forEach(e => { const c = String(e.compte); m[c] = Math.round(((m[c] || 0) + (+e.debit || 0) - (+e.credit || 0)) * 100) / 100; }); return m; };
+  const sa = soldes(anciennes), sn = soldes(nouvelles);
+  const comptes = [...new Set([...Object.keys(sa), ...Object.keys(sn)])].sort();
+  const lignes = comptes.map(c => ({ c, lib: getLib(c) || (nouvelles.find(e => String(e.compte) === c) || anciennes.find(e => String(e.compte) === c) || {}).libelleCompte || '', avant: sa[c] || 0, apres: sn[c] || 0 }))
+    .map(l => Object.assign(l, { ecart: Math.round((l.apres - l.avant) * 100) / 100 }));
+  const nbEcarts = lignes.filter(l => Math.abs(l.ecart) >= 0.005).length;
+  _baoRecalc = { N, nouvelles, data: r.data };
+  const sens = v => Math.abs(v) < 0.005 ? '—' : (v > 0 ? fmt(v) + ' D' : fmt(-v) + ' C');
+  document.getElementById('bao-recalc-title').textContent = `BALANCE D'OUVERTURE ${CURRENT_YEAR} — RECALCUL DEPUIS ${N} CLÔTURÉ`;
+  document.getElementById('bao-recalc-msg').innerHTML =
+    `${nbEcarts ? `<strong style="color:var(--amber);">${nbEcarts} compte(s) changent</strong>` : '<strong style="color:var(--green);">Aucun écart</strong>'} entre la balance d'ouverture actuelle (${anciennes.length} lignes) et celle issue de ${N} clôturé (${nouvelles.length} lignes).<br>` +
+    `« Mettre à jour » remplace les lignes de la balance d'ouverture, reprend les mouvements locatifs datés de ${N} et les mois déjà comptabilisés en ${N} (échéanciers, emprunts).`;
+  document.getElementById('bao-recalc-table').innerHTML = `<table style="width:100%;font-size:11px;"><thead><tr><th>COMPTE</th><th>LIBELLÉ</th><th class="td-num">AVANT</th><th class="td-num">APRÈS</th><th class="td-num">ÉCART</th></tr></thead><tbody>` +
+    lignes.map(l => { const diff = Math.abs(l.ecart) >= 0.005; return `<tr style="${diff ? 'background:rgba(255,168,0,0.10);' : ''}"><td style="font-family:var(--mono);">${l.c}</td><td>${esc(l.lib)}</td><td class="td-num">${sens(l.avant)}</td><td class="td-num">${sens(l.apres)}</td><td class="td-num" style="${diff ? 'color:var(--amber);font-weight:700;' : 'color:var(--text3);'}">${diff ? fmt(l.ecart) : '—'}</td></tr>`; }).join('') +
+    `</tbody></table>`;
+  document.getElementById('bao-recalc-modal').style.display = 'flex';
+}
+function fermerRecalculBAO() { document.getElementById('bao-recalc-modal').style.display = 'none'; _baoRecalc = null; }
+async function confirmerRecalculBAO() {
+  if(!_baoRecalc || bloqueSiCloture()) return;
+  const { N, nouvelles, data } = _baoRecalc;
+  DB.ecritures = nouvelles.concat(DB.ecritures.filter(e => moduleDeLaLigne(e) !== 'bao'));
+  const nbMvt = resynchroniserModulesDepuisN(data);
+  delete DB._baoProvisoire;
+  DB._baoRecalculee = { depuis: N, le: dateLocale(new Date()) };
+  renum(); updateNavCounts();
+  fermerRecalculBAO();
+  if(!(await saveDBNow())) return;
+  applyExerciseStatus();
+  const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+  if(active) showTab(active);
+  toast(`Balance d'ouverture ${CURRENT_YEAR} recalculée depuis ${N} clôturé (${nouvelles.length} lignes) — ${nbMvt} mouvement(s) locatif(s) de ${N} repris.`, 'success', 7000);
+}
+// Reprend dans N+1 ce qui appartient à N : mouvements locatifs datés de N, traces des documents de N,
+// mois de N comptabilisés (échéanciers, emprunts). Les données propres à N+1 ne sont pas touchées.
+function resynchroniserModulesDepuisN(src) {
+  const debut = `${anneeCompta()}-01-01`, moisDebut = `${anneeCompta()}-01`;
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let nbMvt = 0;
+  ensureLocatairesArray().forEach(loc => {
+    const ln = (src.locataires || []).find(l => l.id === loc.id); if(!ln) return;
+    const mvtN = (ln.mouvements || []).filter(m => (m.dateOperation || '') < debut);
+    loc.mouvements = clone(mvtN).concat((loc.mouvements || []).filter(m => !((m.dateOperation || '') < debut)));
+    nbMvt += mvtN.length;
+    const presents = new Set((loc.historique || []).map(h => h.id));
+    const ajouts = [];
+    (ln.historique || []).forEach(h => {
+      if(h.mois && h.mois >= moisDebut) { if(!presents.has(h.id)) ajouts.push(clone(h)); return; } // document de N+1 émis dans N
+      const t = Object.assign(clone(h), { _exercicePrecedent: true });
+      if(t.type === 'appel' && typeof t.montantAppel !== 'number') t.montantAppel = montantAppelHistorique(h);
+      delete t.doc; delete t.docHtml; delete t.docTitle;
+      ajouts.push(t);
+    });
+    loc.historique = (loc.historique || []).filter(h => !h._exercicePrecedent).concat(ajouts);
+  });
+  const syncMois = (liste, listeN) => liste.forEach(x => {
+    const xn = (listeN || []).find(y => y.id === x.id); if(!xn) return;
+    x.moisComptabilises = (xn.moisComptabilises || []).filter(m => m < moisDebut).concat((x.moisComptabilises || []).filter(m => m >= moisDebut));
+    if(xn.moisIo || x.moisIo) {
+      const io = {};
+      Object.entries(xn.moisIo || {}).forEach(([m, v]) => { if(m < moisDebut) io[m] = v; });
+      Object.entries(x.moisIo || {}).forEach(([m, v]) => { if(m >= moisDebut) io[m] = v; });
+      x.moisIo = io;
+    }
+  });
+  syncMois(ensureEcheanciersArray(), src.echeanciers);
+  syncMois(ensureEmpruntsArray(), src.emprunts);
+  return nbMvt;
+}
+async function clotureOuvrirN1EtRecalculer(label) {
+  closeExerciseModal();
+  await switchExercise(label);
+  if(String(CURRENT_YEAR) === String(label)) await recalculerBAODepuisN();
+}
+
+// ── Post-it « À reporter en N+1 » : changements de paramétrage faits dans N alors que N+1 existe ──
+const MODULES_PARAMETRES = { locataires: 'Gestion locative', echeanciers: 'Échéanciers', emprunts: 'Emprunts', immobilisations: 'Immobilisations',
+  vehicules: 'Frais km (véhicules)', kmComptes: 'Frais km (comptes)', tbData: 'Plan comptable (TB Data)', piecesTypes: 'Types de pièces' };
+// Données de fonctionnement exclues (seul le paramétrage compte) ; les taux sont propres à chaque année
+const CLES_NON_PARAMETRES = new Set(['mouvements', 'historique', 'soldesInitiaux', 'impayes', 'moisDocsMasques', 'moisComptabilises', 'moisIo', 'taux']);
+function _paramPropre(o) {
+  if(Array.isArray(o)) return o.map(_paramPropre);
+  if(!o || typeof o !== 'object') return o;
+  const r = {};
+  Object.keys(o).sort().forEach(k => { if(!k.startsWith('_') && !CLES_NON_PARAMETRES.has(k)) r[k] = _paramPropre(o[k]); });
+  return r;
+}
+function instantaneParametres(d) {
+  const par = (arr, cle, lib) => { const m = {}; (arr || []).forEach(x => { if(!x || x[cle] === undefined || x[cle] === '') return; m[String(x[cle])] = { lib: lib(x), sig: JSON.stringify(_paramPropre(x)) }; }); return m; };
+  const km = d.km || {};
+  return {
+    locataires: par(d.locataires, 'id', l => [l.prenom1, l.nom1].filter(Boolean).join(' ') || l.numClient || 'locataire'),
+    echeanciers: par(d.echeanciers, 'id', e => e.libelle || 'échéancier'),
+    emprunts: par(d.emprunts, 'id', e => e.libelle || 'emprunt'),
+    immobilisations: par(d.immobilisations, 'id', i => i.libelle || 'immobilisation'),
+    vehicules: par(km.vehicules, 'id', v => v.nom || 'véhicule'),
+    kmComptes: { comptes: { lib: 'comptes de comptabilisation', sig: JSON.stringify([km.compteDebit || '', km.compteCredit || '', !!km.crediteDouble, km.compteCredit2 || '']) } },
+    tbData: par(d.tbData, 'compte', r => `${r.compte} ${r.libelle || ''}`.trim()),
+    piecesTypes: par(Array.isArray(d.piecesTypes) ? d.piecesTypes : [], 'code', p => `${p.code} ${p.label || ''}`.trim()),
+  };
+}
+let _paramsRef = null;
+function initRefParametres() { try { _paramsRef = instantaneParametres(DB); } catch(e) { _paramsRef = null; } }
+function detecterParametresAReporter() {
+  if(EXERCISE_STATUS === 'closed' || isTestExercise(CURRENT_YEAR)) { _paramsRef = null; return; }
+  const actuel = instantaneParametres(DB);
+  if(_paramsRef && exerciceSuivantLabel()) {
+    const liste = DB.aReporterN1 = Array.isArray(DB.aReporterN1) ? DB.aReporterN1 : [];
+    Object.keys(MODULES_PARAMETRES).forEach(mod => {
+      const a = _paramsRef[mod] || {}, b = actuel[mod] || {};
+      new Set([...Object.keys(a), ...Object.keys(b)]).forEach(k => {
+        let action = null, lib;
+        if(!a[k]) { action = 'ajout'; lib = b[k].lib; }
+        else if(!b[k]) { action = 'suppression'; lib = a[k].lib; }
+        else if(a[k].sig !== b[k].sig) { action = 'modification'; lib = b[k].lib; }
+        if(!action) return;
+        const cle = mod + ':' + k;
+        const ex = liste.find(x => x.cle === cle && !x.fait);
+        if(ex) { ex.libelle = lib; ex.date = dateLocale(new Date()); if(action === 'suppression') ex.action = 'suppression'; }
+        else liste.push({ id: crypto.randomUUID(), cle, module: MODULES_PARAMETRES[mod], libelle: lib, action, date: dateLocale(new Date()), fait: false });
+      });
+    });
+  }
+  _paramsRef = actuel;
+  setTimeout(() => rafraichirAReporter(), 0);
+}
+const LIB_ACTION_REPORT = { ajout: 'ajouté', modification: 'modifié', suppression: 'supprimé' };
+function aReporterNonFaits() { return (DB.aReporterN1 || []).filter(x => !x.fait); }
+let _aReporterDepuisN = { annee: null, liste: [] };
+// Affiché dans N (liste à cocher) et dans N+1 (rappel en lecture, lu dans N)
+async function rafraichirAReporter() {
+  const btn = document.getElementById('btn-areporter'); if(!btn) return;
+  const enN = aReporterNonFaits().length;
+  let enN1 = 0;
+  const prec = (EXERCISE_STATUS !== 'closed') ? exercicePrecedentLabel() : null;
+  if(prec && getExerciseStatus(prec) !== 'closed') {
+    if(_aReporterDepuisN.annee !== String(CURRENT_YEAR) || Date.now() - (_aReporterDepuisN.t || 0) > 30000) {
+      try { const r = await chargerExercice(prec); _aReporterDepuisN = { annee: String(CURRENT_YEAR), t: Date.now(), prec, liste: ((r && r.data.aReporterN1) || []).filter(x => !x.fait) }; }
+      catch(e) { _aReporterDepuisN = { annee: String(CURRENT_YEAR), t: Date.now(), prec, liste: [] }; }
+    }
+    enN1 = _aReporterDepuisN.liste.length;
+  } else _aReporterDepuisN = { annee: null, liste: [] };
+  const total = EXERCISE_STATUS === 'closed' ? 0 : enN + enN1;
+  btn.style.display = (total || (EXERCISE_STATUS !== 'closed' && (DB.aReporterN1 || []).length && exerciceSuivantLabel())) ? '' : 'none';
+  document.getElementById('btn-areporter-badge').textContent = total;
+  document.getElementById('btn-areporter-label').textContent = enN1 && !enN ? `📮 À REPORTER DEPUIS ${_aReporterDepuisN.prec}` : '📮 À REPORTER EN N+1';
+}
+function ouvrirAReporter() {
+  const ligne = (x, cochable) => `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line1);font-size:11px;${x.fait ? 'opacity:0.55;' : ''}">
+      ${cochable ? `<input type="checkbox" ${x.fait ? 'checked' : ''} onchange="cocherAReporter('${x.id}', this.checked)" style="width:14px;height:14px;margin-top:2px;">` : '<span style="width:14px;">•</span>'}
+      <span style="flex:1;${x.fait ? 'text-decoration:line-through;' : ''}"><strong>${esc(x.module)}</strong> — ${esc(x.libelle)} <span style="color:var(--text2);">(${LIB_ACTION_REPORT[x.action] || x.action})</span></span>
+      <span style="color:var(--text3);font-family:var(--mono);font-size:9px;">${x.date ? fmtDateFr(x.date) : ''}</span></label>`;
+  const n1 = exerciceSuivantLabel();
+  let html = '', intro = '';
+  const ici = DB.aReporterN1 || [];
+  if(ici.length) {
+    intro = `Paramétrage modifié dans ${CURRENT_YEAR} alors que ${n1 || 'l\'exercice suivant'} existe déjà. Reportez chaque changement dans ${n1 || 'N+1'}, puis cochez-le ici. La clôture de ${CURRENT_YEAR} est bloquée tant qu'un point n'est pas coché.`;
+    html += ici.slice().sort((a, b) => (a.fait - b.fait) || (b.date || '').localeCompare(a.date || '')).map(x => ligne(x, EXERCISE_STATUS !== 'closed')).join('');
+  }
+  if(_aReporterDepuisN.liste.length) {
+    intro += (intro ? '<br><br>' : '') + `Changements faits dans ${_aReporterDepuisN.prec} à reporter ici, dans ${CURRENT_YEAR}. Ils se cochent dans ${_aReporterDepuisN.prec}, une fois reportés.`;
+    html += `<div style="font-size:10px;font-weight:700;color:var(--text2);margin:10px 0 4px;">DEPUIS ${esc(_aReporterDepuisN.prec)}</div>` + _aReporterDepuisN.liste.map(x => ligne(x, false)).join('');
+  }
+  document.getElementById('areporter-intro').innerHTML = intro;
+  document.getElementById('areporter-list').innerHTML = html || '<div style="font-size:11px;color:var(--text2);font-style:italic;">Rien à reporter.</div>';
+  document.getElementById('areporter-modal').style.display = 'flex';
+}
+function cocherAReporter(id, fait) {
+  if(bloqueSiCloture()) return;
+  const x = (DB.aReporterN1 || []).find(y => y.id === id); if(!x) return;
+  x.fait = !!fait; if(fait) x.dateFait = dateLocale(new Date()); else delete x.dateFait;
+  saveDB(); rafraichirAReporter(); ouvrirAReporter();
+}
+
 // V82 : A-nouveaux marqués ; taux km figés sur les mois déjà comptabilisés
 function migrerV82() {
   const y = anneeCompta();
@@ -3510,6 +3759,7 @@ function _recevoirChangementDistant({ data, rev }) {
   LOADED_REV[y] = rev;
   if(DB._status === 'closed') _baseCloture[y] = JSON.stringify(data); else delete _baseCloture[y];
   const detail = decrireChangements(avant, DB);
+  initRefParametres(); // V83 : un changement venu d'un autre poste y a déjà été noté
   EXERCISE_STATUS = DB._status || 'open';
   renum(); updateNavCounts(); applyExerciseStatus();
   // V72 : modification reçue d'un autre poste — l'historique local n'est plus fiable, on le réinitialise
@@ -5677,6 +5927,10 @@ function applyExerciseStatus() {
     if(isTest) { badge.textContent = 'TEST'; badge.className = 'ex-badge-closed'; badge.style.color='#a78bfa'; badge.style.background='rgba(139,92,246,0.12)'; badge.style.borderColor='rgba(139,92,246,0.2)'; }
     else { badge.textContent = isClosed ? 'CLÔTURÉ' : 'OUVERT'; badge.className = isClosed ? 'ex-badge-closed' : 'ex-badge-open'; badge.style.cssText=''; }
   }
+  // V83 (C5) : balance d'ouverture provisoire (ouverture anticipée, ou exercice précédent déverrouillé)
+  const baoBadge = document.getElementById('bao-prov-badge');
+  if(baoBadge) baoBadge.style.display = (DB._baoProvisoire && !isClosed && !isTest) ? '' : 'none';
+  rafraichirAReporter();
   const btnCloture = document.getElementById('btn-cloture');
   if(btnCloture) btnCloture.disabled = isClosed;
   const navRev = document.getElementById('nav-revision');
@@ -5905,12 +6159,17 @@ async function doDeleteExercise(y) {
   delete LOADED_REV[String(y)];
   if(window._exerciseStatuses) delete window._exerciseStatuses[String(y)];
   if(String(CURRENT_YEAR) === String(y)) {
-    const annee = new Date().getFullYear();
-    let r;
-    try { r = await chargerExercice(annee); } catch(e) { afficherErreurConnexion(e); return; }
-    installerExercice(annee, r); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
+    // V83 (C5) : on bascule sur l'exercice qu'ouvrirait le démarrage — jamais de création automatique
+    let choix;
+    try { choix = await choisirExerciceDemarrage(y); } catch(e) { afficherErreurConnexion(e); return; }
+    if(editingNum !== null) cancelEditEcriture();
+    installerExercice(choix.annee, choix.r); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
     histClear(); renum(); updateNavCounts(); applyExerciseStatus(); fillYears(); startLiveSync();
-    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
+    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0;
+    if(EXERCISE_STATUS !== 'closed') addLine(undefined,true);
+    updateNextNum(); upTotals();
+    showTab('saisie'); // V83 : retour systématique à la saisie comptable
+    setSaveStatus('ok'); refreshAlerteTaux();
   }
   try { await loadKnownYears(y); } catch(e) { afficherErreurConnexion(e); return; }
   closeExerciseModal();
@@ -5931,6 +6190,7 @@ function closeExerciseModal() {
   const cs1 = document.getElementById('cloture-step1'); if(cs1) cs1.style.display = 'block';
   const cc = document.getElementById('cloture-confirm'); if(cc) cc.style.display = 'none';
   const cn = document.getElementById('cloture-next'); if(cn) cn.style.display = 'none';
+  document.querySelectorAll('.cloture-next-creer').forEach(el => el.style.display = '');
 }
 
 function createNewExerciseStep1() {
@@ -5947,7 +6207,9 @@ function createNewExerciseStep1() {
   document.getElementById('new-ex-step1').style.display = 'none';
   document.getElementById('new-ex-confirm-msg').innerHTML =
     `Créer l'exercice <strong style="color:var(--cyan)">${label}</strong>${isTestChecked?' <span style="color:#a78bfa">(TEST)</span>':''} ?<br>
-    <span style="color:var(--text2);font-size:11px;">La TB Data sera copiée depuis l'exercice en cours (${CURRENT_YEAR}).</span>`;
+    <span style="color:var(--text2);font-size:11px;">${estOuvertureAnticipee(label, isTestChecked)
+      ? `<strong style="color:var(--amber);">Ouverture anticipée</strong> : ${CURRENT_YEAR} n'est pas clôturé. Les modules sont repris et une balance d'ouverture <strong>provisoire</strong> est calculée sur ${CURRENT_YEAR} tel qu'il est aujourd'hui ; elle sera recalculée (avec comparaison avant/après) une fois ${CURRENT_YEAR} clôturé. Tout changement de paramétrage fait ensuite dans ${CURRENT_YEAR} sera listé dans « À reporter en N+1 ».`
+      : `La TB Data sera copiée depuis l'exercice en cours (${CURRENT_YEAR}).`}</span>`;
   document.getElementById('new-ex-confirm').style.display = 'block';
 }
 function createNewExerciseCancel() {
@@ -5957,7 +6219,11 @@ function createNewExerciseCancel() {
 async function createNewExerciseConfirm() {
   // Depuis un exercice clôturé, la création de l'exercice suivant passe par la même logique que la clôture
   // (balance d'ouverture + reprise des modules), pour ne jamais créer un N+1 "vide" par erreur.
-  if(EXERCISE_STATUS === 'closed' && !isTestExercise(CURRENT_YEAR)) {
+  const _nomSaisi = (document.getElementById('new-ex-name')?.value || '').trim();
+  const _testCoche = !!document.getElementById('new-ex-istest')?.checked;
+  const _anticipee = estOuvertureAnticipee(parseInt(_nomSaisi, 10), _testCoche) && String(parseInt(_nomSaisi, 10)) === _nomSaisi;
+  if((EXERCISE_STATUS === 'closed' && !isTestExercise(CURRENT_YEAR)) || _anticipee) {
+    window._ouvertureAnticipee = _anticipee; // V83 (C5) : N+1 créé depuis N encore ouvert → balance d'ouverture provisoire
     const nameEl = document.getElementById('new-ex-name');
     document.getElementById('cloture-next-name').value = (nameEl?.value || '').trim();
     const t = document.getElementById('cloture-next-istest'); if(t) t.checked = !!document.getElementById('new-ex-istest')?.checked;
@@ -6006,6 +6272,10 @@ function createNewExercise() { createNewExerciseStep1(); }
 // ══════════════════════════════════════════════
 function controlesAvantCloture() {
   const Y = anneeCompta();
+  // V83 (C5) : rien ne doit rester en suspens entre N et N+1
+  const _bloqV83 = [];
+  if(DB._baoProvisoire) _bloqV83.push({ module: "Balance d'ouverture", detail: `Balance d'ouverture provisoire : recalculez-la (badge BAO PROVISOIRE) une fois ${Y - 1} clôturé` });
+  aReporterNonFaits().forEach(x => _bloqV83.push({ module: 'À reporter en N+1', detail: `${x.module} — ${x.libelle} (${LIB_ACTION_REPORT[x.action] || x.action}) : à reporter dans ${Y + 1} puis cocher` }));
   const blocages = [];
   if(isNaN(Y)) return blocages; // exercice test sans année : pas de contrôle
   const mois12 = Array.from({length:12}, (_,i) => `${Y}-${String(i+1).padStart(2,'0')}`);
@@ -6072,6 +6342,7 @@ function controlesAvantCloture() {
   const net129 = soldeCompteApprobation(['129']);
   if(Math.abs(net120) > 0.005 || Math.abs(net129) > 0.005) blocages.push({ module: 'Approbation du résultat', detail: `Le résultat ${Y-1} n'a pas encore été affecté (PV d'AGO à générer)` });
 
+  blocages.push(..._bloqV83);
   return blocages;
 }
 function afficherBlocagesCloture(blocages) {
@@ -6127,6 +6398,18 @@ async function clotureGoToNext() {
   // d'ouvrir un exercice déjà existant (risque de mélanger des données).
   const candidates = [];
   const existingDiv = document.getElementById('cloture-next-existing');
+  // V83 (C5) : N+1 déjà ouvert par anticipation → pas de création, recalcul de sa balance d'ouverture
+  const _n1Existant = !isTestExercise(CURRENT_YEAR) && knownYears.includes(nextStr) && !isTestExercise(nextStr) ? nextStr : null;
+  document.querySelectorAll('.cloture-next-creer').forEach(el => el.style.display = _n1Existant ? 'none' : '');
+  if(_n1Existant) {
+    existingDiv.style.display = 'block';
+    existingDiv.innerHTML = `<div style="font-size:11px;color:var(--text1);line-height:1.5;margin-bottom:8px;">L'exercice <strong>${_n1Existant}</strong> existe déjà (ouverture anticipée). Sa balance d'ouverture doit maintenant être recalculée à partir de ${CURRENT_YEAR} clôturé : vous verrez la comparaison avant/après avant de valider.</div>
+      <button class="btn btn-sm btn-primary" onclick="clotureOuvrirN1EtRecalculer('${_n1Existant}')">⚖ OUVRIR ${_n1Existant} ET RECALCULER SA BALANCE D'OUVERTURE</button>`;
+    document.getElementById('cloture-next-err').textContent = '';
+    document.getElementById('cloture-next').style.display = 'block';
+    return;
+  }
+  existingDiv.style.display = 'none';
   if(candidates.length) {
     existingDiv.innerHTML = `<div style="font-family:var(--mono);font-size:9px;color:var(--text2);margin-bottom:6px;">EXERCICE EXISTANT</div>` +
       candidates.map(y => `<button class="btn btn-sm btn-primary" style="margin-right:6px;margin-bottom:4px;" onclick="clotureOpenExisting('${y}')">
@@ -6207,6 +6490,8 @@ async function clotureCreateNext() {
   DB._anneeComptable = anneeN1;
   // Reprise des modules de l'exercice clôturé
   Object.assign(DB, reprises);
+  const _anticipee = !!window._ouvertureAnticipee; window._ouvertureAnticipee = false;
+  if(_anticipee) DB._baoProvisoire = { depuis: String(window._closingLabel || (anneeN1 - 1)), le: dateLocale(new Date()) };
   if(!reprises.tauxAMettreAJour.km.length && !reprises.tauxAMettreAJour.cc.length) delete DB.tauxAMettreAJour;
   // Inject FNO écritures
   if(fnoEcritures.length) {
@@ -6221,7 +6506,7 @@ async function clotureCreateNext() {
   startLiveSync();
   showTab('saisie');
   const fnoMsg = fnoEcritures.length ? ` — ${fnoEcritures.length} FNO générées` : '';
-  toast(`Exercice "${label}" créé et ouvert${fnoMsg} — modules repris.`, 'success');
+  toast(_anticipee ? `Exercice "${label}" ouvert par anticipation${fnoMsg} — balance d'ouverture PROVISOIRE, à recalculer après la clôture de ${label - 1}.` : `Exercice "${label}" créé et ouvert${fnoMsg} — modules repris.`, _anticipee ? 'warn' : 'success', _anticipee ? 9000 : 4000);
   refreshAlerteTaux();
   const rt = tauxAMettreAJour();
   if(rt.km.length || rt.cc.length) openTauxMajModal();
@@ -6500,6 +6785,9 @@ async function unlockExercise() {
   const targetYear = document.getElementById('unlock-ex-select')?.value;
   errEl.textContent = '';
   if(!targetYear) { errEl.textContent = 'Sélectionnez un exercice.'; return; }
+  // V83 (M14) : réouverture refusée si l'exercice suivant est déjà clôturé
+  const _n1 = isTestExercise(targetYear) ? null : Object.keys(window._exerciseStatuses || {}).find(y => y === String(parseInt(targetYear, 10) + 1) && !isTestExercise(y));
+  if(_n1 && getExerciseStatus(_n1) === 'closed') { errEl.textContent = `Réouverture impossible : l'exercice ${_n1} est clôturé. Déverrouillez d'abord ${_n1}.`; return; }
   if(!(await verifierMotDePasse(pwEl?.value||''))) { errEl.textContent = 'Mot de passe incorrect.'; pwEl.value=''; pwEl.focus(); return; }
   if(!(await toutEnregistrer())) { errEl.textContent = 'Des modifications ne sont pas enregistrées : réessayez après enregistrement.'; return; }
   // Lecture dans Firebase uniquement (V79 : jamais depuis une copie locale)
@@ -6523,9 +6811,31 @@ async function unlockExercise() {
     renum(); histClear(); updateNavCounts();
     applyExerciseStatus();
   }
+  // V83 (M14) : N+1 existe → sa balance d'ouverture repasse en provisoire, à recalculer après la nouvelle clôture
+  let _msgN1 = '';
+  if(_n1) {
+    try {
+      if(String(_n1) === String(CURRENT_YEAR)) {
+        DB._baoProvisoire = { depuis: String(targetYear), le: dateLocale(new Date()), deverrouillage: true };
+        await saveDBNow();
+        applyExerciseStatus();
+      } else {
+        const r1 = await chargerExercice(_n1);
+        if(r1) {
+          r1.data._baoProvisoire = { depuis: String(targetYear), le: dateLocale(new Date()), deverrouillage: true };
+          await window._fbWrite(JSON.stringify(r1.data), _n1, r1.rev);
+        }
+      }
+      _msgN1 = ` ${_n1} : balance d'ouverture repassée en PROVISOIRE — elle sera recalculée (comparaison avant/après) après la nouvelle clôture de ${targetYear}. Les changements de paramétrage faits dans ${targetYear} seront listés dans « À reporter en N+1 ».`;
+    } catch(e) {
+      console.error(e);
+      _msgN1 = ` ATTENTION : ${_n1} n'a pas pu être marqué « balance d'ouverture provisoire » (Firebase). Pensez à la recalculer après la nouvelle clôture.`;
+    }
+  }
+  if(String(targetYear) === String(CURRENT_YEAR)) initRefParametres();
   pwEl.value = '';
   closeExerciseModal();
-  toast(`Exercice "${targetYear}" déverrouillé.`, 'warn');
+  toast(`Exercice "${targetYear}" déverrouillé.${_msgN1}`, 'warn', _msgN1 ? 12000 : 4000);
 }
 // ══════════════════════════════════════════════
 // EDITIONS COMPTABLES
@@ -8553,8 +8863,8 @@ function renderLocataireDetail() {
       <td class="td-num" style="${tdS}${base}color:var(--amber);font-weight:600;">${plus?fmt(l.montant):''}</td>
       <td class="td-num" style="${tdS}${base}color:var(--green);font-weight:600;">${plus?'':fmt(l.montant)}</td>
       <td style="${tdS}${base}text-align:center;white-space:nowrap;">
-        <button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
-        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+        ${mouvementVerrouille(mvt) ? `<span title="Mouvement de l'exercice ${String(mvt.dateOperation).slice(0,4)} : modifiable uniquement dans cet exercice" style="font-size:10px;cursor:help;">🔒</span>` : `<button class="btn btn-sm btn-icon" onclick="openMouvementModal('${loc.id}','${mvt.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteMouvement('${mvt.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>`}
       </td>
     </tr>`;
   };
@@ -9048,11 +9358,19 @@ function updateMouvementTotal() {
 }
 
 // Ouverture de la modale de saisie/édition d'un mouvement
+// V83 (M11) : un mouvement daté d'un exercice précédent appartient à cet exercice — lecture seule ici
+function mouvementVerrouille(mvt) { return !!(mvt && mvt.dateOperation && mvt.dateOperation < `${anneeCompta()}-01-01`); }
+function refuserMouvementVerrouille(mvt) {
+  if(!mouvementVerrouille(mvt)) return false;
+  toast(`Mouvement du ${fmtDateFr(mvt.dateOperation)} : il appartient à l'exercice ${String(mvt.dateOperation).slice(0,4)}, modifiable uniquement dans cet exercice.`, 'error', 7000);
+  return true;
+}
 function openMouvementModal(locId, editId) {
   if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   ensureLocV2(loc);
+  if(editId && refuserMouvementVerrouille((loc.mouvements||[]).find(m => m.id === editId))) return;
   if(!loc.types || !loc.types.length) {
     toast('Paramétrez d\'abord au moins un type d\'opération pour ce locataire', 'error');
     return;
@@ -9186,6 +9504,7 @@ function saveMouvement() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé', 'error'); return; }
 
   const editId = document.getElementById('mvt-edit-id').value;
+  if(editId && refuserMouvementVerrouille((loc.mouvements||[]).find(m => m.id === editId))) return; // V83 (M11)
   const typeId = document.getElementById('mvt-type').value;
   const t = (loc.types||[]).find(x => x.id === typeId);
   if(!t) { toast('Choisissez un type d\'opération', 'error'); return; }
@@ -9415,6 +9734,7 @@ function askDeleteMouvement(mvtId) {
   if(!loc) return;
   const mvt = (loc.mouvements||[]).find(m => m.id === mvtId);
   if(!mvt) return;
+  if(refuserMouvementVerrouille(mvt)) return; // V83 (M11)
   if(mvt.ecritureId && EXERCISE_STATUS === 'closed') {
     toast('Impossible de supprimer : l\'exercice est clôturé', 'error');
     return;
@@ -9502,6 +9822,8 @@ function confirmerQuittanceAuto() {
 // Génère une quittance à partir des mouvements du mois (pas de l'ancien système)
 function genererQuittanceV2(loc, mois) {
   ensureLocV2(loc);
+  if(bloqueSiCloture()) return;
+  if(!controlerDoublonDocument(loc, 'quittance', mois, () => genererQuittanceV2(loc, mois))) return; // V83 : une seule quittance par mois
   // Collecte des lignes du mois : + (loyer / provision / régul...) et - (paiements)
   const plusDuMois = [];
   const moinsDuMois = [];
@@ -9798,9 +10120,11 @@ function renderLocataires() {
       const labelHtml = aUnDocument(h)
         ? `<span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><span style="cursor:pointer;color:var(--cyan);" onclick="viewHistoriqueDoc('${loc.id}','${h.id}')" title="Ouvrir le document">${nom}</span>${dateEm}${warning}</span>`
         : `<span style="flex:1;min-width:0;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nom}${dateEm}${warning}</span>`;
+      const doublonHtml = estDoublonDocument(loc, h) ? `<button class="btn btn-sm btn-danger btn-icon" onclick="askSupprimerDoublon('${loc.id}','${h.id}')" title="Doublon : supprimer définitivement ce document (mot de passe)" style="padding:0 5px;font-size:9px;">🗑 doublon</button>` : '';
       return `<div class="loc-doc" style="display:flex;align-items:center;gap:10px;margin:3px 0;padding:4px 8px;font-size:10px;background:var(--bg2);border-radius:3px;border-left:3px solid ${barColor};">
         ${checkboxHtml}
         ${labelHtml}
+        ${doublonHtml}
         <span style="color:var(--text0);text-align:right;font-family:var(--mono);white-space:nowrap;min-width:72px;">${fmt(montant)} €</span>
       </div>`;
     };
@@ -10070,6 +10394,7 @@ function generateAppelLoyerV2() {
   const mois = document.getElementById('appel-mois').value;
   if(!mois) { toast('Choisissez le mois de l\'appel','error'); return; }
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  if(!controlerDoublonDocument(loc, 'appel', mois, () => generateAppelLoyerV2())) return; // V83 : un seul appel par mois
   const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
   const commentaire = document.getElementById('appel-commentaire').value.trim();
 
@@ -10292,6 +10617,7 @@ function generateQuittance() {
   const mois = document.getElementById('quittance-mois').value;
   if(!mois) { toast('Choisissez le mois concerné','error'); return; }
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
+  if(!controlerDoublonDocument(loc, 'quittance', mois, () => generateQuittance())) return;
 
   const paiement = findPaiementPourMois(loc, mois);
   if(!paiement || (paiement.montantPaye<=0 && paiement.aplMontant<=0)) { toast('Aucun paiement connu pour ce mois','error'); return; }
@@ -10988,6 +11314,7 @@ function comptabiliserKmMois(mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const km = ensureKm();
   if(!mois) mois = getKmSaisieMois();
+  if(refuserMoisHorsExercice(mois)) return; // V83 (M4)
   if(!km.compteDebit || !km.compteCredit) { toast('Renseignez les comptes à débiter et créditer (⚙ Paramètres)','error'); return; }
   if(km.crediteDouble && !km.compteCredit2) { toast('Renseignez le 2ᵉ compte à créditer (⚙ Paramètres)','error'); return; }
   if(kmMoisComptabilise(km, mois)) { toast('Mois déjà comptabilisé','error'); return; }
@@ -11119,11 +11446,12 @@ function renderArchives() {
   const module = _archivesModule; if(!module) return;
   const ouvert = EXERCISE_STATUS !== 'closed';
   const zone = document.getElementById('archives-list');
-  const ligne = (titre, detail, montant, consulter, restaurer) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+  const ligne = (titre, detail, montant, consulter, restaurer, extra) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
       <span style="flex:1;min-width:0;">${titre}${detail ? ` <span style="color:var(--text3);font-size:9px;font-family:var(--mono);">${detail}</span>` : ''}</span>
       <span style="color:var(--text2);font-family:var(--mono);white-space:nowrap;">${montant}</span>
       ${consulter ? `<button class="btn btn-sm" onclick="${consulter}" style="padding:1px 8px;font-size:9px;">👁 CONSULTER</button>` : `<span style="font-size:9px;color:var(--text3);">non disponible</span>`}
       ${restaurer && ouvert ? `<button class="btn btn-sm" onclick="${restaurer}" style="padding:1px 8px;font-size:9px;">↩ RESTAURER</button>` : ''}
+      ${extra || ''}
     </div>`;
   const archLib = d => d.dateArchivage ? `archivé le ${fmtDateFr(d.dateArchivage)}` : '';
   let titre = 'ARCHIVES', intro = '', html = '';
@@ -11139,7 +11467,8 @@ function renderArchives() {
         [h.dateEmission ? 'émis le ' + fmtDateFr(h.dateEmission) : '', archLib(h)].filter(Boolean).join(' · '),
         fmt(h.type === 'appel' ? montantAppelHistorique(h) : h.montantPaye) + ' €',
         aUnDocument(h) ? `consulterArchive('loc','${loc.id}','${h.id}')` : '',
-        `restaurerArchive('loc','${loc.id}','${h.id}')`)).join('') + '</div>';
+        `restaurerArchive('loc','${loc.id}','${h.id}')`,
+        estDoublonDocument(loc, h) && ouvert ? `<button class="btn btn-sm btn-danger" onclick="askSupprimerDoublon('${loc.id}','${h.id}')" style="padding:1px 8px;font-size:9px;">🗑 DOUBLON</button>` : '')).join('') + '</div>';
     });
   } else if(module === 'km') {
     titre = 'ARCHIVES — FRAIS KILOMÉTRIQUES';
@@ -11199,6 +11528,77 @@ function restaurerArchive(module, a, b) {
     ? ensureLocatairesArray().some(l => (l.historique||[]).some(h => h.archived && !h._exercicePrecedent))
     : ensureKm().fiches.some(f => f.archived);
   if(reste) renderArchives(); else fermerArchives();
+}
+
+// ══════════════════════════════════════════════
+// V83 : un seul appel de loyer et une seule quittance par mois et par locataire.
+// Un doublon ne peut exister qu'en remplaçant l'ancien document, supprimé DÉFINITIVEMENT (mot de passe).
+// ══════════════════════════════════════════════
+let _pwConfirm = null;
+function demanderMotDePasse(titre, messageHtml, libelleOk, action, extraHtml) {
+  _pwConfirm = { action };
+  document.getElementById('pw-confirm-title').textContent = titre;
+  document.getElementById('pw-confirm-msg').innerHTML = messageHtml;
+  document.getElementById('pw-confirm-extra').innerHTML = extraHtml || '';
+  document.getElementById('pw-confirm-ok').textContent = libelleOk;
+  document.getElementById('pw-confirm-input').value = '';
+  document.getElementById('pw-confirm-err').textContent = '';
+  document.getElementById('pw-confirm-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('pw-confirm-input')?.focus(), 50);
+}
+function fermerPwConfirm() { document.getElementById('pw-confirm-modal').style.display = 'none'; _pwConfirm = null; }
+async function validerPwConfirm() {
+  if(!_pwConfirm) return;
+  const btn = document.getElementById('pw-confirm-ok'); btn.disabled = true;
+  const ok = await verifierMotDePasse(document.getElementById('pw-confirm-input').value);
+  btn.disabled = false;
+  if(!ok) { document.getElementById('pw-confirm-err').textContent = 'Mot de passe incorrect.'; document.getElementById('pw-confirm-input').value = ''; return; }
+  const action = _pwConfirm.action; fermerPwConfirm();
+  try { await action(); } catch(e) { console.error(e); toast('Erreur : ' + (e.message || e), 'error'); }
+}
+const NOM_DOC_LOC = { appel: 'appel de loyer', quittance: 'quittance' };
+// Documents existants d'un type pour un mois (archivés compris). Les traces d'un exercice précédent sont à part.
+function documentsDuMois(loc, type, mois) {
+  const tous = (loc.historique||[]).filter(h => h.type === type && h.mois === mois);
+  return { ici: tous.filter(h => !h._exercicePrecedent), avant: tous.filter(h => h._exercicePrecedent) };
+}
+// Renvoie true si la génération peut continuer ; sinon, ouvre la demande de remplacement
+// (relancer() est rappelée après suppression définitive de l'ancien document).
+function controlerDoublonDocument(loc, type, mois, relancer) {
+  const { ici, avant } = documentsDuMois(loc, type, mois);
+  const nom = NOM_DOC_LOC[type];
+  if(avant.length) { toast(`Un${type === 'quittance' ? 'e' : ''} ${nom} a déjà été émis${type === 'quittance' ? 'e' : ''} pour ${moisLabelFromYYYYMM(mois)} dans l'exercice précédent : corrigez-le dans cet exercice.`, 'error', 8000); return false; }
+  if(!ici.length) return true;
+  const liste = ici.map(h => `<li>${nom} de ${moisLabelFromYYYYMM(h.mois)} émis${type === 'quittance' ? 'e' : ''} le ${h.dateEmission ? fmtDateFr(h.dateEmission) : '?'}${h.archived ? ' (archivé' + (type === 'quittance' ? 'e' : '') + ')' : ''}${aUnDocument(h) ? ` — <a href="#" onclick="event.preventDefault();viewHistoriqueDoc('${loc.id}','${h.id}')" style="color:var(--cyan);">consulter</a>` : ''}</li>`).join('');
+  demanderMotDePasse(`${nom.toUpperCase()} DÉJÀ ÉMIS${type === 'quittance' ? 'E' : ''}`,
+    `Il existe déjà ${ici.length > 1 ? ici.length + ' documents' : 'un' + (type === 'quittance' ? 'e ' : ' ') + nom} pour <strong>${moisLabelFromYYYYMM(mois)}</strong> (${esc([loc.prenom1, loc.nom1].filter(Boolean).join(' '))}) :<ul style="margin:6px 0 6px 18px;">${liste}</ul>` +
+    `Pour le remplacer, l'ancien document sera <strong style="color:var(--red);">supprimé définitivement</strong> (aucune trace conservée), puis le nouveau sera généré.`,
+    'SUPPRIMER L\'ANCIEN ET GÉNÉRER',
+    () => { supprimerDocumentsDefinitivement(loc, ici.map(h => h.id)); relancer(); });
+  return false;
+}
+function supprimerDocumentsDefinitivement(loc, ids) {
+  if(bloqueSiCloture()) return;
+  loc.historique = (loc.historique||[]).filter(h => !ids.includes(h.id));
+  saveDB();
+}
+// Doublons déjà présents (créés avant V83) : suppression définitive de l'un d'eux
+function askSupprimerDoublon(locId, entryId) {
+  if(bloqueSiCloture()) return;
+  const loc = ensureLocatairesArray().find(l => l.id === locId); if(!loc) return;
+  const h = (loc.historique||[]).find(x => x.id === entryId); if(!h) return;
+  const nom = NOM_DOC_LOC[h.type] || 'document';
+  demanderMotDePasse('SUPPRIMER UN DOUBLON',
+    `Supprimer <strong style="color:var(--red);">définitivement</strong> ce${h.type === 'quittance' ? 'tte' : 't'} ${nom} de <strong>${moisLabelFromYYYYMM(h.mois)}</strong> émis${h.type === 'quittance' ? 'e' : ''} le ${h.dateEmission ? fmtDateFr(h.dateEmission) : '?'} ?<br>` +
+    `${aUnDocument(h) ? `<a href="#" onclick="event.preventDefault();viewHistoriqueDoc('${loc.id}','${h.id}')" style="color:var(--cyan);">Consulter ce document avant de le supprimer</a><br>` : ''}Aucune trace n'en sera conservée.`,
+    'SUPPRIMER DÉFINITIVEMENT',
+    () => { supprimerDocumentsDefinitivement(loc, [h.id]); toast('Doublon supprimé définitivement', 'warn');
+            if(document.getElementById('archives-modal').style.display === 'flex') renderArchives();
+            if(_locDetailId) renderLocataireDetail(); else renderLocataires(); });
+}
+function estDoublonDocument(loc, h) {
+  if(!h || h._exercicePrecedent || !h.mois) return false;
+  return (loc.historique||[]).filter(x => !x._exercicePrecedent && x.type === h.type && x.mois === h.mois).length > 1;
 }
 
 // ── Archivage générique (fiches km, PV d'AGO...) ──
@@ -11393,9 +11793,17 @@ function checkEcheanciersExpirationAuBoot() {
 // Premier mois de l'exercice ouvert (null pour un exercice test sans année) : les mois antérieurs
 // appartiennent à l'exercice précédent et ne sont plus ni affichés ni comptabilisables ici.
 function moisDebutExerciceCourant() { return `${anneeCompta()}-01`; }
+// V83 (M4) : borne haute — décembre de l'année comptable
+function moisFinExerciceCourant() { return `${anneeCompta()}-12`; }
+function moisDansExerciceCourant(m) { return !!m && m >= moisDebutExerciceCourant() && m <= moisFinExerciceCourant(); }
+function refuserMoisHorsExercice(m) {
+  if(moisDansExerciceCourant(m)) return false;
+  toast(`${moisLabelFromYYYYMM(m)} n'appartient pas à l'exercice ${CURRENT_YEAR} (janvier à décembre ${anneeCompta()}) : à comptabiliser dans l'exercice concerné.`, 'error', 7000);
+  return true;
+}
 function moisEcheancierExercice(ech) {
   const debut = moisDebutExerciceCourant();
-  return computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => !debut || m >= debut);
+  return computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => moisDansExerciceCourant(m));
 }
 function moisVisiblesEcheancier(ech) {
   const done = ech.moisComptabilises || [];
@@ -11444,6 +11852,8 @@ function renderEcheanciers() {
   if(!groupsWrap) return;
 
   checkEcheanciersExpiration();
+  const _btnMois = document.getElementById('btn-ech-mois-courant');
+  if(_btnMois) { const ok = moisDansExerciceCourant(moisActuelYYYYMM()); _btnMois.disabled = !ok; _btnMois.title = ok ? '' : `Le mois en cours n'appartient pas à l'exercice ${CURRENT_YEAR}`; }
 
   if(!list.length) {
     groupsWrap.innerHTML = '';
@@ -11696,6 +12106,7 @@ function getNextAutoPieceNumber(prefix) {
 
 // Comptabilise un mois donné pour un échéancier (débit/crédit direct)
 function postEcheancierMois(ech, mois) {
+  if(!moisDansExerciceCourant(mois)) return false; // V83 (M4) : jamais d'écriture hors exercice
   const [yy, mm] = mois.split('-');
   const dateEcr = dateEcheancePourMois(ech, mois);
   // Format n° pièce (mêmes règles que le module Emprunts) :
@@ -11738,6 +12149,7 @@ function comptabiliserEcheancierMoisIndividuel(id, mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
+  if(refuserMoisHorsExercice(mois)) return; // V83 (M4)
   if((ech.moisComptabilises||[]).includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
   postEcheancierMois(ech, mois);
   renum(); saveDB();
@@ -11900,6 +12312,7 @@ function comptabiliserToutesEcheancesDuMois() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const list = ensureEcheanciersArray();
   const moisActuel = moisActuelYYYYMM();
+  if(refuserMoisHorsExercice(moisActuel)) return; // V83 (M4) : le mois du calendrier doit appartenir à l'exercice
   let count = 0;
   list.forEach(ech => {
     if(moisActuel < ech.periodeDebut.slice(0,7) || moisActuel > effectiveFin(ech).slice(0,7)) return;
@@ -12054,9 +12467,9 @@ function empruntMoisGridHtml(emp, anneesCommunes) {
       const isDone = done.includes(mois);
       const isFuture = mois > moisActuel;
       const debutEx = moisDebutExerciceCourant();
-      const horsExercice = debutEx && mois < debutEx;
+      const horsExercice = !moisDansExerciceCourant(mois); // V83 (M4) : avant janvier OU après décembre
       let bg, fg, title, onclickAttr = '', cursor = 'default';
-      if(horsExercice) { bg = isDone ? 'var(--green)' : 'var(--line2)'; fg = isDone ? '#0a2e1a' : 'var(--text2)'; title = moisLabelFromYYYYMM(mois)+' — exercice précédent'; }
+      if(horsExercice) { bg = isDone ? 'var(--green)' : 'var(--line2)'; fg = isDone ? '#0a2e1a' : 'var(--text2)'; title = moisLabelFromYYYYMM(mois)+(mois < debutEx ? ' — exercice précédent' : ' — exercice suivant'); }
       else if(isDone) { bg='var(--green)'; fg='#0a2e1a'; title=moisLabelFromYYYYMM(mois)+' — comptabilisée (cliquer pour annuler)'; onclickAttr=` onclick="askDecomptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
       else if(isFuture) { bg='var(--line2)'; fg='var(--text2)'; title=moisLabelFromYYYYMM(mois)+' — à venir'; }
       else { bg='var(--amber)'; fg='#332200'; title=moisLabelFromYYYYMM(mois)+' — cliquer pour comptabiliser'; onclickAttr=` onclick="comptabiliserEmpruntMois('${emp.id}','${mois}')"`; cursor='pointer'; }
@@ -12097,7 +12510,7 @@ function renderEmprunts() {
     totalCapitalRestant += capitalRestant;
 
     const rowActuelle = tableau.find(r => r.mois === moisActuel);
-    const peutComptabiliser = rowActuelle && !done.includes(moisActuel);
+    const peutComptabiliser = rowActuelle && !done.includes(moisActuel) && moisDansExerciceCourant(moisActuel); // V83 (M4)
     const btnMoisCourant = peutComptabiliser
       ? `<button class="btn btn-sm btn-icon" onclick="comptabiliserEmpruntMois('${emp.id}','${moisActuel}')" title="Comptabiliser ${moisLabelFromYYYYMM(moisActuel)}" style="padding:1px 5px;font-size:10px;color:var(--green);">✓</button>`
       : `<button class="btn btn-sm btn-icon" disabled title="Pas d'échéance à comptabiliser ce mois-ci" style="padding:1px 5px;font-size:10px;opacity:0.3;cursor:default;">✓</button>`;
@@ -12370,12 +12783,14 @@ function comptabiliserEmpruntMois(id, mois) {
     if(!emp) return;
     const row = (emp.tableau||[]).find(r => r.mois === mois);
     if(!row) { toast('Aucune ligne trouvée pour ce mois dans le tableau','error'); return; }
+    if(refuserMoisHorsExercice(mois)) return; // V83 (M4)
     emp.moisComptabilises = emp.moisComptabilises || [];
     if(emp.moisComptabilises.includes(mois)) { toast('Ce mois est déjà comptabilisé','error'); return; }
 
     // Normalise la date : le tableau d'amortissement importé peut contenir
     // un nombre Excel, une Date JS, ou une string variable — on force en YYYY-MM-DD.
     const dateEcr = normalizeDate(row.dateEcheance) || (mois+'-01');
+    if(!dateDansExercice(dateEcr)) { toast(`Échéance de ${moisLabelFromYYYYMM(mois)} datée du ${fmtDateFr(dateEcr)} : ` + messageDateHorsExercice(dateEcr), 'error', 7000); return; }
     const libEmp = emp.libelle || 'Emprunt';
     const libelleEcriture = `${libEmp} - ${moisLabelFromYYYYMM(mois)}`;
     const io = Date.now() + Math.floor(Math.random()*1000);
@@ -13617,6 +14032,26 @@ function anneeEnLettres(annee) {
 // ══════════════════════════════════════════════
 // BOOT
 // ══════════════════════════════════════════════
+// V83 (C5) : au démarrage, JAMAIS de création automatique. On ouvre le plus récent exercice ouvert (hors test),
+// à défaut le plus récent clôturé, à défaut un exercice test. L'année civile n'est proposée à la création
+// que si Firebase ne contient encore aucun exercice (première installation).
+function cleExercice(y, data) {
+  const n = parseInt(y, 10);
+  return (!data || !data._isTest) && String(n) === String(y) ? n : String(y);
+}
+async function choisirExerciceDemarrage(exclure) {
+  const years = (await window._fbListYears()).map(String)
+    .filter(y => y && y.trim() !== '' && y !== 'NaN' && y !== String(exclure === undefined ? '' : exclure));
+  const lus = [];
+  for(const y of [...new Set(years)]) {
+    const r = await chargerExercice(y);
+    if(r) lus.push({ y, r, test: !!r.data._isTest, ferme: r.data._status === 'closed', n: parseInt(y, 10) });
+  }
+  if(!lus.length) return { annee: new Date().getFullYear(), r: null };
+  const reels = lus.filter(x => !x.test && String(x.n) === x.y).sort((a, b) => b.n - a.n);
+  const pick = reels.find(x => !x.ferme) || reels[0] || lus.slice().sort((a, b) => a.y.localeCompare(b.y))[0];
+  return { annee: cleExercice(pick.y, pick.r.data), r: pick.r };
+}
 async function boot() {
   window._exerciseStatuses = {};
   // V79 : plus aucune copie locale des données. On efface les anciennes copies laissées par les versions
@@ -13627,10 +14062,9 @@ async function boot() {
       if(key && key.startsWith('ledger_')) localStorage.removeItem(key);
     }
   } catch(e) {}
-  CURRENT_YEAR = new Date().getFullYear();
   try {
-    const r = await chargerExercice(CURRENT_YEAR);
-    installerExercice(CURRENT_YEAR, r);
+    const choix = await choisirExerciceDemarrage();
+    installerExercice(choix.annee, choix.r);
     await loadKnownYears();
   } catch(e) { afficherErreurConnexion(e); return; }
   initDefaults();
@@ -13648,6 +14082,7 @@ async function boot() {
   // L'alerte ne doit jamais apparaître avant que l'utilisateur soit connecté
   checkEcheanciersExpirationAuBoot(); checkAlerteTauxAuBoot();
 
+  showTab('saisie'); // V83 : toute ouverture d'exercice ramène à la saisie comptable
   // Le chargement des données (Firebase) est asynchrone : si l'utilisateur a déjà navigué
   // vers un onglet pendant ce chargement, on force un nouveau rendu de l'onglet actif.
   const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
