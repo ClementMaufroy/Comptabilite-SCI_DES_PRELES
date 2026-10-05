@@ -47,11 +47,14 @@ var SOCIETE = {
   couleur:        "#e84b0f",                            // couleur principale des documents
   couleurClaire:  "#fde8df",                            // fonds de sections / en-têtes secondaires
   couleurPale:    "#fbeee8",                            // fonds très légers (revue des comptes)
-  logo:           null                                  // null = logo par défaut (LOGO_SRC, éditions comptables)
+  logo:           null,                                 // null = logo par défaut (LOGO_SRC, éditions comptables)
+  logoId:         null                                  // V86v2 : identifiant du logo enregistré dans Firebase (« L0 » = logo d'origine)
 };
 
 // V86 : copie figée des valeurs par défaut ci-dessus (sert au bouton « valeurs par défaut » et aux champs absents)
 var SOCIETE_DEFAUT = JSON.parse(JSON.stringify(SOCIETE));
+var SOCIETE_ORIGINE = null;   // V86v2 : identité en vigueur avant le premier enregistrement (documents émis avant la V86v2)
+var SOC_LOGOS = {};           // V86v2 : logos enregistrés, par identifiant
 window._societeEtat = 'defaut'; // 'defaut' (rien dans Firebase) | 'firebase' (chargée) | 'erreur' (lecture impossible)
 
 // Capital en chiffres avec séparateur de milliers : 6000 → "6 000"
@@ -161,12 +164,23 @@ document.addEventListener('DOMContentLoaded', appliquerIdentiteSociete);
   // V86 : identité de la société — document unique « _societe », commun à tous les exercices et à tous les postes
   const societeRef = () => doc(db, window.ATRIUM_INSTALL.collection, "_societe");
   // Renvoie l'objet enregistré, ou null s'il n'existe pas ; lève une exception en cas d'erreur (règle V79)
+  // V86v2 : { identite, origine, logos } ou null
   window._fbLoadSociete = async () => {
     const snap = await getDocFromServer(societeRef());
-    return snap.exists() ? JSON.parse(snap.data().payload) : null;
+    if(!snap.exists()) return null;
+    const d = snap.data();
+    return { identite: JSON.parse(d.payload), origine: d.origine ? JSON.parse(d.origine) : null, logos: d.logos || [] };
   };
-  window._fbSaveSociete = async (obj) => {
-    await setDoc(societeRef(), { payload: JSON.stringify(obj), maj: new Date().toISOString() });
+  window._fbSaveSociete = async (identite, origine, logos) => {
+    await setDoc(societeRef(), { payload: JSON.stringify(identite), origine: JSON.stringify(origine), logos, maj: new Date().toISOString() });
+  };
+  // Chaque logo a son propre document (« _logo_L… ») et n'est jamais modifié : les anciens documents le retrouvent
+  window._fbLoadLogo = async (id) => {
+    const snap = await getDocFromServer(doc(db, window.ATRIUM_INSTALL.collection, "_logo_" + id));
+    return snap.exists() ? snap.data().data : null;
+  };
+  window._fbSaveLogo = async (id, data) => {
+    await setDoc(doc(db, window.ATRIUM_INSTALL.collection, "_logo_" + id), { data, cree: new Date().toISOString() });
   };
 
   window._fbReady = true;
@@ -5851,10 +5865,42 @@ function resetTheme() { const t = { mode:'dark', accent:'turquoise', custom:'#2a
 async function chargerIdentiteSociete() {
   try {
     const d = await window._fbLoadSociete();
-    if(d) { Object.assign(SOCIETE, JSON.parse(JSON.stringify(SOCIETE_DEFAUT)), d); window._societeEtat = 'firebase'; }
-    else window._societeEtat = 'defaut';
+    if(d) {
+      // tous les logos enregistrés (peu nombreux) sont chargés : les documents anciens peuvent y faire référence
+      const ids = [...new Set([...(d.logos || []), d.identite.logoId, d.origine && d.origine.logoId].filter(Boolean))];
+      const datas = await Promise.all(ids.map(id => window._fbLoadLogo(id)));
+      ids.forEach((id, i) => { if(datas[i]) SOC_LOGOS[id] = datas[i]; });
+      Object.assign(SOCIETE, JSON.parse(JSON.stringify(SOCIETE_DEFAUT)), d.identite);
+      SOCIETE.logo = (SOCIETE.logoId && SOC_LOGOS[SOCIETE.logoId]) || null;
+      SOCIETE_ORIGINE = d.origine;
+      window._societeEtat = 'firebase';
+    } else window._societeEtat = 'defaut';
   } catch(e) { console.error('Identité société', e); window._societeEtat = 'erreur'; }
   appliquerIdentiteSociete();
+}
+
+// ── V86v2 : identité figée dans chaque document émis ──
+// Copie de l'identité en vigueur, sans l'image du logo (seulement son identifiant)
+function socInstantane() {
+  const o = JSON.parse(JSON.stringify(SOCIETE)); delete o.logo;
+  o.logoId = SOCIETE.logoId || 'L0';
+  return o;
+}
+// Identité à utiliser pour un document : celle figée à son émission ; à défaut (document antérieur à la V86v2),
+// l'identité d'origine (avant le premier enregistrement) ; à défaut, l'identité actuelle.
+function socPourDocument(d) {
+  const base = (d && d.soc) || SOCIETE_ORIGINE || null;
+  if(!base) return null; // identité actuelle
+  const o = Object.assign(JSON.parse(JSON.stringify(SOCIETE_DEFAUT)), base);
+  o.logo = (base.logoId && base.logoId !== 'L0' && SOC_LOGOS[base.logoId]) || SOC_LOGOS.L0 || (typeof LOGO_SRC !== 'undefined' ? LOGO_SRC : '');
+  return o;
+}
+// Exécute un rendu avec une autre identité, puis rétablit l'identité actuelle
+function avecIdentite(soc, fn) {
+  if(!soc) return fn();
+  const sauv = Object.assign({}, SOCIETE);
+  try { Object.assign(SOCIETE, soc); return fn(); }
+  finally { Object.keys(SOCIETE).forEach(k => { if(!(k in sauv)) delete SOCIETE[k]; }); Object.assign(SOCIETE, sauv); }
 }
 
 let _socB = null;   // brouillon en cours de modification
@@ -5950,7 +5996,7 @@ function renderSocieteSettings() {
     </div>`;
   socMajApercu();
 }
-function socLogoBrouillon() { return _socB.logo || (typeof LOGO_SRC !== 'undefined' ? LOGO_SRC : ''); }
+function socLogoBrouillon() { return _socB.logo || SOC_LOGOS.L0 || (typeof LOGO_SRC !== 'undefined' ? LOGO_SRC : ''); }
 function socMarquerModif() {
   _socModif = true;
   const st = document.getElementById('soc-statut'); if(st) { st.textContent = '● Modifications non enregistrées'; st.style.color = 'var(--amber)'; }
@@ -6014,14 +6060,14 @@ function socImporterLogo(inp) {
       if(transparent) url = cv.toDataURL('image/png');
       else { const cv2 = document.createElement('canvas'); cv2.width = w; cv2.height = h; const c2 = cv2.getContext('2d'); c2.fillStyle = '#fff'; c2.fillRect(0,0,w,h); c2.drawImage(cv,0,0); url = cv2.toDataURL('image/jpeg', 0.9); }
       if(url.length > 700000) { toast('Logo trop lourd même après réduction — essayez une image plus simple', 'error'); return; }
-      _socB.logo = url; socMarquerModif(); renderSocieteSettings(); socMarquerModif();
+      _socB.logo = url; _socB.logoId = null; socMarquerModif(); renderSocieteSettings(); socMarquerModif();
     };
     img.onerror = () => toast('Image illisible', 'error');
     img.src = rd.result;
   };
   rd.readAsDataURL(f);
 }
-function socLogoOrigine() { _socB.logo = null; socMarquerModif(); renderSocieteSettings(); socMarquerModif(); }
+function socLogoOrigine() { _socB.logo = null; _socB.logoId = null; socMarquerModif(); renderSocieteSettings(); socMarquerModif(); }
 function annulerIdentiteSociete() { _socModif = false; _socB = null; renderSocieteSettings(); }
 async function enregistrerIdentiteSociete() {
   if(window._societeEtat === 'erreur') { toast("Enregistrement impossible : l'identité n'a pas pu être lue depuis Firebase", 'error'); return; }
@@ -6034,8 +6080,19 @@ async function enregistrerIdentiteSociete() {
   b.capital = Number(b.capital) || 0;
   const btn = document.getElementById('soc-btn-save'); if(btn) btn.disabled = true;
   try {
-    await window._fbSaveSociete(b);
-    Object.assign(SOCIETE, b); window._societeEtat = 'firebase';
+    // V86v2 : premier enregistrement → l'identité en vigueur jusque-là devient l'« identité d'origine »,
+    // utilisée pour reproduire les documents émis auparavant. Le logo d'origine est conservé sous « L0 ».
+    if(!SOC_LOGOS.L0) { await window._fbSaveLogo('L0', LOGO_SRC); SOC_LOGOS.L0 = LOGO_SRC; }
+    const origine = SOCIETE_ORIGINE || (() => { const o = JSON.parse(JSON.stringify(SOCIETE)); delete o.logo; o.logoId = SOCIETE.logoId || 'L0'; return o; })();
+    // nouveau logo importé → document Firebase dédié, jamais modifié ensuite
+    if(b.logo && !b.logoId) { b.logoId = 'L' + Date.now(); await window._fbSaveLogo(b.logoId, b.logo); SOC_LOGOS[b.logoId] = b.logo; }
+    if(!b.logo) { b.logoId = 'L0'; b.logo = null; }
+    const logos = Object.keys(SOC_LOGOS);
+    const identite = JSON.parse(JSON.stringify(b)); delete identite.logo;
+    await window._fbSaveSociete(identite, origine, logos);
+    SOCIETE_ORIGINE = origine;
+    Object.assign(SOCIETE, b); if(SOCIETE.logoId === 'L0') SOCIETE.logo = null;
+    window._societeEtat = 'firebase';
     _socModif = false; _socB = null;
     appliquerIdentiteSociete(); renderSocieteSettings();
     toast('Identité de la société enregistrée', 'success');
@@ -8923,9 +8980,15 @@ function htmlDuDocument(x) {
   if(!x) return '';
   if(x.doc && x.doc.g) {
     try {
-      if(x.doc.g === 'loc') return renderDocLocatif(x.doc);
-      if(x.doc.g === 'km') return renderDocKm(x.doc);
-      if(x.doc.g === 'pv') return renderDocPv(x.doc);
+      // V86v2 : le document est reproduit avec l'identité de la société en vigueur à son émission
+      const soc = socPourDocument(x.doc);
+      const html = avecIdentite(soc, () => {
+        if(x.doc.g === 'loc') return renderDocLocatif(x.doc);
+        if(x.doc.g === 'km') return renderDocKm(x.doc);
+        if(x.doc.g === 'pv') return renderDocPv(x.doc);
+        return null;
+      });
+      if(html !== null) return soc ? html.split(LOGO_PLACEHOLDER).join(soc.logo) : html;
     } catch(e) { console.error('Document illisible', e); }
   }
   return x.docHtml || '';
@@ -10320,7 +10383,7 @@ function genererQuittanceV2(loc, mois) {
 
   const dateEmission = new Date();
   // V82 (C3) : données figées du document
-  const doc = { g: 'loc', v: 1, loc: instantaneLocataire(loc), date: dateLocale(dateEmission), info: infoHtml, tables: [
+  const doc = { g: 'loc', v: 1, soc: socInstantane(), loc: instantaneLocataire(loc), date: dateLocale(dateEmission), info: infoHtml, tables: [
     { s: 'o', titre: `QUITTANCE DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}`, periode: `Période du ${periodeDebut} au ${periodeFin}`, rows: lignes, totLabel: "MONTANT DE L'ECHEANCE", tot: totalDu }
   ] };
 
@@ -10989,7 +11052,7 @@ function generateAppelLoyerV2() {
     <p>N'hésitez pas à nous envoyer un message pour toute question.<br>Bien cordialement</p>`;
 
   // V82 (C3) : données figées du document (régénéré à chaque consultation)
-  const doc = { g: 'loc', v: 1, loc: instantaneLocataire(loc), date: dateLocale(dateEmission), info: defaultInfo, tables: [
+  const doc = { g: 'loc', v: 1, soc: socInstantane(), loc: instantaneLocataire(loc), date: dateLocale(dateEmission), info: defaultInfo, tables: [
     { s: 'o', titre: `APPEL DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}`, periode: `Période du ${periodeDebut} au ${periodeFin}`, rows: lignes1, totLabel: "MONTANT DE L'ECHEANCE", tot: montantAppelTotal },
     { s: 'p', titre: `VOTRE SITUATION AU ${fmtDateFr(dateEmission)}`, rows: lignes2, totLabel: 'SOLDE A NOTRE CREDIT', tot: totalSolde }
   ] };
@@ -11105,7 +11168,7 @@ function generateQuittance() {
     <p>N'hésitez pas à nous envoyer un message pour toute question.</p>
     <p>Bien cordialement</p>`;
 
-  const doc = { g: 'loc', v: 1, loc: instantaneLocataire(loc), date: datePaiement || dateLocale(new Date()), info: infoHtml, tables: [
+  const doc = { g: 'loc', v: 1, soc: socInstantane(), loc: instantaneLocataire(loc), date: datePaiement || dateLocale(new Date()), info: infoHtml, tables: [
     { s: 'o', titre: `QUITTANCE DE LOYER – ${MOIS_LABELS[parseInt(mm)-1].toUpperCase()} ${yy}`, periode: `Période du ${periodeDebut} au ${periodeFin}`, rows: lignes, totLabel: "MONTANT DE L'ECHEANCE", tot: totalRecu }
   ] };
   const html = renderDocLocatif(doc);
@@ -11672,7 +11735,7 @@ function saveKmTrajetEdit(id) {
 // ── Fiche papier du mois (tous véhicules sur une seule fiche, format paysage) ──
 // V82 (C3) : données figées d'une fiche km (une ligne par trajet, avec son taux)
 function instantaneKm(km, mois, trajets, totalKm, montant) {
-  return { g: 'km', v: 1, mois, exercice: String(CURRENT_YEAR), totalKm, montant,
+  return { g: 'km', v: 1, soc: socInstantane(), mois, exercice: String(CURRENT_YEAR), totalKm, montant,
     lignes: trajets.map(t => [t.date, kmNomVehicule(km, t), t.lieu || '', t.motif || '', t.km, kmTauxTrajet(km, t)]) };
 }
 function buildFicheKmMoisHtml(km, mois, trajets, totalKm, montant) { return renderDocKm(instantaneKm(km, mois, trajets, totalKm, montant)); }
@@ -14476,7 +14539,7 @@ function genererPVApprobation() {
   renum(); saveDB(); updateNavCounts();
 
   // ── Génération du PV d'AG (V82 : données figées, document régénéré à chaque consultation) ──
-  const doc = { g: 'pv', v: 1, date, heure, lieu, adresse, destination, isBenefice, montant };
+  const doc = { g: 'pv', v: 1, soc: socInstantane(), date, heure, lieu, adresse, destination, isBenefice, montant };
   const html = renderDocPv(doc);
   const anneeTxt = parseInt(date.split('-')[0], 10);
   const destinationTxt = destination === 'reserve' ? 'à la réserve légale' : 'au report à nouveau';
