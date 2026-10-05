@@ -60,7 +60,7 @@ var SOCIETE = {
 // V87v2 : installation à finaliser si la configuration Firebase n'est pas renseignée
 var ATRIUM_INSTALL_INCOMPLET = (() => {
   const c = ATRIUM_INSTALL.firebaseConfig || {};
-  return !ATRIUM_INSTALL.collection || ['apiKey','authDomain','projectId','appId'].some(k => !c[k] || /A_RENSEIGNER/i.test(String(c[k])));
+  return !ATRIUM_INSTALL.collection || /A_RENSEIGNER/i.test(String(ATRIUM_INSTALL.collection)) || ['apiKey','authDomain','projectId','appId'].some(k => !c[k] || /A_RENSEIGNER/i.test(String(c[k])));
 })();
 // Image transparente (1 pixel) utilisée quand aucun logo n'est défini
 var LOGO_VIDE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
@@ -590,7 +590,7 @@ tbody tr:hover td { background: var(--bg3); }
 #closed-banner {
   display: none; background: rgba(245,158,11,0.08); border-bottom: 1px solid rgba(245,158,11,0.2);
   padding: 7px 20px; font-family: var(--mono); font-size: 11px; color: var(--amber);
-  letter-spacing: 0.04em; text-align: center;
+  letter-spacing: 0.04em; text-align: center; flex-shrink: 0;
 }
 /* Disable interactive elements when exercise is closed */
 body.exercise-closed #tab-saisie input,
@@ -825,7 +825,6 @@ applyTheme();
     <button class="btn btn-sm btn-readonly-ok" onclick="doLogout()" title="Se déconnecter de ce poste" style="letter-spacing:0.05em;">⎋</button>
   </div>
 </header>
-<div id="closed-banner">⚠ EXERCICE CLÔTURÉ — Accès en lecture seule (seul le module Révision comptable reste modifiable).</div>
 
 <div class="app">
   <nav class="nav">
@@ -903,6 +902,8 @@ applyTheme();
   </nav>
 
   <main class="main">
+    <!-- V88 : bandeau de lecture seule limité à la zone principale (le menu de gauche n'est plus décalé) -->
+    <div id="closed-banner">⚠ EXERCICE CLÔTURÉ — Accès en lecture seule (seul le module Révision comptable reste modifiable).</div>
 
     <!-- ══════════════ SAISIE ══════════════ -->
     <div class="tab-content active" id="tab-saisie">
@@ -2653,7 +2654,7 @@ applyTheme();
     <div class="flex gap8" style="margin-top:12px;"><button class="btn btn-sm ml-auto" onclick="document.getElementById('areporter-modal').style.display='none'">FERMER</button></div>
   </div>
 </div>
-<div id="pw-confirm-modal" class="modal-overlay">
+<div id="pw-confirm-modal" class="modal-overlay" style="z-index:1100;">
   <div class="modal" style="width:520px;max-width:95vw;">
     <div class="modal-title"><span style="color:var(--red);">⚠</span> <span id="pw-confirm-title">CONFIRMATION</span></div>
     <div id="pw-confirm-msg" style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:12px;"></div>
@@ -12138,18 +12139,19 @@ function renderArchives() {
   const module = _archivesModule; if(!module) return;
   const ouvert = EXERCISE_STATUS !== 'closed';
   const zone = document.getElementById('archives-list');
-  const ligne = (titre, detail, montant, consulter, restaurer, extra) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
+  const ligne = (titre, detail, montant, consulter, restaurer, extra, supprimer) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
       <span style="flex:1;min-width:0;">${titre}${detail ? ` <span style="color:var(--text3);font-size:9px;font-family:var(--mono);">${detail}</span>` : ''}</span>
       <span style="color:var(--text2);font-family:var(--mono);white-space:nowrap;">${montant}</span>
       ${consulter ? `<button class="btn btn-sm" onclick="${consulter}" style="padding:1px 8px;font-size:9px;">👁 CONSULTER</button>` : `<span style="font-size:9px;color:var(--text3);">non disponible</span>`}
       ${restaurer && ouvert ? `<button class="btn btn-sm" onclick="${restaurer}" style="padding:1px 8px;font-size:9px;">↩ RESTAURER</button>` : ''}
       ${extra || ''}
+      ${supprimer && ouvert ? `<button class="btn btn-sm btn-danger" onclick="${supprimer}" title="Supprimer définitivement (mot de passe)" style="padding:1px 8px;font-size:9px;">🗑 SUPPRIMER</button>` : ''}
     </div>`;
   const archLib = d => d.dateArchivage ? `archivé le ${fmtDateFr(d.dateArchivage)}` : '';
   let titre = 'ARCHIVES', intro = '', html = '';
   if(module === 'loc') {
     titre = 'ARCHIVES — GESTION LOCATIVE';
-    intro = ouvert ? "Documents archivés de l'exercice. « Restaurer » les remet dans la liste du locataire." : 'Exercice clôturé : consultation uniquement.';
+    intro = ouvert ? "Documents archivés de l'exercice. « Restaurer » les remet dans la liste du locataire ; « Supprimer » les efface définitivement (mot de passe)." : 'Exercice clôturé : consultation uniquement.';
     ensureLocatairesArray().forEach(loc => {
       const docs = (loc.historique||[]).filter(h => h.archived && !h._exercicePrecedent)
         .sort((a,b) => (a.mois||'').localeCompare(b.mois||'') || (a.type||'').localeCompare(b.type||''));
@@ -12160,11 +12162,12 @@ function renderArchives() {
         fmt(h.type === 'appel' ? montantAppelHistorique(h) : h.montantPaye) + ' €',
         aUnDocument(h) ? `consulterArchive('loc','${loc.id}','${h.id}')` : '',
         `restaurerArchive('loc','${loc.id}','${h.id}')`,
-        estDoublonDocument(loc, h) && ouvert ? `<button class="btn btn-sm btn-danger" onclick="askSupprimerDoublon('${loc.id}','${h.id}')" style="padding:1px 8px;font-size:9px;">🗑 DOUBLON</button>` : '')).join('') + '</div>';
+        estDoublonDocument(loc, h) && ouvert ? `<button class="btn btn-sm btn-danger" onclick="askSupprimerDoublon('${loc.id}','${h.id}')" style="padding:1px 8px;font-size:9px;">🗑 DOUBLON</button>` : '',
+        estDoublonDocument(loc, h) ? '' : `askSupprimerArchive('loc','${loc.id}','${h.id}')`)).join('') + '</div>';
     });
   } else if(module === 'km') {
     titre = 'ARCHIVES — FRAIS KILOMÉTRIQUES';
-    intro = ouvert ? "Fiches archivées de l'exercice. « Restaurer » les remet dans la liste." : 'Exercice clôturé : consultation uniquement.';
+    intro = ouvert ? "Fiches archivées de l'exercice. « Restaurer » les remet dans la liste ; « Supprimer » les efface définitivement (mot de passe)." : 'Exercice clôturé : consultation uniquement.';
     const km = ensureKm();
     const fiches = km.fiches.filter(f => f.archived).sort((a,b) => (a.mois||'').localeCompare(b.mois||''));
     if(fiches.length) html = '<div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">' + fiches.map(f => {
@@ -12172,18 +12175,82 @@ function renderArchives() {
       return ligne(`📄 Fiche — ${moisLabelFromYYYYMM(f.mois)}${f.vehiculeNom ? ' <span style="color:var(--text2);">(' + esc(f.vehiculeNom) + ', ancien format)</span>' : ''}`,
         archLib(f), `${f.totalKm||0} km — ${fmt(f.total)} €`,
         aUnDocument(f) ? `consulterArchive('km','${f.id}')` : '',
-        `restaurerArchive('km','${f.id}')`);
+        `restaurerArchive('km','${f.id}')`, '', `askSupprimerArchive('km','${f.id}')`);
     }).join('') + '</div>';
   } else if(module === 'pv') {
     titre = "ARCHIVES — PV D'AGO";
-    intro = "PV archivés : consultation uniquement (un PV archivé ne se restaure pas).";
+    intro = EXERCISE_STATUS !== 'closed' ? "PV archivés : un PV archivé ne se restaure pas. « Supprimer » l'efface définitivement avec son écriture d'affectation (mot de passe)." : 'Exercice clôturé : consultation uniquement.';
     const pvs = (DB.pvApprobations||[]).filter(p => p.archived);
     if(pvs.length) html = '<div style="border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;">' + pvs.map(pv =>
-      ligne(`📜 PV d'AGO — Affectation du résultat ${pv.anneeConcernee}`, archLib(pv), fmt(pv.montant) + ' €', aUnDocument(pv) ? `viewPVApprobation('${pv.id}')` : '', '')).join('') + '</div>';
+      ligne(`📜 PV d'AGO — Affectation du résultat ${pv.anneeConcernee}`, archLib(pv), fmt(pv.montant) + ' €', aUnDocument(pv) ? `viewPVApprobation('${pv.id}')` : '', '', '', `askSupprimerArchive('pv','${pv.id}')`)).join('') + '</div>';
   }
   document.getElementById('archives-title').textContent = titre;
   document.getElementById('archives-intro').textContent = intro;
   zone.innerHTML = html || `<div style="font-size:11px;color:var(--text2);font-style:italic;">Aucun document archivé.</div>`;
+}
+// ══════════════════════════════════════════════
+// V88 — SUPPRESSION DÉFINITIVE D'UN DOCUMENT ARCHIVÉ
+// ══════════════════════════════════════════════
+// Depuis la fenêtre des archives uniquement, en exercice ouvert, avec mot de passe.
+// Le document est retiré des données de l'exercice (donc de Firebase) : l'outil le considère comme jamais émis.
+// Pour garder la comptabilité cohérente, ce qui dépend du document disparaît avec lui :
+//  - appel / quittance : document seul (aucune écriture n'y est attachée) ;
+//  - fiche km comptabilisée : la comptabilisation du mois est annulée (écriture KM supprimée, mois de nouveau à comptabiliser,
+//    trajets conservés) — sinon le mois resterait « comptabilisé » sans fiche, ou serait comptabilisé deux fois ;
+//  - PV d'AGO : son écriture d'affectation est supprimée (le résultat redevient à affecter) — sinon l'écriture,
+//    verrouillée au Grand Livre, ne pourrait plus être annulée.
+function askSupprimerArchive(module, a, b) {
+  if(bloqueSiCloture()) return;
+  let titre = 'SUPPRIMER DÉFINITIVEMENT', msg = '';
+  const avert = `<br><br><span style="color:var(--red);font-weight:600;">Suppression définitive : le document est effacé de la base Firebase et ne pourra pas être récupéré</span> <span style="color:var(--text2);">(sauf depuis une sauvegarde JSON antérieure).</span>`;
+  if(module === 'loc') {
+    const loc = ensureLocatairesArray().find(l => l.id === a);
+    const h = loc && (loc.historique||[]).find(x => x.id === b); if(!h) return;
+    const nom = h.type === 'appel' ? "l'appel de loyer" : 'la quittance';
+    msg = `Supprimer ${nom} de <strong>${esc(moisLabelFromYYYYMM(h.mois))}</strong> (${esc([loc.prenom1, loc.nom1].filter(Boolean).join(' '))}) ?<br>L'outil le considérera comme jamais émis${h.type === 'appel' ? ' : le mois pourra être appelé de nouveau, et la clôture signalera l\'appel manquant s\'il n\'est pas réémis' : ' : une nouvelle quittance pourra être générée pour ce mois'}.`;
+  } else if(module === 'km') {
+    const f = ensureKm().fiches.find(x => x.id === a); if(!f) return;
+    msg = `Supprimer la fiche kilométrique de <strong>${esc(moisLabelFromYYYYMM(f.mois))}</strong> ?`
+      + (f.comptabilise ? `<br><br>Cette fiche est comptabilisée : <strong>la comptabilisation du mois sera aussi annulée</strong> (écriture KM supprimée du Grand Livre). Les trajets sont conservés et le mois redevient à comptabiliser.` : '');
+  } else if(module === 'pv') {
+    const pv = (DB.pvApprobations||[]).find(p => p.id === a); if(!pv) return;
+    msg = `Supprimer le PV d'AGO — affectation du résultat <strong>${esc(String(pv.anneeConcernee))}</strong> ?<br><br><strong>Son écriture d'affectation sera aussi supprimée du Grand Livre</strong> : le résultat ${esc(String(pv.anneeConcernee))} redeviendra à affecter (nouveau PV à générer).`;
+  } else return;
+  demanderMotDePasse(titre, msg + avert, '🗑 SUPPRIMER DÉFINITIVEMENT', () => supprimerArchiveDefinitivement(module, a, b));
+}
+function supprimerArchiveDefinitivement(module, a, b) {
+  if(bloqueSiCloture()) return;
+  if(module === 'loc') {
+    const loc = ensureLocatairesArray().find(l => l.id === a); if(!loc) return;
+    const h = (loc.historique||[]).find(x => x.id === b); if(!h) return;
+    loc.historique = loc.historique.filter(x => x.id !== b);
+    // le mois n'est plus masqué s'il ne lui reste aucun document archivé
+    if(Array.isArray(loc.moisDocsMasques) && !loc.historique.some(x => x.mois === h.mois && x.archived)) loc.moisDocsMasques = loc.moisDocsMasques.filter(m => m !== h.mois);
+    saveDB();
+    if(_locDetailId) renderLocataireDetail(); else renderLocataires();
+    toast(`${h.type === 'appel' ? 'Appel de loyer' : 'Quittance'} de ${moisLabelFromYYYYMM(h.mois)} supprimé${h.type === 'appel' ? '' : 'e'} définitivement`, 'success');
+  } else if(module === 'km') {
+    const km = ensureKm();
+    const f = km.fiches.find(x => x.id === a); if(!f) return;
+    const etaitCompta = !!f.comptabilise, mois = f.mois;
+    if(etaitCompta) {
+      supprimerEcrituresParModule(e => e.date && e.date.startsWith(mois) && e.numDoc && (e.numDoc.startsWith('KM_') || e.numDoc.startsWith('KM/')));
+      libererTauxKmMois(km, mois);
+      renum();
+    }
+    km.fiches = km.fiches.filter(x => x.id !== a && !(etaitCompta && x.mois === mois));
+    saveDB(); updateNavCounts(); renderPostItPieces();
+    if(typeof renderKmModule === 'function') renderKmModule();
+    toast(`Fiche de ${moisLabelFromYYYYMM(mois)} supprimée définitivement${etaitCompta ? ' — comptabilisation du mois annulée' : ''}`, 'success');
+  } else if(module === 'pv') {
+    const pv = (DB.pvApprobations||[]).find(p => p.id === a); if(!pv) return;
+    const n = supprimerEcrituresParModule(ecrituresAffectation(pv));
+    DB.pvApprobations = DB.pvApprobations.filter(p => p.id !== a);
+    renum(); saveDB(); updateNavCounts(); renderPostItPieces();
+    if(document.querySelector('.tab-content.active')?.id === 'tab-approbation') renderApprobation();
+    toast(`PV d'AGO supprimé définitivement (${n} ligne(s) d'écriture d'affectation supprimée(s))`, 'success');
+  }
+  renderArchives();
 }
 function consulterArchive(module, a, b) {
   if(module === 'loc') {
