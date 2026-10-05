@@ -1889,7 +1889,7 @@ applyTheme();
     <input type="hidden" id="loc-edit-id">
     <div class="form-row c2 mb8">
       <div class="form-field">
-        <label>N° Client *</label>
+        <label>N° Client <span style="color:var(--text2);font-weight:400;">(facultatif)</span></label>
         <input type="text" id="loc-numclient" placeholder="25003" style="font-family:var(--mono);">
       </div>
     </div>
@@ -2159,7 +2159,7 @@ applyTheme();
       </div>
       <div class="form-field">
         <label>Date d'opération * <span style="color:var(--text2);font-weight:400;">(= date d'écriture)</span></label>
-        <input type="date" id="mvt-date-operation">
+        <input type="date" id="mvt-date-operation" onchange="onMouvementDateChanged()">
       </div>
     </div>
 
@@ -2176,7 +2176,7 @@ applyTheme();
     <div class="form-row mb8">
       <div class="form-field" style="grid-column:1/-1;">
         <label>Mois de référence (détermine les 3 mois candidats d'affectation ci-dessous)</label>
-        <input type="month" id="mvt-mois-ref" onchange="refreshMouvementAffectationRows()">
+        <input type="month" id="mvt-mois-ref" onchange="refreshMouvementAffectationRows();updateLibelleAutomatique();updateMouvementPreview()">
       </div>
     </div>
 
@@ -9649,7 +9649,7 @@ function renderLocataireDetail() {
       <button class="btn btn-sm" onclick="closeLocataireDetail()">← Retour à la liste</button>
       <div style="flex:1;">
         <div style="font-size:16px;font-weight:600;color:var(--text0);">${noms||'(sans nom)'}</div>
-        <div style="font-size:11px;color:var(--text2);">${esc(loc.adresse1||'')}${loc.adresse2?' — '+esc(loc.adresse2):''} • Client ${esc(loc.numClient||'')}</div>
+        <div style="font-size:11px;color:var(--text2);">${esc(loc.adresse1||'')}${loc.adresse2?' — '+esc(loc.adresse2):''} ${loc.numClient ? ' • Client '+esc(loc.numClient) : ''}</div>
       </div>
       <div style="text-align:right;">
         <div style="font-size:10px;color:var(--text2);">Solde compte client (GL)</div>
@@ -10177,6 +10177,20 @@ function openMouvementModal(locId, editId) {
   }
 
   document.getElementById('mvt-modal').style.display = 'flex';
+}
+
+// V93 : le mois de référence (et donc le mois repris dans le libellé automatique) suit la date d'opération.
+// Le mois de référence reste modifiable ensuite ; un libellé déjà retouché à la main n'est jamais écrasé.
+function onMouvementDateChanged() {
+  const d = document.getElementById('mvt-date-operation').value;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+  const refInput = document.getElementById('mvt-mois-ref');
+  const mois = d.slice(0,7);
+  if(refInput.value === mois) return;
+  refInput.value = mois;
+  refreshMouvementAffectationRows();
+  updateLibelleAutomatique();
+  updateMouvementPreview();
 }
 
 // Quand l'utilisateur change de type, on aligne le sens et on rerend les affectations
@@ -10792,7 +10806,7 @@ function renderLocataires() {
     : '') + (nbArchLoc ? `<button class="btn btn-sm ml-auto" onclick="ouvrirArchives('loc')" style="padding:1px 8px;font-size:9px;">📦 ARCHIVES (${nbArchLoc})</button>` : '');
 
   const _ecartsGL = visible.filter(l => !controleSolde411(l).ok);
-  body2.innerHTML = `<tr class="loc-spacer"><td colspan="7" style="height:14px;padding:0;background:var(--bg0);border:none;"></td></tr>` + visible.slice().sort((a,b)=>String(a.numClient||'').localeCompare(String(b.numClient||''))).map(loc => {
+  body2.innerHTML = `<tr class="loc-spacer"><td colspan="7" style="height:14px;padding:0;background:var(--bg0);border:none;"></td></tr>` + visible.slice().sort((a,b)=>(!a.numClient - !b.numClient) || String(a.numClient||'').localeCompare(String(b.numClient||'')) || String(a.nom1||'').localeCompare(String(b.nom1||''))).map(loc => {
     const solde = computeSoldeGlobalLocataireV2(loc);
     const noms = esc([loc.nom1 ? (loc.prenom1||'')+' '+loc.nom1 : '', loc.nom2 ? (loc.prenom2||'')+' '+loc.nom2 : ''].filter(Boolean).join(' & '));
     const inactifBadge = !loc.actif ? '<span style="background:var(--bg2);color:var(--text2);padding:1px 6px;border-radius:3px;font-size:9px;margin-left:6px;">INACTIF</span>' : '';
@@ -10919,7 +10933,7 @@ function renderLocataires() {
   // V71 : alerte globale si au moins un locataire a un écart entre Σ soldes par mois et son 411
   if(_ecartsGL.length) {
     filterBar.innerHTML += `<div style="flex:1;padding:6px 10px;border:1px solid var(--red);border-radius:var(--radius);background:rgba(255,104,104,0.10);color:var(--red);">
-      ⚠ Écart entre soldes par mois et compte 411 (GL) pour : ${_ecartsGL.map(l => `<strong style="cursor:pointer;text-decoration:underline;" onclick="openLocataireDetail('${l.id}')">${esc(l.nom1||l.numClient)}</strong>`).join(', ')}
+      ⚠ Écart entre soldes par mois et compte 411 (GL) pour : ${_ecartsGL.map(l => `<strong style="cursor:pointer;text-decoration:underline;" onclick="openLocataireDetail('${l.id}')">${esc(l.nom1||l.numClient||'locataire')}</strong>`).join(', ')}
     </div>`;
   }
 
@@ -10996,7 +11010,6 @@ function saveLocataire() {
   const compteProvision = document.getElementById('loc-compte-provision').value.trim();
   const compteClient = document.getElementById('loc-compte-client').value.trim();
 
-  if(!numClient) { toast('Le N° client est requis','error'); return; }
   if(!adresse1) { toast("L'adresse de location est requise",'error'); return; }
   if(!nom1) { toast('Le nom du locataire principal est requis','error'); return; }
   if(!loyer || loyer<=0) { toast('Le montant du loyer doit être positif','error'); return; }
@@ -11072,8 +11085,8 @@ function renderLocDocHeader(loc, dateEmission) {
       <div style="font-size:10px;color:#555;margin-top:6px;">${esc(SOCIETE.email)}<br>${esc(SOCIETE.telephone)}</div>
     </div>
     <div style="text-align:right;">
-      <div style="font-weight:700;color:${SOCIETE.couleur};font-size:11px;">N° CLIENT :</div>
-      <div style="font-weight:700;color:${SOCIETE.couleur};font-size:13px;">${esc(loc.numClient)}</div>
+      ${loc.numClient ? `<div style="font-weight:700;color:${SOCIETE.couleur};font-size:11px;">N° CLIENT :</div>
+      <div style="font-weight:700;color:${SOCIETE.couleur};font-size:13px;">${esc(loc.numClient)}</div>` : '<!-- N° CLIENT : (non renseigné) -->'}
     </div>
   </div>
   <div style="display:flex;justify-content:space-between;margin-bottom:20px;">
