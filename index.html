@@ -8,7 +8,7 @@
 <!-- ═══ FIREBASE SDK ═══ -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDocFromServer, runTransaction, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey:            "AIzaSyDCqFqBT7NXgiV4COiHY_-2YhjJQth8taw",
@@ -22,74 +22,64 @@
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
 
-  // REF is now dynamic — one document per exercise year
-  function getRef(year) {
-    return doc(db, "sci-preles", String(year));
-  }
+  // Un document Firestore par exercice : { payload: JSON de l'exercice, rev: numéro de version }
+  function getRef(year) { return doc(db, "sci-preles", String(year)); }
+  const metaRef = () => doc(db, "sci-preles", "_meta");
 
-  // List all exercise years from the meta document
-  window._fbSave = async (data, year) => {
-    // Don't save if this exercise is being deleted
-    if(window._deletingYear && String(window._deletingYear) === String(year)) return;
-    try {
-      await setDoc(getRef(year), { payload: JSON.stringify(data) });
-      // Update the meta document with list of known years (always store as strings)
-      const metaRef = doc(db, "sci-preles", "_meta");
-      const metaSnap = await getDoc(metaRef);
-      const existing = metaSnap.exists() ? (metaSnap.data().years || []) : [];
-      const yearStr = String(year);
-      if(!existing.map(String).includes(yearStr)) {
-        await setDoc(metaRef, { years: [...existing.map(String), yearStr].sort() });
-      }
-    } catch(e) { console.error("Firebase save error", e); }
+  // V79 — Règle générale : une ERREUR n'est jamais confondue avec « document absent ».
+  //  - lecture : renvoie null UNIQUEMENT si le document n'existe pas ; lève une exception en cas d'erreur
+  //  - écriture : transaction conditionnée au numéro de version (rev) ; lève une exception en cas d'échec
+  //    err.code === 'rev-conflict' : la version en base n'est pas celle attendue (autre poste, ou exercice existant)
+
+  // Lecture d'un exercice : { data, rev } ou null s'il n'existe pas. Toujours depuis le serveur (jamais de cache).
+  window._fbLoadRev = async (year) => {
+    const snap = await getDocFromServer(getRef(year));
+    if(!snap.exists()) return null;
+    const d = snap.data();
+    return { data: JSON.parse(d.payload), rev: typeof d.rev === 'number' ? d.rev : 0 };
   };
+  // Compatibilité : renvoie seulement les données (ou null si absent) ; lève une exception en cas d'erreur
+  window._fbLoad = async (year) => { const r = await window._fbLoadRev(year); return r ? r.data : null; };
 
-  window._fbLoad = async (year) => {
-    try {
-      const snap = await getDoc(getRef(year));
-      return snap.exists() ? JSON.parse(snap.data().payload) : null;
-    } catch(e) { console.error("Firebase load error", e); return null; }
-  };
-
-  window._fbListen = (year, callback) => {
-    return onSnapshot(getRef(year), (snap) => {
-      if(snap.exists()) {
-        try { callback(JSON.parse(snap.data().payload)); } catch(e) {}
+  // Écriture conditionnelle. expectedRev = version chargée par ce poste, ou 'new' (l'exercice ne doit pas exister).
+  // expectedRev = null : écrasement volontaire (restauration, déverrouillage) — la version est quand même incrémentée.
+  window._fbWrite = async (json, year, expectedRev) => {
+    if(window._deletingYear && String(window._deletingYear) === String(year)) return null;
+    const ref = getRef(year);
+    const newRev = await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      const remoteRev = snap.exists() ? (typeof snap.data().rev === 'number' ? snap.data().rev : 0) : 0;
+      if(expectedRev !== null && expectedRev !== undefined) {
+        // 'new' = création : l'exercice ne doit pas exister. Nombre = version chargée (0 = document antérieur à V79).
+        const attendu = expectedRev === 'new' ? !snap.exists() : (snap.exists() && remoteRev === expectedRev);
+        if(!attendu) { const e = new Error('rev-conflict'); e.code = 'rev-conflict'; e.remoteRev = remoteRev; e.exists = snap.exists(); throw e; }
       }
+      const r = remoteRev + 1;
+      tx.set(ref, { payload: json, rev: r, updatedAt: new Date().toISOString() });
+      return r;
     });
+    await setDoc(metaRef(), { years: arrayUnion(String(year)) }, { merge: true });
+    return newRev;
   };
 
+  // Écoute des changements faits ailleurs : callback({ data, rev })
+  window._fbListen = (year, callback) => onSnapshot(getRef(year), (snap) => {
+    if(!snap.exists()) return;
+    try { const d = snap.data(); callback({ data: JSON.parse(d.payload), rev: typeof d.rev === 'number' ? d.rev : 0 }); } catch(e) {}
+  }, (err) => console.error('Firebase listen error', err));
+
+  // Liste des exercices — lève une exception en cas d'erreur
   window._fbListYears = async () => {
-    try {
-      const metaRef = doc(db, "sci-preles", "_meta");
-      const snap = await getDoc(metaRef);
-      return snap.exists() ? (snap.data().years || []) : [];
-    } catch(e) { return []; }
+    const snap = await getDocFromServer(metaRef());
+    return snap.exists() ? (snap.data().years || []).map(String) : [];
   };
-
-  // Fresh read bypassing Firestore cache — used after delete
-  window._fbListYearsFresh = async () => {
-    try {
-      const metaRef = doc(db, "sci-preles", "_meta");
-      const snap = await getDocFromServer(metaRef);
-      return snap.exists() ? (snap.data().years || []) : [];
-    } catch(e) { return []; }
-  };
+  window._fbListYearsFresh = window._fbListYears;
 
   window._fbDelete = async (year) => {
-    try {
-      await deleteDoc(doc(db, 'sci-preles', String(year)));
-      const metaRef = doc(db, 'sci-preles', '_meta');
-      // Use getDocFromServer to bypass cache and get the real current list
-      const metaSnap = await getDocFromServer(metaRef);
-      if(metaSnap.exists()) {
-        const years = (metaSnap.data().years || []).filter(y => String(y) !== String(year));
-        await setDoc(metaRef, { years });
-      }
-    } catch(e) { console.error('Firebase delete error', e); }
+    await deleteDoc(getRef(year));
+    await setDoc(metaRef(), { years: arrayRemove(String(year)) }, { merge: true });
   };
 
-  // Signal that Firebase is ready
   window._fbReady = true;
   document.dispatchEvent(new Event('firebase-ready'));
 </script>
@@ -2649,10 +2639,11 @@ function showWeeklyExportBanner() {
 async function doWeeklyExportNow() {
   const banner = document.getElementById('weekly-export-banner');
   if(banner) banner.remove();
-  await exportAllExercisesBackup();
-  localStorage.setItem('last_weekly_export', getWeekKey(new Date()));
+  const ok = await exportAllExercisesBackup();
+  // V79 (M12) : la semaine n'est marquée qu'après une sauvegarde COMPLÈTE et réussie
+  if(ok) { try { localStorage.setItem('last_weekly_export', getWeekKey(new Date())); } catch(e) {} }
+  else showWeeklyExportBanner();
 }
-
 function dismissWeeklyExportBanner() {
   const banner = document.getElementById('weekly-export-banner');
   if(banner) banner.remove();
@@ -2702,84 +2693,98 @@ async function downloadExerciseJSON(year, data) {
 // pas seulement l'exercice actuellement affiché à l'écran.
 // Demande UNE SEULE fois un dossier de destination, puis y écrit tous les fichiers
 // d'un coup (pas une fenêtre par exercice).
+// Exporte 1 fichier JSON par exercice existant dans Firebase (exercices test compris, marqués TEST).
+// Renvoie true seulement si TOUS les exercices non vides ont été écrits.
 async function exportAllExercisesBackup() {
-  let years = [];
-  try { years = await window._fbListYears(); } catch(e) { years = []; }
+  // L'exercice affiché doit être enregistré avant export
+  if(!(await toutEnregistrer())) { toast('Sauvegarde impossible : des modifications ne sont pas enregistrées dans Firebase', 'error', 6000); return false; }
+  let years;
+  try { years = (await window._fbListYears()).map(String); }
+  catch(e) { showBackupExportedModal({ fatal: "La liste des exercices n'a pas pu être lue dans Firebase. Aucune sauvegarde n'a été faite." }); return false; }
   if(!years.includes(String(CURRENT_YEAR))) years.push(String(CURRENT_YEAR));
   years = [...new Set(years)].sort();
 
-  // Rassembler d'abord toutes les données à exporter (hors exercices test / vides)
-  const filesToSave = [];
+  const filesToSave = [], echecs = [], ignores = [];
   for(const y of years) {
-    if(isTestExercise(y)) continue;
     let data;
-    if(String(y) === String(CURRENT_YEAR)) {
-      data = DB;
-    } else {
-      try { data = await window._fbLoad(y); } catch(e) { data = null; }
+    if(String(y) === String(CURRENT_YEAR)) data = DB;
+    else {
+      try { data = await window._fbLoad(y); }
+      catch(e) { echecs.push({ y, raison: 'lecture Firebase impossible' }); continue; }
+      if(!data) { echecs.push({ y, raison: 'introuvable dans Firebase' }); continue; }
     }
-    if(!data || !Array.isArray(data.ecritures) || !data.ecritures.length) continue;
-    const payload = { _backupMeta: { exercice: y, dateExport: new Date().toISOString(), version: 1 }, data };
-    filesToSave.push({
-      name: `Fichier JSON de sauvegarde comptable - Exercice ${y} - ${todayTime()}.json`,
-      content: JSON.stringify(payload, null, 0)
-    });
+    if(!Array.isArray(data.ecritures) || !data.ecritures.length) { ignores.push({ y, raison: 'exercice sans écriture' }); continue; }
+    const test = (String(y) === String(CURRENT_YEAR)) ? !!DB._isTest : !!data._isTest;
+    const content = JSON.stringify({ _backupMeta: { exercice: y, dateExport: new Date().toISOString(), version: 1, test }, data }, null, 0);
+    filesToSave.push({ y, test, name: `Fichier JSON de sauvegarde comptable - Exercice ${y}${test ? ' TEST' : ''} - ${todayTime()}.json`, content });
   }
-
   if(!filesToSave.length) {
-    toast('Aucun exercice à sauvegarder (aucune donnée ou exercices de test uniquement)', 'error');
-    return;
+    showBackupExportedModal({ ok: [], echecs, ignores });
+    return false;
   }
-
-  // Méthode moderne : un seul choix de dossier, puis écriture de tous les fichiers dedans.
+  const ok = [];
   if(window.showDirectoryPicker) {
-    try {
-      const dirHandle = await window.showDirectoryPicker({ id: 'atrium-json-backup', mode: 'readwrite' });
+    let dirHandle;
+    try { dirHandle = await window.showDirectoryPicker({ id: 'atrium-json-backup', mode: 'readwrite' }); }
+    catch(e) {
+      if(e && e.name === 'AbortError') { toast('Sauvegarde annulée — elle vous sera reproposée', 'warn', 5000); return false; }
+      dirHandle = null; // autre erreur → téléchargement classique ci-dessous
+    }
+    if(dirHandle) {
       for(const f of filesToSave) {
-        const fileHandle = await dirHandle.getFileHandle(f.name, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(f.content);
-        await writable.close();
+        try {
+          const fileHandle = await dirHandle.getFileHandle(f.name, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(f.content);
+          await writable.close();
+          ok.push(f);
+        } catch(e) { echecs.push({ y: f.y, raison: 'écriture du fichier impossible' }); }
       }
-      showBackupExportedModal(filesToSave.length);
-      return;
-    } catch(e) {
-      if(e && e.name === 'AbortError') return; // l'utilisateur a annulé le choix du dossier
-      // Autre erreur (permission refusée, etc.) → on retombe sur le téléchargement classique ci-dessous
+      showBackupExportedModal({ ok, echecs, ignores });
+      return !echecs.length && ok.length > 0;
     }
   }
-
-  // Fallback : téléchargement classique (navigateur non compatible showDirectoryPicker).
+  // Téléchargement classique (navigateur sans choix de dossier)
   for(const f of filesToSave) {
     const blob = new Blob([f.content], {type:'application/json;charset=utf-8;'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = f.name;
     a.click();
+    ok.push(f);
     await new Promise(r => setTimeout(r, 400));
   }
-  showBackupExportedModal(filesToSave.length);
+  showBackupExportedModal({ ok, echecs, ignores });
+  return !echecs.length && ok.length > 0;
 }
-
-function showBackupExportedModal(nbExercices) {
+function showBackupExportedModal(rapport) {
   const existing = document.getElementById('backup-exported-modal');
   if(existing) existing.remove();
+  const r = rapport || {};
+  const ok = r.ok || [], echecs = r.echecs || [], ignores = r.ignores || [];
+  const complet = !r.fatal && ok.length > 0 && !echecs.length;
+  const kb = n => Math.max(1, Math.round(n / 1024)).toLocaleString('fr-FR') + ' Ko';
+  const lignesOk = ok.map(f => `<div>✓ Exercice <strong>${f.y}</strong>${f.test ? ' (TEST)' : ''} — ${kb(f.content.length)}</div>`).join('');
+  const lignesKo = echecs.map(e => `<div style="color:var(--red);">✗ Exercice <strong>${e.y}</strong> — ${e.raison}</div>`).join('');
+  const lignesIgn = ignores.map(e => `<div style="color:var(--text2);">– Exercice ${e.y} — ignoré : ${e.raison}</div>`).join('');
+  const titre = r.fatal ? 'SAUVEGARDE IMPOSSIBLE' : complet ? 'SAUVEGARDE COMPLÈTE' : 'SAUVEGARDE INCOMPLÈTE';
+  const couleur = complet ? 'var(--text0)' : 'var(--red)';
   const overlay = document.createElement('div');
   overlay.id = 'backup-exported-modal';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
-  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:28px 32px;max-width:480px;text-align:center;font-family:var(--mono);">
-    <div style="font-size:28px;margin-bottom:12px;">💾</div>
-    <div style="font-size:14px;font-weight:700;color:var(--text0);margin-bottom:10px;letter-spacing:0.04em;">SAUVEGARDE COMPLÈTE TÉLÉCHARGÉE</div>
-    <div style="font-size:11px;color:var(--text1);line-height:1.7;margin-bottom:20px;">
-      ${nbExercices} fichier${nbExercices>1?'s':''} JSON ${nbExercices>1?'ont':'a'} été téléchargé${nbExercices>1?'s':''} (un par exercice), couvrant l'intégralité de vos données.<br>
-      <span style="color:var(--amber);">Merci de conserver ces fichiers en lieu sûr</span> (disque externe, cloud personnel…)<br>
-      afin de pouvoir restaurer vos données en cas de besoin.
+  overlay.innerHTML = `<div style="background:var(--bg1);border:1px solid ${complet ? 'var(--line2)' : 'var(--red)'};border-radius:var(--radius);padding:28px 32px;max-width:520px;font-family:var(--mono);">
+    <div style="font-size:28px;margin-bottom:12px;text-align:center;">${complet ? '💾' : '⚠'}</div>
+    <div style="font-size:14px;font-weight:700;color:${couleur};margin-bottom:14px;letter-spacing:0.04em;text-align:center;">${titre}</div>
+    <div style="font-size:11px;color:var(--text1);line-height:1.8;margin-bottom:14px;">
+      ${r.fatal ? `<div style="color:var(--red);">${r.fatal}</div>` : lignesOk + lignesKo + lignesIgn}
     </div>
-    <button class="btn btn-primary" onclick="document.getElementById('backup-exported-modal').remove()" style="padding:8px 24px;font-size:12px;letter-spacing:0.06em;">✓ OK, J'AI BIEN NOTÉ</button>
+    <div style="font-size:11px;color:var(--text1);line-height:1.7;margin-bottom:20px;text-align:center;">
+      ${complet ? '<span style="color:var(--amber);">Conservez ces fichiers en lieu sûr</span> (disque externe, cloud personnel…).' : '<span style="color:var(--red);">La sauvegarde n\'est pas complète : elle vous sera reproposée.</span>'}
+    </div>
+    <div style="text-align:center;"><button class="btn btn-primary" onclick="document.getElementById('backup-exported-modal').remove()" style="padding:8px 24px;font-size:12px;letter-spacing:0.06em;">✓ OK, J'AI BIEN NOTÉ</button></div>
   </div>`;
   document.body.appendChild(overlay);
 }
-
 let _pendingRestoreData = null;
 // Restauration d'une sauvegarde JSON — 3 cas, du plus sûr au plus sensible :
 //  1) On est sur un exercice TEST  → le contenu du fichier est chargé DANS cet exercice test (bac à sable).
@@ -2829,7 +2834,8 @@ function handleBackupRestoreFile(evt) {
 
     // ── Vérifie l'état actuel de l'exercice cible dans Firebase ──
     let remote = null;
-    try { remote = (window._fbReady && window._fbLoad) ? await window._fbLoad(fileYear) : null; } catch(e) { remote = null; }
+    try { remote = await window._fbLoad(fileYear); }
+    catch(e) { toast(`Firebase ne répond pas : impossible de vérifier l'exercice ${fileYear}, restauration annulée`, 'error', 6000); return; }
     const cibleCloturee = (remote && remote._status === 'closed') || (String(fileYear) === String(CURRENT_YEAR) && EXERCISE_STATUS === 'closed');
 
     document.getElementById('backup-restore-title').innerHTML = '<span style="color:var(--red);">⚠</span> RESTAURER CETTE SAUVEGARDE ?';
@@ -2897,19 +2903,17 @@ async function confirmBackupRestore() {
 
   // Mode secours : dernière vérification que la cible n'est pas clôturée
   if(document.getElementById('backup-restore-confirm-input').value.trim() !== String(targetYear)) return;
-  let remote = null;
-  try { remote = (window._fbReady && window._fbLoad) ? await window._fbLoad(targetYear) : null; } catch(e) {}
-  if((remote && remote._status === 'closed') || (String(targetYear) === String(CURRENT_YEAR) && EXERCISE_STATUS === 'closed')) {
+  if(!(await toutEnregistrer())) { toast('Restauration impossible : des modifications ne sont pas enregistrées', 'error', 6000); return; }
+  let cible = null;
+  try { cible = await chargerExercice(targetYear); }
+  catch(e) { toast(`Firebase ne répond pas : restauration de ${targetYear} annulée`, 'error', 6000); return; }
+  if((cible && cible.data._status === 'closed') || (String(targetYear) === String(CURRENT_YEAR) && EXERCISE_STATUS === 'closed')) {
     toast(`Exercice ${targetYear} clôturé — restauration refusée`, 'error'); closeBackupRestoreModal(); return;
   }
-  if(String(targetYear) === String(CURRENT_YEAR)) {
-    Object.keys(DB).forEach(k => delete DB[k]);
-    Object.assign(DB, data);
-    await saveDBNow(true);
-  } else {
-    if(!(window._fbReady && window._fbSave)) { toast('Connexion Firebase indisponible','error'); return; }
-    await window._fbSave(data, targetYear);
-  }
+  // Écrasement volontaire, conditionné à la version lue juste avant (ou création si l'exercice n'existe plus)
+  try { await window._fbWrite(JSON.stringify(data), targetYear, cible ? cible.rev : 'new'); }
+  catch(e) { toast(e && e.code === 'rev-conflict' ? `L'exercice ${targetYear} a changé entre-temps : restauration annulée, recommencez` : `Échec de l'écriture dans Firebase : rien n'a été restauré`, 'error', 7000); return; }
+  if(String(targetYear) === String(CURRENT_YEAR)) { _pendingSave = null; clearTimeout(_saveTimeout); window._fbBloque = true; } // plus aucune écriture avant le rechargement ci-dessous
   closeBackupRestoreModal();
   toast(`Sauvegarde restaurée sur l'exercice ${targetYear}${String(targetYear)===String(CURRENT_YEAR)?' — rechargement...':''}`, 'success');
   if(String(targetYear) === String(CURRENT_YEAR)) setTimeout(() => location.reload(), 1200);
@@ -3177,129 +3181,240 @@ function renderPostItPieces() {
 
 
 // ══════════════════════════════════════════════
-// PERSISTENCE — Firebase (+ localStorage fallback)
+// PERSISTENCE — V79 : Firebase seule source de vérité (plus aucune copie locale des données)
 // ══════════════════════════════════════════════
+// Principes :
+//  1. Une erreur de lecture n'est JAMAIS traitée comme un exercice vide : l'outil se bloque (écran
+//     « Connexion impossible ») et n'enregistre rien.
+//  2. Chaque enregistrement est une transaction conditionnée au numéro de version (rev) chargé par ce poste :
+//     si l'exercice a changé ailleurs entre-temps, l'enregistrement est refusé (aucun écrasement).
+//  3. Tout échec d'enregistrement est visible (voyant rouge + bandeau) et la fermeture de l'onglet est
+//     signalée tant qu'une modification n'est pas enregistrée.
 let _saveTimeout = null;
-let _pendingSave = null; // { db, year } — sauvegarde différée en attente, ou null
-// Flag anti-écho : quand on save vers Firestore, la notification onSnapshot revient
-// avec l'état qu'on vient d'envoyer. Si le listener applique cet écho pendant qu'on
-// est encore en train de modifier DB localement, il peut écraser nos changements
-// intermédiaires (nouveau moisComptabilises, num d'écriture, pièce post-it, etc.).
-// On suspend le listener pendant 3 secondes après chaque save local.
-let _suspendListenerUntil = 0;
-function markLocalWrite() { _suspendListenerUntil = Date.now() + 3000; }
+let _pendingSave = null;            // { json, year } — instantané figé au moment de l'action, en attente d'envoi
+let _saveChain = Promise.resolve(true);
+let _saveInFlight = false;
+let _saveFailure = null;            // { year, json, conflict, creation, reason } — échec non résolu
+let _snapshotEnAttente = null;      // changement distant reçu pendant un enregistrement local
+var LOADED_REV = {};                // année -> version Firebase connue de ce poste ('new' = exercice à créer)
+window._fbBloque = false;           // true après une erreur de connexion bloquante : plus aucune écriture
+
+function setSaveStatus(state) {
+  const box = document.querySelector('.hdr-status'); if(!box) return;
+  const dot = box.querySelector('.dot');
+  const lib = { ok: 'ENREGISTRÉ', saving: 'ENREGISTREMENT…', error: 'NON ENREGISTRÉ', conflict: 'NON ENREGISTRÉ' }[state] || 'ENREGISTRÉ';
+  const col = { ok: 'var(--green)', saving: 'var(--amber)', error: 'var(--red)', conflict: 'var(--red)' }[state] || 'var(--green)';
+  box.innerHTML = `<div class="dot" style="background:${col};box-shadow:0 0 6px ${col};"></div> <span style="color:${state==='error'||state==='conflict'?'var(--red)':''};font-weight:${state==='error'||state==='conflict'?700:400};">${lib}</span>`;
+  box.title = state === 'ok' ? 'Toutes les modifications sont enregistrées dans Firebase' : state === 'saving' ? 'Enregistrement en cours' : 'Des modifications ne sont PAS enregistrées dans Firebase';
+}
+
+function _bandeauSauvegarde(html, boutons) {
+  let el = document.getElementById('save-alert');
+  if(!el) {
+    el = document.createElement('div');
+    el.id = 'save-alert';
+    el.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:100000;background:#b42318;color:#fff;padding:12px 20px;font-family:var(--mono);font-size:12px;display:flex;align-items:center;gap:14px;justify-content:center;box-shadow:0 4px 18px rgba(0,0,0,0.4);';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `<span style="font-size:18px;">⚠</span><span style="line-height:1.5;">${html}</span>` +
+    boutons.map(b => `<button class="btn btn-sm" style="background:#fff;color:#b42318;border-color:#fff;font-weight:700;" onclick="${b.action}">${b.label}</button>`).join('');
+}
+function _retirerBandeauSauvegarde() { const el = document.getElementById('save-alert'); if(el) el.remove(); }
+
+function _signalerEchec(year, reason, json) {
+  _saveFailure = { year: String(year), json, reason };
+  setSaveStatus('error');
+  _bandeauSauvegarde(`Échec de l'enregistrement de l'exercice ${year} dans Firebase${reason ? ' (' + String(reason).replace(/</g,'&lt;') + ')' : ''}.<br>Vos dernières modifications ne sont <strong>PAS</strong> enregistrées. Ne fermez pas l'onglet.`,
+    [{ label: '↻ RÉESSAYER', action: 'retrySave()' }]);
+}
+function _signalerConflit(year, info) {
+  const creation = info && info.creation;
+  _saveFailure = { year: String(year), conflict: true, creation };
+  setSaveStatus('conflict');
+  const msg = creation
+    ? `L'exercice <strong>${year}</strong> existe déjà dans Firebase : la création est annulée, rien n'a été écrasé.`
+    : `L'exercice <strong>${year}</strong> a été modifié sur un autre poste (ou dans un autre onglet).<br>Vos dernières modifications n'ont <strong>PAS</strong> été enregistrées, pour ne pas écraser ce travail. Rechargez, puis refaites votre dernière action.`;
+  _bandeauSauvegarde(msg, [{ label: '↻ RECHARGER', action: 'location.reload()' }]);
+}
+async function retrySave() {
+  if(!_saveFailure || _saveFailure.conflict) return;
+  if(!_pendingSave && _saveFailure.json) _pendingSave = { json: _saveFailure.json, year: _saveFailure.year };
+  _bandeauSauvegarde('Nouvelle tentative d\'enregistrement…', []);
+  const ok = await flushPendingSave();
+  if(ok) { _retirerBandeauSauvegarde(); toast('Modifications enregistrées', 'success'); }
+}
+
+// Écrit un instantané JSON dans Firebase, conditionné à la version connue. Renvoie true/false.
+async function _ecrireExercice(json, year) {
+  const y = String(year);
+  if(window._fbBloque) return false;
+  if(!(window._fbReady && window._fbWrite)) { _signalerEchec(y, 'Firebase non chargé', json); return false; }
+  const expected = LOADED_REV[y];
+  if(expected === undefined) { _signalerEchec(y, 'version de l\'exercice inconnue — rechargez la page', json); return false; }
+  _saveInFlight = true;
+  try {
+    const newRev = await window._fbWrite(json, y, expected);
+    if(newRev !== null && newRev !== undefined) LOADED_REV[y] = newRev;
+    if(_saveFailure && _saveFailure.year === y && !_saveFailure.conflict) { _saveFailure = null; _retirerBandeauSauvegarde(); }
+    setSaveStatus(_pendingSave ? 'saving' : 'ok');
+    return true;
+  } catch(e) {
+    console.error('Firebase save error', e);
+    if(e && e.code === 'rev-conflict') _signalerConflit(y, { creation: expected === 'new' });
+    else _signalerEchec(y, e && (e.code || e.message), json);
+    return false;
+  } finally {
+    _saveInFlight = false;
+    // Un changement distant reçu pendant l'écriture : on le traite maintenant que la version est connue
+    if(_snapshotEnAttente) { const s = _snapshotEnAttente; _snapshotEnAttente = null; _recevoirChangementDistant(s); }
+  }
+}
+
 function saveDB() {
   if(window._saveSuspended) return; // DB/CURRENT_YEAR temporairement basculés sur un autre exercice (ex. bilan N-1)
+  if(window._fbBloque) return;
   if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
-  window._exerciseStatuses[String(CURRENT_YEAR)] = EXERCISE_STATUS;
-  // Marque cet instant comme une écriture locale — le listener ignorera les échos
-  // Firestore reçus dans les 3 secondes qui suivent (le save Firebase lui-même est
-  // débouncé de 800ms, l'écho revient donc ~1-1.5s après cet appel).
-  markLocalWrite();
-  const lsKey = 'ledger_' + CURRENT_YEAR;
-  let _json = null;
-  try { _json = JSON.stringify(DB); } catch(e) {}
-  if(_json !== null) histRecord(_json);
-  try { if(_json !== null) localStorage.setItem(lsKey, _json); } catch(e) {}
+  window._exerciseStatuses = window._exerciseStatuses || {};
+  window._exerciseStatuses[String(CURRENT_YEAR)] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest };
+  let json; try { json = JSON.stringify(DB); } catch(e) { console.error(e); return; }
+  histRecord(json);
   clearTimeout(_saveTimeout);
-  _pendingSave = { db: DB, year: CURRENT_YEAR };
-  _saveTimeout = setTimeout(flushPendingSave, 800);
+  // Instantané figé MAINTENANT : un changement d'exercice ultérieur ne peut pas modifier ce qui part
+  _pendingSave = { json, year: CURRENT_YEAR };
+  setSaveStatus('saving');
+  _saveTimeout = setTimeout(() => { flushPendingSave(); }, 800);
 }
-// Force l'exécution immédiate d'une sauvegarde différée en attente (s'il y en a une).
-// À appeler systématiquement AVANT tout changement d'exercice (switchExercise,
-// clôture, suppression, création, consultation) pour garantir qu'aucune
-// modification récente ne soit perdue ET qu'aucune sauvegarde ne parte
-// sous le nom du mauvais exercice.
-async function flushPendingSave() {
+// Envoie immédiatement la sauvegarde en attente (s'il y en a une). Renvoie true si tout est enregistré.
+// À appeler AVANT tout changement d'exercice.
+function flushPendingSave() {
   clearTimeout(_saveTimeout);
-  if(!_pendingSave) return;
-  const { db, year } = _pendingSave;
-  _pendingSave = null;
-  if(window._fbReady && window._fbSave) {
-    await window._fbSave(db, year);
-    const dot = document.querySelector('.dot');
-    if(dot) { dot.style.background='var(--cyan)'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
-  }
+  _saveChain = _saveChain.then(async () => {
+    const p = _pendingSave;
+    if(p) { _pendingSave = null; await _ecrireExercice(p.json, p.year); }
+    return !_saveFailure && !_pendingSave;
+  }).catch(e => { console.error(e); return false; });
+  return _saveChain;
 }
 async function saveDBNow(force) {
-  if(EXERCISE_STATUS === 'closed' && !force) return;
-  markLocalWrite();
-  const lsKey = 'ledger_' + CURRENT_YEAR;
-  let _json = null;
-  try { _json = JSON.stringify(DB); } catch(e) {}
+  if(EXERCISE_STATUS === 'closed' && !force) return true;
+  if(window._fbBloque) return false;
+  let json; try { json = JSON.stringify(DB); } catch(e) { console.error(e); return false; }
   // V72 : une sauvegarde forcée (clôture, changement d'exercice…) remet l'historique à zéro
-  if(force) histClear(); else if(_json !== null) histRecord(_json);
-  try { if(_json !== null) localStorage.setItem(lsKey, _json); } catch(e) {}
+  if(force) histClear(); else histRecord(json);
   clearTimeout(_saveTimeout);
-  _pendingSave = null;
-  if(window._fbReady && window._fbSave) {
-    await window._fbSave(DB, CURRENT_YEAR);
-    const dot = document.querySelector('.dot');
-    if(dot) { dot.style.background='var(--cyan)'; setTimeout(()=>{ dot.style.background='#22c55e'; }, 600); }
-  }
+  _pendingSave = { json, year: CURRENT_YEAR };
+  setSaveStatus('saving');
+  return await flushPendingSave();
 }
+// Alerte à la fermeture de l'onglet tant que quelque chose n'est pas enregistré
+window.addEventListener('beforeunload', (e) => {
+  if(_pendingSave || _saveInFlight || (_saveFailure && !_saveFailure.conflict)) { e.preventDefault(); e.returnValue = ''; return ''; }
+});
+
+// Complète les structures attendues par les modules
+function normaliserDB(d) {
+  ['ecritures','tbData','rappelsMensuelList','rappelsAnnuelList','immobilisations','locataires','echeanciers','emprunts','pvApprobations'].forEach(k => { if(!Array.isArray(d[k])) d[k] = []; });
+  if(!d.rappelsMensuel || typeof d.rappelsMensuel !== 'object') d.rappelsMensuel = {};
+  if(!d.rappelsAnnuel || typeof d.rappelsAnnuel !== 'object') d.rappelsAnnuel = {};
+  if(!d.journalNums) d.journalNums = {VE:1,HA:1,IMMO:1,OD:1,TRESO:1};
+  if(!d.nextGlobalNum) d.nextGlobalNum = 1;
+  if(!d.km || typeof d.km !== 'object') d.km = {vehicules:[], compteDebit:'', compteCredit:'', trajets:[], fiches:[], moisMarquesSansEcriture:[]};
+  return d;
+}
+function nouveauDBVide() {
+  return { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
+}
+
+// Lit un exercice dans Firebase SANS toucher à l'exercice affiché.
+// Renvoie { data, rev } ou null s'il n'existe pas ; lève une exception si Firebase ne répond pas.
+async function chargerExercice(year) {
+  if(!(window._fbReady && window._fbLoadRev)) throw new Error('Firebase non chargé');
+  return await window._fbLoadRev(year);
+}
+// Installe comme exercice affiché le résultat de chargerExercice (null = exercice à créer).
+function installerExercice(year, r) {
+  CURRENT_YEAR = year;
+  DB = normaliserDB(r ? r.data : nouveauDBVide());
+  // Firestore fait foi pour _isTest : champ absent = exercice normal
+  DB._isTest = r ? (r.data._isTest !== undefined ? !!r.data._isTest : false) : !!DB._isTest;
+  LOADED_REV[String(year)] = r ? r.rev : 'new';
+  window._exerciseStatuses = window._exerciseStatuses || {};
+  window._exerciseStatuses[String(year)] = { _status: DB._status || 'open', _isTest: !!DB._isTest };
+}
+// Compatibilité : charge l'exercice CURRENT_YEAR. Renvoie true s'il existe, false s'il est à créer ;
+// lève une exception si Firebase ne répond pas.
 async function loadDB() {
-  if(window._fbReady && window._fbLoad) {
-    const remote = await window._fbLoad(CURRENT_YEAR);
-    if(remote) {
-      Object.assign(DB, remote);
-      if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
-      if(!Array.isArray(DB.locataires)) DB.locataires = [];
-      if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
-      if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
-      if(!Array.isArray(DB.pvApprobations)) DB.pvApprobations = [];
-      if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], compteDebit:'', compteCredit:'', trajets:[], fiches:[], moisMarquesSansEcriture:[]};
-      // Firestore fait foi pour _isTest. S'il répond sans ce champ, ce n'est
-      // PAS un exercice test — même si un vieux résidu localStorage dit le
-      // contraire. On fixe explicitement DB._isTest plutôt que de laisser
-      // isTestExercise() retomber sur ce cache local périmé.
-      DB._isTest = remote._isTest !== undefined ? !!remote._isTest : false;
-      localStorage.setItem('ledger_test_flag_' + String(CURRENT_YEAR), DB._isTest ? '1' : '0');
-      return;
-    }
-  }
-  const lsKey = 'ledger_' + CURRENT_YEAR;
-  try { const r = localStorage.getItem(lsKey); if(r) Object.assign(DB, JSON.parse(r)); } catch(e) {}
-  if(!Array.isArray(DB.immobilisations)) DB.immobilisations = [];
-  if(!Array.isArray(DB.locataires)) DB.locataires = [];
-  if(!Array.isArray(DB.echeanciers)) DB.echeanciers = [];
-  if(!Array.isArray(DB.emprunts)) DB.emprunts = [];
-  if(!Array.isArray(DB.pvApprobations)) DB.pvApprobations = [];
-  if(!DB.km || typeof DB.km !== 'object') DB.km = {vehicules:[], compteDebit:'', compteCredit:'', trajets:[], fiches:[], moisMarquesSansEcriture:[]};
+  const r = await chargerExercice(CURRENT_YEAR);
+  installerExercice(CURRENT_YEAR, r);
+  return !!r;
 }
-async function loadDBAndRenum() {
-  await loadDB();
-  renum();
-  // Sauvegarder après renum pour consolider les numéros et dates normalisées
-  await saveDBNow();
+async function loadDBAndRenum() { await loadDB(); renum(); }
+
+// Écran bloquant : Firebase ne répond pas → rien n'est affiché ni enregistré
+function afficherErreurConnexion(err) {
+  window._fbBloque = true;
+  clearTimeout(_saveTimeout); _pendingSave = null;
+  console.error('Connexion Firebase impossible', err);
+  let el = document.getElementById('fb-down');
+  if(!el) { el = document.createElement('div'); el.id = 'fb-down'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:100001;background:var(--bg0);display:flex;align-items:center;justify-content:center;';
+  el.innerHTML = `<div style="max-width:520px;background:var(--bg1);border:1px solid var(--red);border-radius:8px;padding:32px 36px;text-align:center;font-family:var(--mono);">
+    <div style="font-size:32px;margin-bottom:12px;">⚠</div>
+    <div style="font-size:15px;font-weight:700;color:var(--red);margin-bottom:12px;letter-spacing:0.04em;">CONNEXION À FIREBASE IMPOSSIBLE</div>
+    <div style="font-size:12px;color:var(--text1);line-height:1.7;margin-bottom:22px;">Les données de comptabilité n'ont pas pu être lues.<br>Pour éviter tout écrasement, <strong>rien n'est affiché ni enregistré</strong>.<br>Vérifiez votre connexion internet, puis réessayez.</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:18px;">${String((err && (err.code || err.message)) || '').replace(/</g,'&lt;')}</div>
+    <button class="btn btn-primary" onclick="location.reload()">↻ RÉESSAYER</button>
+  </div>`;
+}
+
+// ── Synchronisation : changements faits sur un autre poste ──
+function _recevoirChangementDistant({ data, rev }) {
+  const y = String(CURRENT_YEAR);
+  const known = LOADED_REV[y];
+  if(typeof known === 'number' && rev <= known) return;           // notre propre écriture, ou ancienne
+  if(_pendingSave || (_saveFailure && !_saveFailure.conflict)) {  // modifications locales non envoyées : pas de fusion
+    _signalerConflit(y); return;
+  }
+  Object.keys(DB).forEach(k => delete DB[k]);
+  Object.assign(DB, normaliserDB(data));
+  if(DB._isTest === undefined) DB._isTest = false;
+  LOADED_REV[y] = rev;
+  EXERCISE_STATUS = DB._status || 'open';
+  renum(); updateNavCounts(); applyExerciseStatus();
+  // V72 : modification reçue d'un autre poste — l'historique local n'est plus fiable, on le réinitialise
+  const _hadHist = undoStack.length || redoStack.length;
+  histClear();
+  toast(_hadHist ? "Données mises à jour depuis un autre poste — historique d'annulation réinitialisé" : 'Données mises à jour depuis un autre poste', 'warn', 4000);
+  const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
+  if(active && renders[active]) { try { renders[active](); } catch(e) { console.error(e); } }
+  renderPostItPieces();
 }
 function startLiveSync() {
   if(_unsubscribeListen) { try { _unsubscribeListen(); } catch(e) {} }
-  if(!window._fbReady || !window._fbListen) return;
-  const listenedYear = CURRENT_YEAR;
-  _unsubscribeListen = window._fbListen(CURRENT_YEAR, (remote) => {
-    if(String(listenedYear) !== String(CURRENT_YEAR)) return;
-    if(!remote) return;
-    // Anti-écho : on vient de sauvegarder localement, ignore les notifs du snapshot
-    // Firestore qui vont revenir avec ce qu'on a envoyé (au risque d'écraser des
-    // modifs intermédiaires en cours dans DB local).
-    if(Date.now() < _suspendListenerUntil) return;
-    // Comparaison de signature complète : ne réagit qu'à un VRAI changement provenant
-    // d'un autre client (ou un rechargement initial).
-    const keys = ['ecritures','emprunts','echeanciers','locataires','immobilisations','pvApprobations','piecesAFormaliser','piecesTypes','km','revision'];
-    const sig = obj => JSON.stringify(keys.reduce((a,k)=>{a[k]=obj?.[k];return a;},{}));
-    if(sig(remote) === sig(DB)) return;
-    Object.assign(DB, remote);
-    renum(); updateNavCounts();
-    // V72 : modification reçue d'un autre poste — l'historique local n'est plus fiable, on le réinitialise
-    const _hadHist = undoStack.length || redoStack.length;
-    histClear();
-    if(_hadHist) toast("Données mises à jour depuis un autre poste — historique d'annulation réinitialisé", 'warn', 4000);
-    const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-    const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
-    if(active && renders[active]) renders[active]();
-    renderPostItPieces();
+  if(!window._fbReady || !window._fbListen || window._fbBloque) return;
+  const listenedYear = String(CURRENT_YEAR);
+  _unsubscribeListen = window._fbListen(CURRENT_YEAR, (snap) => {
+    if(listenedYear !== String(CURRENT_YEAR)) return;
+    if(_saveInFlight) { _snapshotEnAttente = snap; return; } // traité à la fin de l'écriture en cours
+    _recevoirChangementDistant(snap);
   });
+}
+
+// Lecture d'un autre exercice pour une édition (comparatif N-1, reprise…) : message clair si Firebase ne répond pas
+async function chargerPourEdition(year) {
+  try { return await window._fbLoad(year); }
+  catch(e) { toast(`Impossible de lire l'exercice ${year} dans Firebase — édition annulée`, 'error', 6000); throw e; }
+}
+
+// Envoie tout ce qui est en attente (y compris ce qui a été ajouté pendant l'envoi). true = tout est enregistré.
+async function toutEnregistrer() {
+  for(let i = 0; i < 5; i++) {
+    const ok = await flushPendingSave();
+    if(ok) return true;
+    if(_saveFailure) return false;
+  }
+  return !_pendingSave && !_saveFailure;
 }
 
 // ══════════════════════════════════════════════
@@ -3317,6 +3432,12 @@ function toast(msg, type='', dur=3000) {
 // NAV
 // ══════════════════════════════════════════════
 function showTab(name) {
+  // V79 (M1) : quitter l'onglet Saisie abandonne une modification d'écriture en cours
+  if(name !== 'saisie' && typeof editingNum !== 'undefined' && editingNum !== null) {
+    const n = editingNum;
+    cancelEditEcriture();
+    toast(`Modification de l'écriture #${n} abandonnée (onglet Saisie quitté)`, 'warn', 4000);
+  }
   // Quand on quitte l'onglet locataires (ou qu'on y revient), on repart toujours de la liste
   if(name !== 'locataires') _locDetailId = null;
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
@@ -3373,7 +3494,9 @@ function evalMontant(input) {
   } catch(e) { /* expression invalide — on laisse tel quel */ }
 }
 function pn(s) { if(!s&&s!==0) return 0; return parseFloat(String(s).replace(',','.').replace(/\s/g,''))||0; }
-function today() { return new Date().toISOString().slice(0,10); }
+// V79 (m7) : date du jour en heure LOCALE (toISOString donnait la veille entre minuit et 2 h)
+function dateLocale(d) { d = d || new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+function today() { return dateLocale(new Date()); }
 // Date + heure locale au format YYYY-MM-DD_HHhMM-SS, pour des noms de fichiers
 // uniques même en cas d'exports multiples le même jour (évite l'écrasement).
 function todayTime() {
@@ -3703,6 +3826,7 @@ function getLines() {
 }
 // ── ÉDITION D'UNE ÉCRITURE EXISTANTE ──
 let editingNum = null, editingIO = null, editingOrigGroup = undefined;
+let editingLineIds = []; // V79 (M1) : identifiants des lignes de l'écriture en cours de modification
 let editingOrigNumDoc = '', editingOrigDate = ''; // pour synchroniser le post-it si l'utilisateur modifie une écriture
 
 function editEcriture(id) {
@@ -3718,6 +3842,7 @@ function editEcriture(id) {
   // Mémoriser le contexte d'édition
   editingNum = e.num;
   editingIO = e._io;
+  editingLineIds = groupLines.map(x => x.id).filter(Boolean);
   editingOrigGroup = e._origGroup;
   // Contexte original pour synchronisation du post-it (au cas où l'utilisateur modifierait le numDoc, la date ou le libellé)
   editingOrigNumDoc = e.numDoc || '';
@@ -3778,7 +3903,7 @@ function editEcriture(id) {
 function resetSaisieForm() {
   // Si on était en mode édition, on annule aussi l'édition
   if(editingNum !== null) {
-    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
+    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingLineIds = []; editingOrigNumDoc = ''; editingOrigDate = '';
     document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
     document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
     document.getElementById('edit-banner').style.display = 'none';
@@ -3796,7 +3921,7 @@ function resetSaisieForm() {
 }
 
 function cancelEditEcriture() {
-  editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
+  editingNum = null; editingIO = null; editingOrigGroup = undefined; editingLineIds = []; editingOrigNumDoc = ''; editingOrigDate = '';
   document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
   document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
   document.getElementById('edit-banner').style.display = 'none';
@@ -3840,7 +3965,14 @@ function saveEcriture() {
 
   if(isEditing) {
     // Supprimer les anciennes lignes de cette écriture, conserver le même _io / _origGroup
-    DB.ecritures = DB.ecritures.filter(x => x.num !== editingNum);
+    // V79 (M1) : on retire EXACTEMENT les lignes ouvertes en modification (identifiants uniques), jamais par numéro
+    const ids = new Set(editingLineIds);
+    if(!ids.size || !DB.ecritures.some(x => ids.has(x.id))) {
+      toast("L'écriture en cours de modification n'existe plus (supprimée ou annulée entre-temps) : modification abandonnée", 'error', 6000);
+      cancelEditEcriture();
+      return;
+    }
+    DB.ecritures = DB.ecritures.filter(x => !ids.has(x.id));
     io = editingIO;
     origGroup = editingOrigGroup;
   } else {
@@ -3891,7 +4023,7 @@ function saveEcriture() {
 
   if(isEditing) {
     toast('Écriture #'+editingNum+' mise à jour','success');
-    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingOrigNumDoc = ''; editingOrigDate = '';
+    editingNum = null; editingIO = null; editingOrigGroup = undefined; editingLineIds = []; editingOrigNumDoc = ''; editingOrigDate = '';
     document.getElementById('saisie-title').textContent = 'SAISIE COMPTABLE';
     document.getElementById('saisie-sub').textContent = "Enregistrement d'une nouvelle écriture";
     document.getElementById('edit-banner').style.display = 'none';
@@ -3996,7 +4128,7 @@ function redoNext() {
 function askDelete(id) {
   const e=DB.ecritures.find(x=>x.id===id); if(!e) return;
   deleteTargetId=id;
-  const groupLines = DB.ecritures.filter(x=>x.num===e.num);
+  const groupLines = DB.ecritures.filter(x=>x.num===e.num && x._io===e._io);
   const totD = groupLines.reduce((s,x)=>s+x.debit,0);
   const totC = groupLines.reduce((s,x)=>s+x.credit,0);
   document.getElementById('delete-msg').innerHTML=`Écriture <strong style="color:var(--cyan)">#${e.num}</strong> · ${fmtDateGL(e.date)} · <em>${e.libelleEcriture}</em><br><strong style="color:var(--amber)">${groupLines.length} ligne(s) seront supprimées</strong> · D: ${fmt(totD)} € / C: ${fmt(totC)} €`;
@@ -4008,13 +4140,15 @@ function confirmDelete() {
   if(!deleteTargetId) return;
   const e=DB.ecritures.find(x=>x.id===deleteTargetId); if(!e) return;
   const numToDelete = e.num;
+  // V79 : lignes de CETTE écriture uniquement (même identifiant interne _io), jamais tout un numéro
+  const memeEcriture = x => x.num === numToDelete && x._io === e._io;
   // Mémorise les triplets (journal + date + numDoc) des lignes supprimées pour synchro post-it
   const piecesCandidates = new Set();
-  DB.ecritures.filter(x => x.num === numToDelete).forEach(x => {
+  DB.ecritures.filter(memeEcriture).forEach(x => {
     if(x.numDoc) piecesCandidates.add(x.journal + '||' + x.date + '||' + x.numDoc);
   });
   // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
-  DB.ecritures=DB.ecritures.filter(x=>x.num!==numToDelete);
+  DB.ecritures=DB.ecritures.filter(x=>!memeEcriture(x));
   // Synchronisation post-it : si plus aucune écriture ne partage un triplet, on retire la pièce
   piecesCandidates.forEach(key => {
     const [journal, date, numDoc] = key.split('||');
@@ -5139,27 +5273,19 @@ const ADMIN_PASSWORD = 'admin-scipreles'; // change this to unlock closed exerci
 
 // Is this a test exercise?
 function isTestExercise(y) {
-  // 1. Si c'est l'exercice courant, lire depuis DB (Firebase)
+  // V79 : Firebase seul fait foi (plus de drapeau mémorisé dans le navigateur)
   if(String(y) === String(CURRENT_YEAR) && DB._isTest !== undefined) return !!DB._isTest;
-  // 2. Lire depuis le cache mémoire (_exerciseStatuses)
-  if(window._exerciseStatuses?.[String(y)]?._isTest !== undefined) return !!window._exerciseStatuses[String(y)]._isTest;
-  // 3. Fallback localStorage
-  const key = 'ledger_test_flag_' + String(y);
-  const flag = localStorage.getItem(key);
-  if(flag !== null) return flag === '1';
-  // 4. Fallback nom (legacy)
+  const st = window._exerciseStatuses?.[String(y)];
+  if(st && typeof st === 'object' && st._isTest !== undefined) return !!st._isTest;
   return String(y).toUpperCase().startsWith('TEST');
 }
-
 function setTestFlag(y, isTest) {
-  // Stocker dans localStorage comme cache local
-  localStorage.setItem('ledger_test_flag_' + String(y), isTest ? '1' : '0');
+  window._exerciseStatuses = window._exerciseStatuses || {};
+  const st = window._exerciseStatuses[String(y)];
+  window._exerciseStatuses[String(y)] = { _status: (st && st._status) || 'open', _isTest: !!isTest };
   // Si c'est l'exercice courant, mettre à jour DB pour que Firebase le persiste
-  if(String(y) === String(CURRENT_YEAR)) {
-    DB._isTest = isTest ? true : false;
-  }
+  if(String(y) === String(CURRENT_YEAR)) DB._isTest = !!isTest;
 }
-
 function applyExerciseStatus() {
   const isClosed = (EXERCISE_STATUS === 'closed');
   const isTest = isTestExercise(CURRENT_YEAR);
@@ -5193,35 +5319,21 @@ function applyExerciseStatus() {
   }
 }
 
+// V79 : liste et statuts lus UNIQUEMENT dans Firebase. Lève une exception si Firebase ne répond pas.
 async function loadKnownYears(excludeYear) {
-  let years = [];
-  if(window._fbReady) {
-    // After a delete, bypass Firestore cache to get fresh data
-    const lister = (excludeYear && window._fbListYearsFresh) ? window._fbListYearsFresh : window._fbListYears;
-    if(lister) {
-      const fbYears = await lister();
-      years = fbYears.map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
-    }
-  }
-  // Scan localStorage — exclude meta keys like test_flag_
-  for(let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if(key && key.startsWith('ledger_') && !key.startsWith('ledger_test_flag_')) {
-      const suffix = key.replace('ledger_', '');
-      if(!suffix || suffix.trim() === '' || suffix === 'NaN') continue;
-      if(!years.includes(suffix)) years.push(suffix);
-    }
-  }
-  // Always include current exercise (unless it's the one being deleted)
+  window._exerciseStatuses = window._exerciseStatuses || {};
+  let years = (await window._fbListYears()).map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
   const curStr = String(CURRENT_YEAR);
-  if(curStr && curStr !== 'NaN' && !years.includes(curStr) && curStr !== String(excludeYear)) {
-    years.push(curStr);
+  if(!years.includes(curStr) && curStr !== String(excludeYear)) years.push(curStr);
+  if(excludeYear) years = years.filter(y => y !== String(excludeYear));
+  years = [...new Set(years)];
+  // Statuts (ouvert/clôturé, test) de chaque exercice, depuis Firebase
+  for(const y of years) {
+    if(y === curStr) { window._exerciseStatuses[y] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest }; continue; }
+    const r = await chargerExercice(y);
+    if(r) window._exerciseStatuses[y] = { _status: r.data._status || 'open', _isTest: r.data._isTest !== undefined ? !!r.data._isTest : false };
   }
-  // Exclude deleted year from all sources
-  if(excludeYear) years = years.filter(y => String(y) !== String(excludeYear));
-  // Remove NaN/empty
-  years = years.filter(y => y && y !== 'NaN' && y.trim() !== '');
-  // Sort: numeric years newest first, TEST* at bottom
+  // Tri : années les plus récentes d'abord, exercices test en bas
   years.sort((a, b) => {
     const aTest = isTestExercise(a), bTest = isTestExercise(b);
     if(aTest && !bTest) return 1;
@@ -5229,82 +5341,49 @@ async function loadKnownYears(excludeYear) {
     if(aTest && bTest) return a.localeCompare(b);
     return parseInt(b) - parseInt(a);
   });
-  years = [...new Set(years)];
-  // Load statuses for all known exercises from Firebase
-  if(window._fbReady && window._fbLoad) {
-    for(const y of years) {
-      if(String(y) === String(CURRENT_YEAR)) continue; // current already in memory
-      try {
-        // Firebase has priority over localStorage for status
-        const remote = await window._fbLoad(y);
-        if(remote && remote._status) {
-          window._exerciseStatuses[String(y)] = remote._status;
-        }
-        if(remote && remote._isTest !== undefined) {
-          if(!window._exerciseStatuses[String(y)]) window._exerciseStatuses[String(y)] = {};
-          if(typeof window._exerciseStatuses[String(y)] === 'string') {
-            const st = window._exerciseStatuses[String(y)];
-            window._exerciseStatuses[String(y)] = {_status: st};
-          }
-          window._exerciseStatuses[String(y)]._isTest = remote._isTest;
-          localStorage.setItem('ledger_test_flag_' + String(y), remote._isTest ? '1' : '0');
-        } else if(remote) {
-          // Firestore a répondu pour cet exercice mais sans champ _isTest :
-          // Firestore fait foi, donc ce n'est PAS un exercice test, même si
-          // un vieux résidu localStorage dit le contraire. On écrase le cache
-          // local pour éviter qu'un flag périmé ne fasse ressurgir un faux
-          // badge TEST.
-          if(!window._exerciseStatuses[String(y)]) window._exerciseStatuses[String(y)] = {};
-          if(typeof window._exerciseStatuses[String(y)] === 'string') {
-            const st = window._exerciseStatuses[String(y)];
-            window._exerciseStatuses[String(y)] = {_status: st};
-          }
-          window._exerciseStatuses[String(y)]._isTest = false;
-          localStorage.setItem('ledger_test_flag_' + String(y), '0');
-        } else {
-          // Firestore n'a rien renvoyé du tout pour cet exercice (hors ligne,
-          // ou exercice purement local) : on retombe sur le cache localStorage
-          // existant, faute de mieux.
-          // Fallback to localStorage only if Firebase has no data
-          const cached = localStorage.getItem('ledger_' + y);
-          if(cached) {
-            try {
-              const d = JSON.parse(cached);
-              if(d && d._status) window._exerciseStatuses[String(y)] = d._status;
-            } catch(e) {}
-          }
-        }
-      } catch(e) {}
-    }
-  }
-
   const sel = document.getElementById('ex-year-select');
   if(sel) sel.innerHTML = years.map(y =>
     `<option value="${y}" ${y === curStr ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' + y : y}</option>`
   ).join('');
   return years;
 }
-
 async function switchExercise(year) {
   if(String(year) === String(CURRENT_YEAR)) return;
-  await flushPendingSave();
-  CURRENT_YEAR = isTestExercise(year) ? year : parseInt(year);
-  DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
-  await loadDB();
+  const sel = document.getElementById('ex-year-select');
+  // 1. Tout ce qui est en attente doit être enregistré AVANT de quitter l'exercice
+  if(!(await toutEnregistrer())) {
+    if(sel) sel.value = String(CURRENT_YEAR);
+    toast("Changement d'exercice impossible : des modifications ne sont pas enregistrées", 'error', 6000);
+    return;
+  }
+  // 2. Lecture du nouvel exercice SANS toucher à l'exercice affiché
+  const cible = isTestExercise(year) ? year : parseInt(year);
+  let r;
+  try { r = await chargerExercice(cible); }
+  catch(e) { afficherErreurConnexion(e); return; }
+  if(!r) {
+    if(sel) sel.value = String(CURRENT_YEAR);
+    toast(`L'exercice ${year} n'existe pas (ou plus) dans Firebase`, 'error', 6000);
+    try { await loadKnownYears(); } catch(e) { afficherErreurConnexion(e); }
+    return;
+  }
+  // 3. Bascule
+  installerExercice(cible, r);
   initDefaults();
   EXERCISE_STATUS = DB._status || 'open';
+  histClear();
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
-  // Retour systématique sur la saisie comptable, quel que soit l'onglet
-  // où l'on se trouvait avant le changement d'exercice.
+  // Retour systématique sur la saisie comptable
+  if(editingNum !== null) cancelEditEcriture();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0;
   if(EXERCISE_STATUS !== 'closed') addLine(); // pas de ligne de saisie sur un exercice clôturé (lecture seule)
   updateNextNum(); upTotals();
   showTab('saisie');
   startLiveSync();
+  setSaveStatus('ok');
   refreshAlerteTaux();
   toast('Exercice ' + year + ' chargé', 'success');
 }
-
 function showExerciseModal() {
   afficherBlocagesCloture([]);
   const options = Array.from(document.getElementById('ex-year-select').options);
@@ -5387,83 +5466,71 @@ function getExerciseStatus(y) {
   const val = window._exerciseStatuses?.[String(y)];
   if(typeof val === 'string') return val;
   if(val && typeof val === 'object' && val._status) return val._status;
-  try {
-    const d = JSON.parse(localStorage.getItem('ledger_' + y));
-    if(d && d._status) return d._status;
-  } catch(e) {}
   return 'open';
 }
-
 function requestDeleteExercise(y, rowEl) {
   const isTest = isTestExercise(y);
   const confId = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
   const existing = document.getElementById(confId);
   if(existing && existing.remove) { existing.remove(); return; }
 
+  // V79 (m9) : mot de passe TOUJOURS demandé ; pour un vrai exercice, le nom doit en plus être retapé
   const conf = document.createElement('div');
   conf.id = confId;
   conf.style.cssText = 'padding:10px 12px;background:var(--bg3);border:1px solid rgba(255,96,96,0.4);border-radius:var(--radius);margin-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;';
-
-  if(isTest) {
-    // Test: just confirm
-    const txt = document.createTextNode('Supprimer "' + y + '" ? ');
-    const btnOk = document.createElement('button');
-    btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
-    btnOk.style.cssText = 'pointer-events:all!important;';
-    btnOk.textContent = '✓ SUPPRIMER';
-    btnOk.addEventListener('click', () => { conf.remove(); doDeleteExercise(y); });
-    const btnCancel = document.createElement('button');
-    btnCancel.className = 'btn btn-sm btn-readonly-ok';
-    btnCancel.style.cssText = 'pointer-events:all!important;';
-    btnCancel.textContent = 'ANNULER';
-    btnCancel.addEventListener('click', () => conf.remove());
-    conf.appendChild(txt); conf.appendChild(btnOk); conf.appendChild(btnCancel);
-  } else {
-    // Non-test: require admin password
-    const lbl = document.createElement('span');
-    lbl.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--text1);';
-    lbl.textContent = 'Mot de passe admin : ';
-    const pw = document.createElement('input');
-    pw.type = 'password'; pw.placeholder = '••••••••';
-    pw.style.cssText = 'height:28px;font-family:var(--mono);font-size:12px;flex:1;min-width:120px;';
-    const btnOk = document.createElement('button');
-    btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
-    btnOk.style.cssText = 'pointer-events:all!important;';
-    btnOk.textContent = '🗑 SUPPRIMER';
-    btnOk.addEventListener('click', () => {
-      if(pw.value === ADMIN_PASSWORD) { conf.remove(); doDeleteExercise(y); }
-      else { pw.style.border = '1px solid var(--red)'; pw.value = ''; pw.focus(); }
-    });
-    const btnCancel = document.createElement('button');
-    btnCancel.className = 'btn btn-sm btn-readonly-ok';
-    btnCancel.style.cssText = 'pointer-events:all!important;';
-    btnCancel.textContent = 'ANNULER';
-    btnCancel.addEventListener('click', () => conf.remove());
-    conf.appendChild(lbl); conf.appendChild(pw); conf.appendChild(btnOk); conf.appendChild(btnCancel);
+  const lbl = document.createElement('span');
+  lbl.style.cssText = 'font-family:var(--mono);font-size:11px;color:var(--text1);width:100%;';
+  lbl.textContent = isTest
+    ? `Supprimer l'exercice test « ${y} » : mot de passe admin.`
+    : `Supprimer DÉFINITIVEMENT l'exercice « ${y} » : retapez son nom et le mot de passe admin.`;
+  conf.appendChild(lbl);
+  let nomInp = null;
+  if(!isTest) {
+    nomInp = document.createElement('input');
+    nomInp.type = 'text'; nomInp.placeholder = 'Nom de l’exercice';
+    nomInp.style.cssText = 'height:28px;font-family:var(--mono);font-size:12px;width:130px;pointer-events:all!important;';
+    conf.appendChild(nomInp);
   }
-
+  const pw = document.createElement('input');
+  pw.type = 'password'; pw.placeholder = 'Mot de passe admin';
+  pw.style.cssText = 'height:28px;font-family:var(--mono);font-size:12px;flex:1;min-width:120px;pointer-events:all!important;';
+  const btnOk = document.createElement('button');
+  btnOk.className = 'btn btn-sm btn-danger btn-readonly-ok';
+  btnOk.style.cssText = 'pointer-events:all!important;';
+  btnOk.textContent = '🗑 SUPPRIMER';
+  btnOk.addEventListener('click', () => {
+    if(nomInp && nomInp.value.trim() !== String(y)) { nomInp.style.border = '1px solid var(--red)'; nomInp.focus(); return; }
+    if(pw.value === ADMIN_PASSWORD) { conf.remove(); doDeleteExercise(y); }
+    else { pw.style.border = '1px solid var(--red)'; pw.value = ''; pw.focus(); }
+  });
+  const btnCancel = document.createElement('button');
+  btnCancel.className = 'btn btn-sm btn-readonly-ok';
+  btnCancel.style.cssText = 'pointer-events:all!important;';
+  btnCancel.textContent = 'ANNULER';
+  btnCancel.addEventListener('click', () => conf.remove());
+  conf.appendChild(pw); conf.appendChild(btnOk); conf.appendChild(btnCancel);
   rowEl.after(conf);
 }
-
 async function doDeleteExercise(y) {
-  clearTimeout(_saveTimeout);
-  _pendingSave = null; // on supprime l'exercice : pas de flush, et on annule tout envoi tardif
+  if(!(await toutEnregistrer())) { toast('Suppression impossible : des modifications ne sont pas enregistrées', 'error', 6000); return; }
   window._deletingYear = y;
-  try { localStorage.removeItem('ledger_' + y); localStorage.removeItem('ledger_test_flag_' + y); } catch(e) {}
-  if(window._fbReady && window._fbDelete) await window._fbDelete(y);
+  try { await window._fbDelete(y); }
+  catch(e) { window._deletingYear = null; toast(`Échec de la suppression de "${y}" dans Firebase — rien n'a été supprimé`, 'error', 6000); return; }
   window._deletingYear = null;
+  delete LOADED_REV[String(y)];
+  if(window._exerciseStatuses) delete window._exerciseStatuses[String(y)];
   if(String(CURRENT_YEAR) === String(y)) {
-    CURRENT_YEAR = new Date().getFullYear();
-    DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
-    await loadDB(); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
-    renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
+    const annee = new Date().getFullYear();
+    let r;
+    try { r = await chargerExercice(annee); } catch(e) { afficherErreurConnexion(e); return; }
+    installerExercice(annee, r); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
+    histClear(); renum(); updateNavCounts(); applyExerciseStatus(); fillYears(); startLiveSync();
     document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   }
-  await loadKnownYears(y);
+  try { await loadKnownYears(y); } catch(e) { afficherErreurConnexion(e); return; }
   closeExerciseModal();
   toast(`Exercice "${y}" supprimé.`, 'warn');
 }
-
 async function consultExercise() {
   const sel = document.getElementById('consult-ex-select');
   const y = sel?.value;
@@ -5532,14 +5599,15 @@ async function createNewExerciseConfirm() {
   input.value = '';
   createNewExerciseCancel();
   closeExerciseModal();
-  await flushPendingSave();
+  if(!(await toutEnregistrer())) { toast("Création impossible : des modifications ne sont pas enregistrées", 'error', 6000); return; }
   CURRENT_YEAR = label;
+  LOADED_REV[String(label)] = 'new'; // V79 : l'enregistrement sera refusé si cet exercice existe déjà dans Firebase
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
   if(!isNaN(parseInt(label, 10))) DB._anneeComptable = parseInt(label, 10);
   EXERCISE_STATUS = 'open';
-  await saveDBNow();
-  await loadKnownYears();
+  if(!(await saveDBNow())) return; // exercice déjà existant ou Firebase indisponible : bandeau affiché
+  try { await loadKnownYears(); } catch(e) { afficherErreurConnexion(e); return; }
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   startLiveSync();
@@ -5660,7 +5728,7 @@ async function clotureGoToNext() {
   DB._status = 'closed';
   EXERCISE_STATUS = 'closed';
   applyExerciseStatus();
-  await saveDBNow(true); // force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
+  if(!(await saveDBNow(true))) { DB._status = 'open'; EXERCISE_STATUS = 'open'; applyExerciseStatus(); return; } // V79 : clôture non enregistrée → annulée ; force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
   document.getElementById('cloture-confirm').style.display = 'none';
   // Build the N+1 panel
   const nextYear = isTestExercise(CURRENT_YEAR) ? CURRENT_YEAR + '_N1' : (parseInt(CURRENT_YEAR) + 1);
@@ -5743,8 +5811,9 @@ async function clotureCreateNext() {
   window._closingDB = null;
   input.value = '';
   closeExerciseModal();
-  await flushPendingSave();
+  if(!(await toutEnregistrer())) { toast("Création impossible : des modifications ne sont pas enregistrées", 'error', 6000); return; }
   CURRENT_YEAR = label;
+  LOADED_REV[String(label)] = 'new'; // V79 : l'enregistrement sera refusé si cet exercice existe déjà dans Firebase
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
   EXERCISE_STATUS = 'open';
@@ -5758,8 +5827,8 @@ async function clotureCreateNext() {
     DB.nextGlobalNum = fnoEcritures.length + 1;
     DB.journalNums['OD'] = fnoEcritures.length + 1;
   }
-  await saveDBNow(true);
-  await loadKnownYears();
+  if(!(await saveDBNow(true))) return; // exercice déjà existant ou Firebase indisponible : bandeau affiché
+  try { await loadKnownYears(); } catch(e) { afficherErreurConnexion(e); return; }
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
   startLiveSync();
@@ -6020,33 +6089,8 @@ async function deleteTestExercise(y) {
   existing.parentNode.insertBefore(conf, existing.nextSibling);
 }
 
-async function doDeleteTestExercise(y) {
-  if(!isTestExercise(y)) return;
-  // Stop any pending auto-save that could rewrite _meta after deletion
-  clearTimeout(_saveTimeout);
-  _pendingSave = null;
-  window._deletingYear = y; // prevent _fbSave from re-adding to _meta
-  // Remove from localStorage first
-  try { localStorage.removeItem('ledger_' + y); } catch(e) {}
-  // Remove from Firebase
-  if(window._fbReady && window._fbDelete) {
-    await window._fbDelete(y);
-  }
-  window._deletingYear = null; // clear flag
-  // Always switch away from the deleted exercise (even if not currently on it)
-  if(String(CURRENT_YEAR) === String(y)) {
-    CURRENT_YEAR = new Date().getFullYear();
-    DB = { ecritures:[], tbData:[], rappelsMensuel:{}, rappelsMensuelList:[], rappelsAnnuel:{}, rappelsAnnuelList:[], nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1} };
-    await loadDB(); initDefaults(); EXERCISE_STATUS = DB._status || 'open';
-    renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
-    document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
-  }
-  // Pass the deleted year so loadKnownYears can exclude it
-  await loadKnownYears(y);
-  closeExerciseModal();
-  toast(`Exercice "${y}" supprimé.`, 'warn');
-}
-
+// (ancienne suppression des exercices test : désormais même chemin, protégé, que les autres exercices)
+async function doDeleteTestExercise(y) { return doDeleteExercise(y); }
 async function unlockExercise() {
   const pwEl = document.getElementById('unlock-pw');
   const errEl = document.getElementById('unlock-err');
@@ -6054,34 +6098,28 @@ async function unlockExercise() {
   errEl.textContent = '';
   if(!targetYear) { errEl.textContent = 'Sélectionnez un exercice.'; return; }
   if((pwEl?.value||'') !== ADMIN_PASSWORD) { errEl.textContent = 'Mot de passe incorrect.'; pwEl.value=''; pwEl.focus(); return; }
-  // No confirm needed — password is the confirmation
-  // Load the target exercise data, flip status, save back
-  let targetDB = null;
-  if(window._fbReady && window._fbLoad) targetDB = await window._fbLoad(targetYear);
-  if(!targetDB) {
-    // Try localStorage
-    try { const r = localStorage.getItem('ledger_' + targetYear); if(r) targetDB = JSON.parse(r); } catch(e) {}
-  }
-  if(!targetDB) { errEl.textContent = 'Données introuvables pour cet exercice.'; pwEl.value=''; return; }
-  targetDB._status = 'open';
-  // Save directly bypassing the closed guard (since we're writing to a potentially different exercise)
-  if(window._fbReady && window._fbSave) await window._fbSave(targetDB, targetYear);
-  try { localStorage.setItem('ledger_' + targetYear, JSON.stringify(targetDB)); } catch(e) {}
-  // If we just unlocked the current exercise, update live state too
+  if(!(await toutEnregistrer())) { errEl.textContent = 'Des modifications ne sont pas enregistrées : réessayez après enregistrement.'; return; }
+  // Lecture dans Firebase uniquement (V79 : jamais depuis une copie locale)
+  let r;
+  try { r = await chargerExercice(targetYear); }
+  catch(e) { errEl.textContent = 'Firebase ne répond pas : déverrouillage annulé, rien n\'a été modifié.'; return; }
+  if(!r) { errEl.textContent = 'Exercice introuvable dans Firebase.'; pwEl.value=''; return; }
+  r.data._status = 'open';
+  let newRev;
+  try { newRev = await window._fbWrite(JSON.stringify(r.data), targetYear, r.rev); }
+  catch(e) { errEl.textContent = e && e.code === 'rev-conflict' ? 'Exercice modifié ailleurs entre-temps : réessayez.' : 'Échec de l\'enregistrement dans Firebase : rien n\'a été modifié.'; return; }
+  window._exerciseStatuses = window._exerciseStatuses || {};
+  window._exerciseStatuses[String(targetYear)] = { _status: 'open', _isTest: !!r.data._isTest };
   if(String(targetYear) === String(CURRENT_YEAR)) {
     DB._status = 'open';
     EXERCISE_STATUS = 'open';
+    LOADED_REV[String(targetYear)] = newRev;
     applyExerciseStatus();
   }
   pwEl.value = '';
   closeExerciseModal();
   toast(`Exercice "${targetYear}" déverrouillé.`, 'warn');
 }
-
-// (old deleteTestExercise removed — replaced by the version above with addEventListener)
-
-// (saveDB override removed — closed-exercise guard is now built into saveDB directly)
-
 // ══════════════════════════════════════════════
 // EDITIONS COMPTABLES
 // ══════════════════════════════════════════════
@@ -6208,7 +6246,7 @@ async function generateBG(fmt) {
   let dbN1 = null;
   if(n1Year && window._fbLoad) {
     toast('Chargement N-1...','info');
-    const remote = await window._fbLoad(n1Year);
+    const remote = await chargerPourEdition(n1Year);
     if(remote && remote.ecritures) dbN1 = remote;
   }
 
@@ -6724,7 +6762,7 @@ async function generateBilanExcel() {
   let dbN1 = null;
   if(n1Year && window._fbLoad) {
     toast('Chargement N-1...','info');
-    const remote = await window._fbLoad(n1Year);
+    const remote = await chargerPourEdition(n1Year);
     if(remote && remote.ecritures) dbN1 = remote;
   }
 
@@ -7066,7 +7104,7 @@ async function generateBilanPDF() {
   const b = buildBilanPCG();
   let bn1 = null;
   if(n1Year && window._fbLoad) {
-    const remote = await window._fbLoad(n1Year);
+    const remote = await chargerPourEdition(n1Year);
     if(remote && remote.ecritures) {
       // Geler toute sauvegarde pendant la bascule temporaire : DB/CURRENT_YEAR
       // vont pointer sur l'exercice N-1 le temps du calcul, il ne faut surtout
@@ -7374,7 +7412,7 @@ async function generateCRExcelData() {
   let dbN1 = null;
   if(n1Year && window._fbLoad) {
     toast('Chargement N-1...','info');
-    const remote = await window._fbLoad(n1Year);
+    const remote = await chargerPourEdition(n1Year);
     if(remote && remote.ecritures) dbN1 = remote;
   }
 
@@ -7649,7 +7687,7 @@ async function generateCRPDF() {
   const cr = buildCRPCG();
   let crn1 = null;
   if(n1Year && window._fbLoad) {
-    const remote = await window._fbLoad(n1Year);
+    const remote = await chargerPourEdition(n1Year);
     if(remote && remote.ecritures) {
       // Geler toute sauvegarde pendant la bascule temporaire (même raison que generateBilanPDF)
       const wasSuspended = window._saveSuspended;
@@ -8604,7 +8642,7 @@ function openMouvementModal(locId, editId) {
     // Nouveau mouvement : valeurs par défaut
     document.getElementById('mvt-sens').value = '+';
     libInput.value = '';
-    const today = new Date().toISOString().slice(0,10);
+    const today = dateLocale(new Date());
     const mois = today.slice(0,7);
     document.getElementById('mvt-date-operation').value = today;
     document.getElementById('mvt-mois-ref').value = mois;
@@ -9049,7 +9087,7 @@ function genererQuittanceV2(loc, mois) {
     id: crypto.randomUUID(),
     type: 'quittance',
     mois,
-    dateEmission: dateEmission.toISOString().slice(0,10),
+    dateEmission: dateLocale(dateEmission),
     montantPaye: totalRecu,
     docHtml: html,
     docTitle: `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`,
@@ -9720,7 +9758,7 @@ function generateAppelLoyerV2() {
     id: crypto.randomUUID(),
     type: 'appel',
     mois, moisPrec,
-    dateEmission: dateEmission.toISOString().slice(0,10),
+    dateEmission: dateLocale(dateEmission),
     echeance: partACharge, totalDu: totalLoyerProvision, montantAppel: montantAppelTotal,
     apl, commentaire,
     docHtml: html,
@@ -9838,7 +9876,7 @@ function generateQuittance() {
   </div>`;
 
   loc.historique = loc.historique || [];
-  loc.historique.push({id:crypto.randomUUID(), type:'quittance', mois, dateEmission: new Date().toISOString().slice(0,10), datePaiement, montantPaye, hasApl, aplDate, aplMontant, docHtml: html, docTitle: `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`});
+  loc.historique.push({id:crypto.randomUUID(), type:'quittance', mois, dateEmission: dateLocale(new Date()), datePaiement, montantPaye, hasApl, aplDate, aplMontant, docHtml: html, docTitle: `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`});
 
   saveDB(); updateNavCounts();
   closeQuittanceModal();
@@ -10410,7 +10448,7 @@ function getOrBuildKmFicheMois(km, mois) {
     if(fiche.comptabilise) Object.assign(fiche, { docHtml: html, docTitle });
     else Object.assign(fiche, { total: montant, totalKm, docHtml: html, docTitle, archived: false });
   } else {
-    fiche = { id: crypto.randomUUID(), mois, vehiculeId: null, dateEmission: new Date().toISOString().slice(0,10), total: montant, totalKm, docHtml: html, docTitle, comptabilise: false };
+    fiche = { id: crypto.randomUUID(), mois, vehiculeId: null, dateEmission: dateLocale(new Date()), total: montant, totalKm, docHtml: html, docTitle, comptabilise: false };
     km.fiches.push(fiche);
   }
   // Les anciennes fiches "par véhicule" non comptabilisées de ce mois ne sont plus utiles
@@ -10481,7 +10519,7 @@ function comptabiliserKmMois(mois) {
     DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:total});
   }
   fiche.comptabilise = true;
-  fiche.dateEmission = new Date().toISOString().slice(0,10);
+  fiche.dateEmission = dateLocale(new Date());
   km.moisMarquesSansEcriture = km.moisMarquesSansEcriture.filter(m => m !== mois);
   renum(); saveDB(); updateNavCounts();
   notifierPieceGeneree('km', numDoc, libelleEcriture, dateEcr);
@@ -10699,9 +10737,9 @@ function toggleEcheancierSuffixe() {
 // ── Alerte d'expiration au chargement ──
 function checkEcheanciersExpiration() {
   const list = ensureEcheanciersArray();
-  const today = new Date().toISOString().slice(0,10);
+  const today = dateLocale(new Date());
   const in30 = new Date(); in30.setDate(in30.getDate()+30);
-  const in30str = in30.toISOString().slice(0,10);
+  const in30str = dateLocale(in30);
   const expires = list.filter(e => e.periodeFin && e.periodeFin < today);
   const bientot = list.filter(e => e.periodeFin && e.periodeFin >= today && e.periodeFin <= in30str);
   // L'alerte globale (affichée à l'ouverture) se met à jour d'elle-même : elle disparaît
@@ -10728,9 +10766,9 @@ function checkEcheanciersExpiration() {
 function checkEcheanciersExpirationAuBoot() {
   const {expires, bientot} = (() => {
     const list = ensureEcheanciersArray();
-    const today = new Date().toISOString().slice(0,10);
+    const today = dateLocale(new Date());
     const in30 = new Date(); in30.setDate(in30.getDate()+30);
-    const in30str = in30.toISOString().slice(0,10);
+    const in30str = dateLocale(in30);
     return {
       expires: list.filter(e => e.periodeFin && e.periodeFin < today),
       bientot: list.filter(e => e.periodeFin && e.periodeFin >= today && e.periodeFin <= in30str)
@@ -10823,9 +10861,9 @@ function renderEcheanciers() {
   }
   if(empty) empty.style.display = 'none';
 
-  const today = new Date().toISOString().slice(0,10);
+  const today = dateLocale(new Date());
   const in30 = new Date(); in30.setDate(in30.getDate()+30);
-  const in30str = in30.toISOString().slice(0,10);
+  const in30str = dateLocale(in30);
 
   const groups = {};
   list.forEach(ech => {
@@ -12518,7 +12556,7 @@ async function rvReprendreN1() {
     .filter(y => y < String(CURRENT_YEAR)).sort();
   const prev = years[years.length - 1];
   if(!prev || !window._fbLoad) { toast('Aucun exercice précédent disponible','error'); return; }
-  const remote = await window._fbLoad(prev);
+  const remote = await chargerPourEdition(prev);
   const RP = remote && remote.revision;
   if(!RP) { toast(`Aucune révision enregistrée sur l'exercice ${prev}`,'warn'); return; }
   const R = ensureRevision();
@@ -12868,7 +12906,7 @@ function genererPVApprobation() {
 
   const docTitle = `PV_AGO_Approbation_${anneeTxt - 1}`;
   DB.pvApprobations = DB.pvApprobations || [];
-  DB.pvApprobations.push({id:crypto.randomUUID(), dateEmission:new Date().toISOString().slice(0,10), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, docHtml:html, docTitle});
+  DB.pvApprobations.push({id:crypto.randomUUID(), dateEmission:dateLocale(new Date()), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, docHtml:html, docTitle});
   saveDB();
 
   printDoc(html, docTitle, false);
@@ -12902,31 +12940,25 @@ function anneeEnLettres(annee) {
 // ══════════════════════════════════════════════
 async function boot() {
   window._exerciseStatuses = {};
-  // Clean up any corrupted localStorage keys
-  const validKeys = [];
-  for(let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i);
-    if(!key) continue;
-    if(key.startsWith('ledger_test_flag_')) continue; // keep test flags
-    if(key.startsWith('ledger_')) {
-      const suffix = key.replace('ledger_', '');
-      const isValid = suffix && suffix !== 'NaN' && suffix.trim() !== '' &&
-        (isTestExercise(suffix) || (!isNaN(parseInt(suffix)) && parseInt(suffix) > 1900 && parseInt(suffix) < 2100));
-      if(!isValid) { localStorage.removeItem(key); continue; }
-      validKeys.push(suffix);
-      try {
-        const d = JSON.parse(localStorage.getItem(key));
-        if(d && d._status) window._exerciseStatuses[suffix] = d._status;
-      } catch(e) {}
+  // V79 : plus aucune copie locale des données. On efface les anciennes copies laissées par les versions
+  // précédentes (ledger_AAAA, ledger_test_flag_AAAA), qui pourraient être périmées.
+  try {
+    for(let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if(key && key.startsWith('ledger_')) localStorage.removeItem(key);
     }
-  }
+  } catch(e) {}
   CURRENT_YEAR = new Date().getFullYear();
-  await loadKnownYears();
-  await loadDB();
+  try {
+    const r = await chargerExercice(CURRENT_YEAR);
+    installerExercice(CURRENT_YEAR, r);
+    await loadKnownYears();
+  } catch(e) { afficherErreurConnexion(e); return; }
   initDefaults();
   EXERCISE_STATUS = DB._status || 'open';
-  renum(); // normalise dates et numéros
-  await saveDBNow(); // persiste les corrections dans Firebase
+  renum(); // normalise dates et numéros (enregistré à la prochaine action, jamais automatiquement)
+  histClear();
+  setSaveStatus('ok');
   fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
@@ -12938,8 +12970,7 @@ async function boot() {
   if(sessionStorage.getItem('sci_auth') === '1') { checkEcheanciersExpirationAuBoot(); checkAlerteTauxAuBoot(); }
 
   // Le chargement des données (Firebase) est asynchrone : si l'utilisateur a déjà navigué
-  // vers un onglet pendant ce chargement, celui-ci peut s'être affiché avec des données
-  // encore vides. On force ici un nouveau rendu de l'onglet actif, maintenant que tout est chargé.
+  // vers un onglet pendant ce chargement, on force un nouveau rendu de l'onglet actif.
   const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
   const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
   if(activeTabId && allRenders[activeTabId]) allRenders[activeTabId]();
