@@ -481,7 +481,7 @@ body.exercise-closed #tab-saisie .btn:not(.btn-readonly-ok) {
 }
 body.exercise-closed #tab-saisie .btn-primary { pointer-events: none; opacity: 0.35; }
 /* Import modal must always be usable regardless of exercise status */
-#import-modal input, #import-modal textarea, #import-modal select, #import-modal button {
+#import-modal-disabled-rule {
   pointer-events: all !important; opacity: 1 !important;
 }
 
@@ -665,7 +665,6 @@ applyTheme();
       <span>📌 PIÈCES À FORMALISER</span>
       <span id="btn-postit-badge" style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
     </button>
-    <button class="btn btn-sm btn-readonly-ok" onclick="showImportModal()">IMPORT GL</button>
     <button class="btn btn-sm btn-gold btn-readonly-ok" onclick="exportData()">EXPORT</button>
     <button class="btn btn-sm btn-danger" onclick="undoLast()" id="btn-undo" disabled>↩ ANNULER</button>
     <button class="btn btn-sm" onclick="redoNext()" id="btn-redo" disabled style="color:var(--amber);border-color:rgba(255,176,32,0.4);background:rgba(255,176,32,0.1);">↪ RÉTABLIR</button>
@@ -1301,13 +1300,17 @@ applyTheme();
         <div style="display:flex;gap:8px;">
           <button class="btn" onclick="editerTableauCCInterets()">📄 ÉDITER LE TABLEAU DE CALCUL</button>
           <button class="btn btn-primary" onclick="openCCInteretsConfirmModal()">✓ COMPTABILISER LES INTÉRÊTS</button>
+          <button class="btn" onclick="askAnnulerCCInterets()">↩ ANNULER LES INTÉRÊTS COMPTABILISÉS</button>
         </div>
       </div>
 
       <div class="card">
         <div class="card-title">Constatation du résultat de l'exercice</div>
         <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;">Comptabilise le résultat de l'exercice (bénéfice ou perte) en une écriture unique, sans toucher aux comptes de charges et de produits.</p>
-        <button class="btn btn-primary" onclick="openInventaireModal()">🧮 CONSTATER LE RÉSULTAT DE L'EXERCICE</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="openInventaireModal()">🧮 CONSTATER LE RÉSULTAT DE L'EXERCICE</button>
+          <button class="btn" onclick="askAnnulerConstatation()">↩ ANNULER LA CONSTATATION</button>
+        </div>
       </div>
     </div>
 
@@ -2529,6 +2532,13 @@ applyTheme();
       <div id="new-ex-err" style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:5px;min-height:14px;"></div>
     </div>
 
+    <!-- V81 (m8) : import du Grand Livre (reprise ponctuelle) -->
+    <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">IMPORTER UN GRAND LIVRE (REPRISE)</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;line-height:1.5;">Reprise d'écritures depuis un autre logiciel, dans l'exercice affiché (exercice ouvert uniquement). Toutes les lignes sont contrôlées avant import.</div>
+      <button class="btn btn-sm" onclick="closeExerciseModal();showImportModal()">⬆ IMPORTER UN GRAND LIVRE</button>
+    </div>
+
     <!-- Déverrouiller -->
     <div style="border-top:1px solid var(--line);padding-top:12px;margin-bottom:12px;">
       <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:0.08em;margin-bottom:8px;">DÉVERROUILLER UN EXERCICE CLÔTURÉ</div>
@@ -3065,6 +3075,7 @@ function notifierPieceGeneree(module, numDoc, libelle, date) {
 
 // Purge auto : retire les pièces cochées il y a plus de 10 jours
 function purgerPostItPieces() {
+  if(EXERCISE_STATUS === 'closed') return;
   const list = ensurePiecesAFormaliser();
   const seuil = Date.now() - 10 * 24 * 3600 * 1000;
   const avant = list.length;
@@ -3136,6 +3147,7 @@ function grouperPostItParPiece(list) {
 }
 
 function togglePieceFormalisee(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const list = ensurePiecesAFormaliser();
   const p = list.find(x => x.id === id);
   if(!p) return;
@@ -3262,6 +3274,7 @@ let _saveInFlight = false;
 let _saveFailure = null;            // { year, json, conflict, creation, reason } — échec non résolu
 let _snapshotEnAttente = null;      // changement distant reçu pendant un enregistrement local
 var LOADED_REV = {};                // année -> version Firebase connue de ce poste ('new' = exercice à créer)
+var _baseCloture = {};              // V81 (M3) : année -> contenu figé (JSON) d'un exercice clôturé, tel que lu dans Firebase
 window._fbBloque = false;           // true après une erreur de connexion bloquante : plus aucune écriture
 
 function setSaveStatus(state) {
@@ -3335,14 +3348,42 @@ async function _ecrireExercice(json, year) {
   }
 }
 
+// V81 (M3) : contenu réellement enregistré. Exercice clôturé → contenu figé + bloc Révision uniquement.
+function jsonAEnregistrer(force) {
+  const y = String(CURRENT_YEAR);
+  if(EXERCISE_STATUS === 'closed' && !force) {
+    const base = _baseCloture[y];
+    if(!base) return null; // contenu figé inconnu : on n'enregistre rien
+    const d = JSON.parse(base);
+    if(DB.revision) d.revision = DB.revision; else delete d.revision;
+    return JSON.stringify(d);
+  }
+  return JSON.stringify(DB);
+}
+function figerBaseCloture() {
+  const y = String(CURRENT_YEAR);
+  if(EXERCISE_STATUS === 'closed') { try { _baseCloture[y] = JSON.stringify(DB); } catch(e) {} }
+  else delete _baseCloture[y];
+}
+// Refuse une action de modification sur un exercice clôturé (message une fois toutes les 3 s au plus)
+let _dernierAvisCloture = 0;
+function bloqueSiCloture(silencieux) {
+  if(EXERCISE_STATUS !== 'closed') return false;
+  if(!silencieux && Date.now() - _dernierAvisCloture > 3000) {
+    _dernierAvisCloture = Date.now();
+    toast('Exercice clôturé : lecture seule (seule la révision comptable est modifiable)', 'error', 4000);
+  }
+  return true;
+}
 function saveDB() {
   if(window._saveSuspended) return; // DB/CURRENT_YEAR temporairement basculés sur un autre exercice (ex. bilan N-1)
   if(window._fbBloque) return;
   if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(CURRENT_YEAR)] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest };
-  let json; try { json = JSON.stringify(DB); } catch(e) { console.error(e); return; }
-  histRecord(json);
+  let json, histJson; try { histJson = JSON.stringify(DB); json = jsonAEnregistrer(false); } catch(e) { console.error(e); return; }
+  histRecord(histJson);
+  if(json === null) { _signalerEchec(CURRENT_YEAR, 'exercice clôturé : contenu figé introuvable, rechargez la page', null); return; }
   clearTimeout(_saveTimeout);
   // Instantané figé MAINTENANT : un changement d'exercice ultérieur ne peut pas modifier ce qui part
   _pendingSave = { json, year: CURRENT_YEAR };
@@ -3361,11 +3402,11 @@ function flushPendingSave() {
   return _saveChain;
 }
 async function saveDBNow(force) {
-  if(EXERCISE_STATUS === 'closed' && !force) return true;
   if(window._fbBloque) return false;
-  let json; try { json = JSON.stringify(DB); } catch(e) { console.error(e); return false; }
+  let json, histJson; try { histJson = JSON.stringify(DB); json = jsonAEnregistrer(force); } catch(e) { console.error(e); return false; }
+  if(json === null) return false;
   // V72 : une sauvegarde forcée (clôture, changement d'exercice…) remet l'historique à zéro
-  if(force) histClear(); else histRecord(json);
+  if(force) histClear(); else histRecord(histJson);
   clearTimeout(_saveTimeout);
   _pendingSave = { json, year: CURRENT_YEAR };
   setSaveStatus('saving');
@@ -3403,6 +3444,8 @@ function installerExercice(year, r) {
   // Firestore fait foi pour _isTest : champ absent = exercice normal
   DB._isTest = r ? (r.data._isTest !== undefined ? !!r.data._isTest : false) : !!DB._isTest;
   LOADED_REV[String(year)] = r ? r.rev : 'new';
+  if(DB._status !== 'closed') (DB.ecritures||[]).forEach(e => { if(e.numDoc === 'BAO' && !e.id) { e.id = crypto.randomUUID(); e._io = 0; e._module = 'bao'; } });
+  if(r && r.data._status === 'closed') _baseCloture[String(year)] = JSON.stringify(r.data); else delete _baseCloture[String(year)];
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(year)] = { _status: DB._status || 'open', _isTest: !!DB._isTest };
 }
@@ -3445,6 +3488,7 @@ function _recevoirChangementDistant({ data, rev }) {
   Object.assign(DB, normaliserDB(data));
   if(DB._isTest === undefined) DB._isTest = false;
   LOADED_REV[y] = rev;
+  if(DB._status === 'closed') _baseCloture[y] = JSON.stringify(data); else delete _baseCloture[y];
   const detail = decrireChangements(avant, DB);
   EXERCISE_STATUS = DB._status || 'open';
   renum(); updateNavCounts(); applyExerciseStatus();
@@ -3578,6 +3622,31 @@ function renderEditions() {
 // ══════════════════════════════════════════════
 // V80 (C4 bis) : neutralise un texte avant de l'insérer dans la page (empêche toute exécution de code)
 function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+// V81 (M2) : une date saisie doit appartenir à l'année comptable de l'exercice affiché
+function dateDansExercice(d) {
+  const Y = anneeCompta();
+  if(!d || !/^\d{4}-\d{2}-\d{2}$/.test(String(d))) return false;
+  return String(d) >= `${Y}-01-01` && String(d) <= `${Y}-12-31`;
+}
+function messageDateHorsExercice(d) { const Y = anneeCompta(); return `Date ${d ? fmtDateGL(d) : 'absente'} hors exercice : elle doit être comprise entre le 01/01/${Y} et le 31/12/${Y}`; }
+// Contrôle d'une ligne : renvoie un message d'erreur, ou '' si la ligne est correcte
+function erreurLigne(l, nom) {
+  const d = +l.debit || 0, c = +l.credit || 0;
+  if(!l.compte) return `${nom} : montant sans compte`;
+  if(!DB.tbData.some(r => String(r.compte) === String(l.compte))) return `${nom} : compte ${l.compte} absent du plan comptable`;
+  if(d < 0 || c < 0) return `${nom} : montant négatif interdit (utilisez l'autre colonne)`;
+  if(d > 0 && c > 0) return `${nom} : débit et crédit sur la même ligne`;
+  if(d < 0.005 && c < 0.005) return `${nom} : ligne sans montant`;
+  return '';
+}
+// Contrôle complet d'une écriture : renvoie un message d'erreur, ou '' si tout est correct
+function erreurLignesEcriture(lines) {
+  for(let i = 0; i < lines.length; i++) { const e = erreurLigne(lines[i], `Ligne ${i+1}`); if(e) return e; }
+  const tD = lines.reduce((s,l)=>s+(+l.debit||0),0), tC = lines.reduce((s,l)=>s+(+l.credit||0),0);
+  if(Math.abs(tD - tC) > 0.005) return `Écriture non équilibrée (débit ${fmt(tD)} / crédit ${fmt(tC)})`;
+  if(tD < 0.005) return 'Écriture à zéro';
+  return '';
+}
 function fmt(n) { if(n===null||n===undefined||isNaN(n)) return ''; return parseFloat(n).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function fmtN(n) { return n===0?'':fmt(n); }
 function evalMontant(input) {
@@ -3939,6 +4008,8 @@ let editingLineIds = []; // V79 (M1) : identifiants des lignes de l'écriture en
 let editingOrigNumDoc = '', editingOrigDate = ''; // pour synchroniser le post-it si l'utilisateur modifie une écriture
 
 function editEcriture(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
+  if(refuserSiEcritureDeModule(DB.ecritures.find(x => x.id === id))) return; // V81 (M10)
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — modification impossible','error'); return; }
   const e = DB.ecritures.find(x => x.id === id);
   if(!e) return;
@@ -4053,6 +4124,7 @@ function saveEcriture() {
   if(!journal){toast('Saisissez un journal','error');return;}
   if(!['VE','HA','IMMO','OD','TRESO'].includes(journal)){toast('Journal invalide (VE, HA, IMMO, OD, TRESO)','error');return;}
   if(!date){toast('Saisissez une date','error');return;}
+  if(!dateDansExercice(date)){toast(messageDateHorsExercice(date),'error',6000);return;}
   const lines=getLines();
   if(lines.length<2){toast('Au moins 2 lignes requises','error');return;}
   if(lines.some(l=>!l.libelleEcriture)){toast('Chaque ligne doit avoir un libellé écriture','error');return;}
@@ -4063,9 +4135,8 @@ function saveEcriture() {
     return !DB.tbData.some(r => String(r.compte) === val) || val.length !== 6;
   });
   if(invalidCompte) { toast('Un ou plusieurs comptes sont invalides — corrigez avant de valider','error'); invalidCompte.focus(); return; }
-  const totD=lines.reduce((s,l)=>s+l.debit,0);
-  const totC=lines.reduce((s,l)=>s+l.credit,0);
-  if(Math.abs(totD-totC)>0.005){toast('Écriture non équilibrée','error');return;}
+  const errL = erreurLignesEcriture(lines);
+  if(errL){toast(errL,'error',6000);return;}
   const snap=JSON.parse(JSON.stringify(DB.ecritures));
   // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
 
@@ -4235,6 +4306,8 @@ function redoNext() {
 // DELETE
 // ══════════════════════════════════════════════
 function askDelete(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
+  if(refuserSiEcritureDeModule(DB.ecritures.find(x => x.id === id))) return; // V81 (M10)
   const e=DB.ecritures.find(x=>x.id===id); if(!e) return;
   deleteTargetId=id;
   const groupLines = DB.ecritures.filter(x=>x.num===e.num && x._io===e._io);
@@ -4445,8 +4518,9 @@ function renderGL() {
       <td class="td-num c-credit">${fmtN(e.credit)}</td>
       <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
       <td style="text-align:center;padding:0 4px;white-space:nowrap;">
-        <button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
-        <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
+        ${(() => { const m = moduleDeLEcriture(e); if(m) { const info = MODULES_ECRITURES[m] || {nom:m}; return `<button class="btn btn-sm btn-icon" onclick="ouvrirModuleEcriture('${e.id}')" title="Écriture gérée par le module ${esc(info.nom)} — cliquer pour y aller" style="padding:1px 5px;font-size:9px;color:var(--text2);">🔒 ${esc(info.nom.split(' (')[0].split(' ')[0])}</button>`; }
+          return `<button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>`; })()}
       </td>
     </tr>`;
   }).join('');
@@ -4615,8 +4689,112 @@ function renderTBData() {
   }).join('');
   document.getElementById('nc-tb').textContent=DB.tbData.length;
 }
-function tbu(i,f,v){if(DB.tbData[i]){DB.tbData[i][f]=v;saveDB();upDl();}}
+// V81 (M10) : module d'origine d'une ligne d'écriture ('' = saisie manuelle)
+const MODULES_ECRITURES = {
+  locative:     { nom: 'Gestion locative', onglet: 'locataires', aide: 'Modifiez ou supprimez le mouvement dans la fiche du locataire.' },
+  echeancier:   { nom: 'Échéanciers', onglet: 'echeanciers', aide: 'Cliquez sur le carré vert du mois pour annuler la comptabilisation.' },
+  emprunt:      { nom: 'Emprunts', onglet: 'emprunts', aide: 'Cliquez sur le carré vert du mois pour annuler la comptabilisation.' },
+  km:           { nom: 'Frais kilométriques', onglet: 'km', aide: 'Cliquez sur le carré vert du mois pour annuler la comptabilisation.' },
+  dotation:     { nom: 'Immobilisations (dotation)', onglet: 'immos', aide: "Utilisez « Annuler la dotation » sur la ligne de l'immobilisation." },
+  ccInterets:   { nom: "Écritures d'inventaire (intérêts CCA)", onglet: 'inventaire', aide: 'Utilisez « Annuler les intérêts comptabilisés ».' },
+  constatation: { nom: "Écritures d'inventaire (constatation)", onglet: 'inventaire', aide: 'Utilisez « Annuler la constatation ».' },
+  approbation:  { nom: 'Approbation du résultat', onglet: 'approbation', aide: "Utilisez « Annuler l'affectation » sur la ligne du PV." },
+  bao:          { nom: "Balance d'ouverture", onglet: 'grandlivre', aide: "Elle est générée à la création de l'exercice et ne se modifie pas à la main." },
+};
+function moduleDeLaLigne(e) {
+  if(!e) return '';
+  if(e._module) return e._module;
+  if((e._mvtLocataireIds && e._mvtLocataireIds.length) || e._mvtLocataireId) return 'locative';
+  if(e._io !== undefined && (DB.echeanciers||[]).some(x => x.moisIo && Object.values(x.moisIo).includes(e._io))) return 'echeancier';
+  if(e._io !== undefined && (DB.emprunts||[]).some(x => x.moisIo && Object.values(x.moisIo).includes(e._io))) return 'emprunt';
+  const nd = String(e.numDoc||''), lib = String(e.libelleEcriture||'');
+  if((nd.startsWith('KM_') || nd.startsWith('KM/')) && lib.startsWith('Kilomètres')) return 'km';
+  if(nd === 'CLOTURE') return 'constatation';
+  if(nd === 'OD/Calcul des intérêts de c:c') return 'ccInterets';
+  if(nd === 'DP/PV AG' && lib.startsWith('Affectation du résultat')) return 'approbation';
+  if(nd === 'BAO') return 'bao';
+  if(e.journal === 'OD' && !nd && /^Amortissement \d{4} - /.test(lib)) return 'dotation';
+  return '';
+}
+// Module de l'écriture entière (une seule ligne marquée suffit)
+function moduleDeLEcriture(e) {
+  if(!e) return '';
+  const lignes = DB.ecritures.filter(x => x.num === e.num && x._io === e._io);
+  for(const l of (lignes.length ? lignes : [e])) { const m = moduleDeLaLigne(l); if(m) return m; }
+  return '';
+}
+function refuserSiEcritureDeModule(e) {
+  const m = moduleDeLEcriture(e); if(!m) return false;
+  const info = MODULES_ECRITURES[m] || { nom: m, aide: '' };
+  toast(`Écriture gérée par le module ${info.nom} : elle ne se modifie que depuis ce module. ${info.aide}`, 'error', 7000);
+  return true;
+}
+function ouvrirModuleEcriture(id) {
+  const e = DB.ecritures.find(x => x.id === id); if(!e) return;
+  const m = moduleDeLEcriture(e); const info = MODULES_ECRITURES[m]; if(!info) return;
+  if(info.onglet && info.onglet !== 'grandlivre') showTab(info.onglet);
+  toast(`${info.nom} : ${info.aide}`, 'warn', 7000);
+}
+// Suppression d'écritures par un module, avec nettoyage du post-it
+function supprimerEcrituresParModule(filtre) {
+  const cibles = DB.ecritures.filter(filtre);
+  if(!cibles.length) return 0;
+  const pieces = new Set(cibles.filter(e => e.numDoc).map(e => e.numDoc + '||' + e.date));
+  DB.ecritures = DB.ecritures.filter(e => !filtre(e));
+  pieces.forEach(k => {
+    const [numDoc, date] = k.split('||');
+    if(!DB.ecritures.some(e => e.numDoc === numDoc && e.date === date))
+      DB.piecesAFormaliser = ensurePiecesAFormaliser().filter(p => !(p.numDoc === numDoc && p.date === date));
+  });
+  return cibles.length;
+}
+
+// V81 (m6) : où un compte est-il utilisé ? (exercice affiché + fiches de modules)
+function usagesCompteLocaux(c) {
+  c = String(c||''); if(!c) return [];
+  const u = [];
+  const nb = DB.ecritures.filter(e => String(e.compte) === c).length;
+  if(nb) u.push(`${nb} ligne(s) d'écriture en ${CURRENT_YEAR}`);
+  (DB.locataires||[]).forEach(l => {
+    if([l.compteCA,l.compteProvision,l.compteClient].map(String).includes(c)) u.push(`fiche locataire ${l.nom1||l.numClient||''}`);
+    (l.types||[]).forEach(t => { if([t.compteDebit,t.compteCredit].map(String).includes(c)) u.push(`type « ${t.nom} » du locataire ${l.nom1||''}`); });
+  });
+  (DB.echeanciers||[]).forEach(e => { if([e.compteDebit,e.compteCredit,e.compteCredit2].map(String).includes(c)) u.push(`échéancier « ${e.libelle} »`); });
+  (DB.emprunts||[]).forEach(e => { if([e.compteEmprunt,e.compteInterets,e.compteCredit].map(String).includes(c)) u.push(`emprunt « ${e.libelle} »`); });
+  (DB.immobilisations||[]).forEach(i => { if([i.compteImmo,i.compteDotation,i.compteAmort].map(String).includes(c)) u.push(`immobilisation « ${i.libelle} »`); });
+  const km = DB.km || {}; if([km.compteDebit,km.compteCredit,km.compteCredit2].map(String).includes(c)) u.push('paramètres des frais kilométriques');
+  if(DB.ccInterets && DB.ccInterets[c]) u.push("taux d'intérêts des comptes courants");
+  return u;
+}
+// … et dans l'exercice précédent (lu dans Firebase). Lève une exception si Firebase ne répond pas.
+async function usagesCompte(c) {
+  const u = usagesCompteLocaux(c);
+  const prec = String(anneeCompta() - 1);
+  const existe = Array.from(document.getElementById('ex-year-select')?.options || []).some(o => o.value === prec);
+  if(existe) {
+    const d = await window._fbLoad(prec);
+    const nb = d ? (d.ecritures||[]).filter(e => String(e.compte) === String(c)).length : 0;
+    if(nb) u.push(`${nb} ligne(s) d'écriture en ${prec}`);
+  }
+  return u;
+}
+async function tbu(i,f,v){
+  if(!DB.tbData[i] || String(DB.tbData[i][f] ?? '') === String(v)) return; // rien n'a changé
+  if(bloqueSiCloture()) { renderTBData(); return; }
+  if(f === 'compte') {
+    const ancien = String(DB.tbData[i].compte || ''), nouveau = String(v).trim();
+    if(nouveau && DB.tbData.some((r,j) => j !== i && String(r.compte) === nouveau)) { toast(`Le compte ${nouveau} existe déjà dans le plan comptable`, 'error', 5000); renderTBData(); return; }
+    if(ancien) {
+      let u;
+      try { u = await usagesCompte(ancien); } catch(e) { toast('Firebase ne répond pas : impossible de vérifier ce compte, modification annulée', 'error', 5000); renderTBData(); return; }
+      if(u.length) { toast(`Numéro non modifiable : le compte ${ancien} est utilisé (${u.slice(0,3).join(', ')}${u.length>3?'…':''}). Créez un nouveau compte et passez une écriture de reclassement.`, 'error', 8000); renderTBData(); return; }
+    }
+    v = nouveau;
+  }
+  DB.tbData[i][f]=v; saveDB(); upDl();
+}
 function addTBRow(){
+  if(bloqueSiCloture()) return; // V81 (M3)
   DB.tbData.push({compte:'',libelle:'',r1:'',libR1:'',r2:'',libR2:'',r3:'',libR3:''});
   saveDB(); renderTBData();
   // Scroll to bottom and focus the new compte field
@@ -4627,8 +4805,18 @@ function addTBRow(){
     setTimeout(()=>lastRow.querySelector('input')?.focus(), 100);
   }
 }
-function delTB(i){DB.tbData.splice(i,1);saveDB();renderTBData();upDl();}
+async function delTB(i){
+  if(bloqueSiCloture()) return; // V81 (M3)
+  const r = DB.tbData[i]; if(!r) return;
+  if(r.compte) {
+    let u;
+    try { u = await usagesCompte(r.compte); } catch(e) { toast('Firebase ne répond pas : impossible de vérifier ce compte, suppression annulée', 'error', 5000); return; }
+    if(u.length) { toast(`Suppression impossible : le compte ${r.compte} est utilisé (${u.slice(0,3).join(', ')}${u.length>3?'…':''})`, 'error', 8000); return; }
+  }
+  DB.tbData.splice(i,1); saveDB(); renderTBData(); upDl();
+}
 function showTBImport() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const csv=prompt('Collez un CSV (compte;libelle) ou TSV :'); if(!csv) return;
   let added=0;
   csv.split('\n').filter(l=>l.trim()).forEach(l=>{
@@ -4686,6 +4874,7 @@ function renderMensuel() {
 }
 
 function addRappelMensuel() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const nom = prompt('Nom de l\'écriture mensuelle :');
   if(!nom || !nom.trim()) return;
   DB.rappelsMensuelList.push(nom.trim());
@@ -4693,6 +4882,7 @@ function addRappelMensuel() {
 }
 
 function delRappelMensuel(idx) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const nom = DB.rappelsMensuelList[idx];
   if(!nom) return;
   DB.rappelsMensuelList.splice(idx, 1);
@@ -4703,7 +4893,9 @@ function delRappelMensuel(idx) {
   saveDB(); renderMensuel();
   toast(`"${nom}" supprimé`, 'warn');
 }
-function togM(y,k,v){if(!DB.rappelsMensuel[y])DB.rappelsMensuel[y]={};DB.rappelsMensuel[y][k]=v;saveDB();renderMensuel();}
+function togM(y,k,v){
+  if(bloqueSiCloture()) return; // V81 (M3)
+  if(!DB.rappelsMensuel[y])DB.rappelsMensuel[y]={};DB.rappelsMensuel[y][k]=v;saveDB();renderMensuel();}
 function resetMensuel(){
   if(EXERCISE_STATUS==='closed'){toast('Exercice clôturé','error');return;}
   DB.rappelsMensuel[CURRENT_YEAR]={};saveDB();renderMensuel();
@@ -4749,6 +4941,7 @@ function renderAnnuel() {
 }
 
 function addRappelAnnuel() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const nom = prompt('Nom de l\'écriture annuelle :');
   if(!nom || !nom.trim()) return;
   DB.rappelsAnnuelList.push(nom.trim());
@@ -4756,6 +4949,7 @@ function addRappelAnnuel() {
 }
 
 function delRappelAnnuel(idx) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const nom = DB.rappelsAnnuelList[idx];
   if(!nom) return;
   DB.rappelsAnnuelList.splice(idx, 1);
@@ -4763,7 +4957,9 @@ function delRappelAnnuel(idx) {
   saveDB(); renderAnnuel();
   toast(`"${nom}" supprimé`, 'warn');
 }
-function togA(y,k,v){if(!DB.rappelsAnnuel[y])DB.rappelsAnnuel[y]={};DB.rappelsAnnuel[y][k]=v;saveDB();renderAnnuel();}
+function togA(y,k,v){
+  if(bloqueSiCloture()) return; // V81 (M3)
+  if(!DB.rappelsAnnuel[y])DB.rappelsAnnuel[y]={};DB.rappelsAnnuel[y][k]=v;saveDB();renderAnnuel();}
 function resetAnnuel(){
   if(EXERCISE_STATUS==='closed'){toast('Exercice clôturé','error');return;}
   DB.rappelsAnnuel[CURRENT_YEAR]={};saveDB();renderAnnuel();
@@ -4774,6 +4970,7 @@ function resetAnnuel(){
 // IMPORT
 // ══════════════════════════════════════════════
 function showImportModal(){
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('import-text').value='';
   document.getElementById('import-preview').innerHTML='';
   document.getElementById('btn-confirm-import').disabled=true;
@@ -4882,6 +5079,25 @@ function previewImport(){
   });
 
   if(!importParsed.length){toast('Aucune ligne valide','error');return;}
+  // V81 (m8) : contrôles avant import — ligne par ligne, puis par écriture d'origine, puis doublons
+  const erreurs = [];
+  importParsed.forEach((r, i) => {
+    const num = `Ligne ${i+1} (n° ${r._origNum||'?'})`;
+    if(!dateDansExercice(r.date)) erreurs.push(`${num} : ${messageDateHorsExercice(r.date)}`);
+    const e = erreurLigne({compte:r.compte, debit:r.debit, credit:r.credit}, num);
+    if(e) erreurs.push(e);
+  });
+  const groupes = new Map();
+  importParsed.forEach(r => { const k = String(r._origNum||''); if(!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(r); });
+  groupes.forEach((ls, k) => {
+    const d = ls.reduce((s,l)=>s+l.debit,0), c = ls.reduce((s,l)=>s+l.credit,0);
+    if(Math.abs(d-c) > 0.005) erreurs.push(`Écriture n° ${k||'(sans numéro)'} non équilibrée : débit ${fmt(d)} / crédit ${fmt(c)}`);
+  });
+  const sigE = e => [e.date, e.compte, Math.round((+e.debit||0)*100), Math.round((+e.credit||0)*100), (e.libelleEcriture||'').trim()].join('|');
+  const existants = new Set(DB.ecritures.map(sigE));
+  const doublons = importParsed.filter(r => existants.has(sigE(r))).length;
+  window._importDoublons = doublons;
+  window._importErreurs = erreurs;
   const totD=importParsed.reduce((s,r)=>s+r.debit,0);
   const totC=importParsed.reduce((s,r)=>s+r.credit,0);
   document.getElementById('import-preview').innerHTML=`
@@ -4892,23 +5108,36 @@ function previewImport(){
       ${importParsed.length>20?`<tr><td colspan="8" style="text-align:center;color:var(--text2);font-family:var(--mono);font-size:10px;">… +${importParsed.length-20} ligne(s)</td></tr>`:''}
       </tbody></table>
     </div>`;
-  document.getElementById('btn-confirm-import').disabled=false;
+  const zone = document.getElementById('import-preview');
+  if(erreurs.length) {
+    zone.innerHTML = `<div class="alert alert-danger" style="display:block;margin-bottom:8px;"><strong>Import impossible — ${erreurs.length} anomalie(s) à corriger dans le fichier :</strong><br>${erreurs.slice(0,15).map(esc).join('<br>')}${erreurs.length>15?`<br>… et ${erreurs.length-15} autre(s)`:''}</div>` + zone.innerHTML;
+    document.getElementById('btn-confirm-import').disabled=true;
+    return;
+  }
+  if(doublons) zone.innerHTML = `<div class="alert alert-warn" style="display:block;margin-bottom:8px;">⚠ ${doublons} ligne(s) identique(s) existent déjà dans cet exercice : ce fichier semble déjà importé.<br><label style="display:flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;margin-top:6px;"><input type="checkbox" id="import-force-doublons" style="width:13px;height:13px;" onchange="document.getElementById('btn-confirm-import').disabled=!this.checked"> Importer quand même</label></div>` + zone.innerHTML;
+  document.getElementById('btn-confirm-import').disabled = doublons > 0;
 }
 async function confirmImport(){
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!importParsed.length) return;
-  // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
-  const t=Date.now();
-  importParsed.forEach((r,i)=>{
-    DB.ecritures.push({id:crypto.randomUUID(),_io:r._origNum||Date.now()+i,_origGroup:r._origGroup||0,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
+  if((window._importErreurs||[]).length) { toast("Corrigez d'abord les anomalies du fichier",'error'); return; }
+  if(window._importDoublons && !document.getElementById('import-force-doublons')?.checked) { toast('Cochez « Importer quand même » pour confirmer','error'); return; }
+  // V81 (m8) : chaque écriture importée reçoit un numéro propre (plus de collision avec les numéros d'origine),
+  // le numéro d'origine est conservé en référence (_numOrigine)
+  const base = Date.now();
+  const ioParGroupe = new Map(); let k = 0;
+  importParsed.forEach(r => {
+    const g = String(r._origNum||'') || ('ligne' + k);
+    if(!ioParGroupe.has(g)) ioParGroupe.set(g, base + (k++));
+    DB.ecritures.push({id:crypto.randomUUID(),_io:ioParGroupe.get(g),_numOrigine:r._origNum||null,journal:r.journal,date:r.date,compte:r.compte,libelleCompte:r.libelleCompte||getLib(r.compte),libelleEcriture:r.libelleEcriture,numDoc:r.numDoc,debit:r.debit,credit:r.credit});
   });
-  const nbGroupes = new Set(importParsed.map(r => r._origGroup)).size;
+  const nbGroupes = ioParGroupe.size;
   renum(); updateNavCounts();
   await saveDBNow();
   closeImportModal();
   toast(nbGroupes+' écriture(s) importée(s) ('+importParsed.length+' lignes)','success');
   importParsed=[];
 }
-
 // ══════════════════════════════════════════════
 // EXPORT
 // ══════════════════════════════════════════════
@@ -5181,6 +5410,7 @@ function ensurePiecesTypesInitialized() {
 }
 
 function openPiecesTypeModal() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('piecestype-edit-code').value = '';
   document.getElementById('piecestype-modal-title').textContent = '+ NOUVEAU TYPE DE PIÈCE';
   document.getElementById('piecestype-code').value = '';
@@ -5190,6 +5420,7 @@ function openPiecesTypeModal() {
 }
 
 function editPiecesType(code) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   ensurePiecesTypesInitialized();
   const t = DB.piecesTypes.find(x => x.code === code);
   if(!t) return;
@@ -5207,6 +5438,7 @@ function closePiecesTypeModal() {
 }
 
 function savePiecesType() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const editCode = document.getElementById('piecestype-edit-code').value;
   const code = document.getElementById('piecestype-code').value.trim().toUpperCase();
   const label = document.getElementById('piecestype-label').value.trim();
@@ -5231,6 +5463,7 @@ function savePiecesType() {
 
 let _piecestypeDeleteCode = null;
 function askDeletePiecesType(code) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   ensurePiecesTypesInitialized();
   const t = DB.piecesTypes.find(x => x.code === code);
   if(!t) return;
@@ -5252,6 +5485,7 @@ function closePiecesTypeDeleteModal() {
 }
 
 function confirmDeletePiecesType() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!_piecestypeDeleteCode) return;
   ensurePiecesTypesInitialized();
   DB.piecesTypes = DB.piecesTypes.filter(x => x.code !== _piecestypeDeleteCode);
@@ -5840,7 +6074,8 @@ async function clotureGoToNext() {
   DB._status = 'closed';
   EXERCISE_STATUS = 'closed';
   applyExerciseStatus();
-  if(!(await saveDBNow(true))) { DB._status = 'open'; EXERCISE_STATUS = 'open'; applyExerciseStatus(); return; } // V79 : clôture non enregistrée → annulée ; force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
+  if(!(await saveDBNow(true))) { DB._status = 'open'; EXERCISE_STATUS = 'open'; applyExerciseStatus(); return; }
+  figerBaseCloture(); // V79 : clôture non enregistrée → annulée ; force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
   document.getElementById('cloture-confirm').style.display = 'none';
   // Build the N+1 panel
   const nextYear = isTestExercise(CURRENT_YEAR) ? CURRENT_YEAR + '_N1' : (parseInt(CURRENT_YEAR) + 1);
@@ -6065,6 +6300,7 @@ function refreshAlerteTaux() {
 function checkAlerteTauxAuBoot() { refreshAlerteTaux(); }
 
 function openTauxMajModal() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const r = tauxAMettreAJour();
   const km = DB.km || {}; const cc = DB.ccInterets || {};
   const body = document.getElementById('taux-maj-body');
@@ -6095,6 +6331,7 @@ function closeTauxMajModal() {
   refreshAlerteTaux();
 }
 function confirmTauxMaj() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.querySelectorAll('.taux-maj-input').forEach(inp => {
     const val = parseFloat(inp.value);
     if(isNaN(val)) return;
@@ -6151,7 +6388,7 @@ function buildFNO(ecritures, tbData) {
   let totalDebit = 0, totalCredit = 0;
   // Debitors first
   debitors.forEach(s => {
-    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
+    result.push({ id: crypto.randomUUID(), _io: 0, _module: 'bao', num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
       libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
       numDoc:'BAO', debit:s.net, credit:0 });
     totalDebit += s.net;
@@ -6159,7 +6396,7 @@ function buildFNO(ecritures, tbData) {
   });
   // Creditors second
   creditors.forEach(s => {
-    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
+    result.push({ id: crypto.randomUUID(), _io: 0, _module: 'bao', num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
       libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
       numDoc:'BAO', debit:0, credit:Math.abs(s.net) });
     totalCredit += Math.abs(s.net);
@@ -6168,7 +6405,7 @@ function buildFNO(ecritures, tbData) {
   // Balancing entry on 890000
   const diff = Math.round((totalDebit - totalCredit) * 100) / 100;
   if(Math.abs(diff) > 0.01) {
-    result.push({ num, journal:'OD', numJ:num, date:dateStr, compte:'890000',
+    result.push({ id: crypto.randomUUID(), _io: 0, _module: 'bao', num, journal:'OD', numJ:num, date:dateStr, compte:'890000',
       libelleCompte:"Bilan d'ouverture", libelleEcriture:"Balance d'ouverture",
       numDoc:'BAO', debit: diff < 0 ? Math.abs(diff) : 0, credit: diff > 0 ? diff : 0 });
   }
@@ -6223,9 +6460,13 @@ async function unlockExercise() {
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(targetYear)] = { _status: 'open', _isTest: !!r.data._isTest };
   if(String(targetYear) === String(CURRENT_YEAR)) {
+    // On repart du contenu tel qu'enregistré (toute modification locale non enregistrée est écartée)
+    Object.keys(DB).forEach(k => delete DB[k]); Object.assign(DB, normaliserDB(r.data));
     DB._status = 'open';
     EXERCISE_STATUS = 'open';
     LOADED_REV[String(targetYear)] = newRev;
+    delete _baseCloture[String(targetYear)];
+    renum(); histClear(); updateNavCounts();
     applyExerciseStatus();
   }
   pwEl.value = '';
@@ -8065,6 +8306,7 @@ let _afficherInactifs = false; // affiche aussi les locataires désactivés (par
 // Bascule le statut actif/inactif d'un locataire (départ du logement / retour)
 // Le locataire est masqué de la vue par défaut mais toutes ses données restent intactes.
 function toggleLocataireActif(locId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   loc.actif = !loc.actif;
@@ -8313,6 +8555,7 @@ function renderLocataireDetail() {
 // ── Paramétrage des types d'opérations ────────────────────────────────────────
 
 function openTypesModal(locId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   ensureLocV2(loc);
@@ -8373,6 +8616,7 @@ function renderTypesList() {
 }
 
 function newType() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('type-edit-id').value = '';
   document.getElementById('type-form-title').textContent = '+ Nouveau type';
   document.getElementById('type-nom').value = '';
@@ -8427,6 +8671,7 @@ function updateTypePreview() {
 }
 
 function saveType() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const locId = document.getElementById('types-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
@@ -8478,6 +8723,7 @@ function askDeleteType(typeId) {
 }
 
 function confirmDeleteType() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const locId = document.getElementById('types-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(loc && _typeDeleteId) {
@@ -8508,6 +8754,7 @@ function openCopyTypesPicker() {
 function closeCopyTypesModal() { document.getElementById('copy-types-modal').style.display = 'none'; }
 
 function confirmCopyTypes() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const currentLocId = document.getElementById('types-modal-loc-id').value;
   const sourceId = document.getElementById('copy-types-source').value;
   if(!sourceId) { toast('Choisissez un locataire source','error'); return; }
@@ -8697,6 +8944,7 @@ function updateMouvementTotal() {
 
 // Ouverture de la modale de saisie/édition d'un mouvement
 function openMouvementModal(locId, editId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   ensureLocV2(loc);
@@ -8841,6 +9089,7 @@ function saveMouvement() {
   const dateOperation = document.getElementById('mvt-date-operation').value;
   const montant = parseFloat(document.getElementById('mvt-montant').value) || 0;
   if(!dateOperation) { toast('Date d\'opération requise', 'error'); return; }
+  if(!dateDansExercice(dateOperation)) { toast(messageDateHorsExercice(dateOperation), 'error', 6000); return; }
   if(montant <= 0) { toast('Le montant doit être positif', 'error'); return; }
   const affectations = getMouvementAffectations();
   if(!affectations.length) { toast('Sélectionnez au moins un mois d\'affectation', 'error'); return; }
@@ -8940,7 +9189,7 @@ function postMouvementEcritures(mvt, t, loc) {
       existante._mvtLocataireIds = [...new Set([...(existante._mvtLocataireIds||[]), mvt.id])];
     } else {
       DB.ecritures.push({
-        id: crypto.randomUUID(), _io: ioGroup,
+        id: crypto.randomUUID(), _io: ioGroup, _module: 'locative',
         journal: t.journal, date: mvt.dateOperation,
         compte, libelleCompte: getLib(compte)||'',
         libelleEcriture: libelleFinal, numDoc,
@@ -9056,6 +9305,7 @@ function retirerPieceDuPostIt(module, numDoc, date) {
 // Suppression d'un mouvement (avec confirmation)
 let _mvtDeleteTarget = null;
 function askDeleteMouvement(mvtId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
   if(!loc) return;
   const mvt = (loc.mouvements||[]).find(m => m.id === mvtId);
@@ -9088,6 +9338,7 @@ function askDeleteMouvement(mvtId) {
 }
 
 function confirmDeleteMouvement() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
   if(loc && _mvtDeleteTarget) {
     const mvt = (loc.mouvements||[]).find(m => m.id === _mvtDeleteTarget);
@@ -9216,6 +9467,7 @@ function genererQuittanceV2(loc, mois) {
 // ── SOLDES INITIAUX PAR MOIS (amorce de l'outil) ──────────────────────────────
 
 function openSoldesInitiauxModal(locId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   ensureLocV2(loc);
@@ -9250,6 +9502,7 @@ function renderSoldesInitiauxRows() {
 }
 
 function addSoldeInitialRow() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const locId = document.getElementById('si-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
@@ -9259,6 +9512,7 @@ function addSoldeInitialRow() {
 }
 
 function updateSoldeInitial(idx, field, value) {
+  if(bloqueSiCloture()) return;
   const locId = document.getElementById('si-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc || !loc.soldesInitiaux[idx]) return;
@@ -9267,6 +9521,7 @@ function updateSoldeInitial(idx, field, value) {
 }
 
 function removeSoldeInitial(idx) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const locId = document.getElementById('si-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc || !loc.soldesInitiaux[idx]) return;
@@ -9276,6 +9531,7 @@ function removeSoldeInitial(idx) {
 }
 
 function saveSoldesInitiauxAndClose() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const locId = document.getElementById('si-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
@@ -9354,7 +9610,7 @@ function renderLocataires() {
     // Rattrapage v2 : flag actif par défaut à true
     if(loc.actif === undefined) { loc.actif = true; needsSave = true; }
   });
-  if(needsSave) saveDB();
+  if(needsSave && EXERCISE_STATUS !== 'closed') saveDB();
 
   // Filtre actif / inactif : par défaut on masque les inactifs (partis du logement)
   const nbInactifs = list.filter(l => !l.actif).length;
@@ -9516,6 +9772,7 @@ function toggleSecondOccupant() {
 }
 
 function openLocataireModal(editId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('loc-edit-id').value = editId || '';
   // Bouton "Paramétrer les types" : visible uniquement en édition (le locataire doit déjà exister)
   const typesBtn = document.getElementById('loc-modal-types-btn');
@@ -9559,6 +9816,7 @@ function openLocataireModal(editId) {
 function closeLocataireModal() { document.getElementById('loc-modal').style.display = 'none'; }
 
 function saveLocataire() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const editId = document.getElementById('loc-edit-id').value;
   const numClient = document.getElementById('loc-numclient').value.trim();
   const adresse1 = document.getElementById('loc-adresse1').value.trim();
@@ -9604,6 +9862,7 @@ function saveLocataire() {
 
 let locDeleteTargetId = null;
 function askDeleteLocataire(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === id);
   if(!loc) return;
   locDeleteTargetId = id;
@@ -9620,6 +9879,7 @@ function closeLocataireDeleteModal() {
   btn.setAttribute('onclick', 'confirmDeleteLocataire()');
 }
 function confirmDeleteLocataire() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!locDeleteTargetId) return;
   DB.locataires = ensureLocatairesArray().filter(l => l.id !== locDeleteTargetId);
   saveDB();
@@ -10068,6 +10328,7 @@ let archiveTarget = null;
 // ── Suppression directe d'un impayé (utile pour corriger une erreur de saisie ou un test) ──
 let impayeDeleteTarget = null;
 function askDeleteImpaye(locId, impayeId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   const im = (loc.impayes||[]).find(x => x.id === impayeId);
@@ -10081,6 +10342,7 @@ function askDeleteImpaye(locId, impayeId) {
   document.getElementById('loc-delete-modal').style.display = 'flex';
 }
 function confirmDeleteImpaye() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!impayeDeleteTarget) return;
   const loc = ensureLocatairesArray().find(l => l.id === impayeDeleteTarget.locId);
   if(loc) loc.impayes = (loc.impayes||[]).filter(x => x.id !== impayeDeleteTarget.impayeId);
@@ -10092,6 +10354,7 @@ function confirmDeleteImpaye() {
 }
 
 function askArchiveHistoriqueEntry(locId, entryId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   const entry = (loc.historique||[]).find(h => h.id === entryId);
@@ -10107,6 +10370,7 @@ function askArchiveHistoriqueEntry(locId, entryId) {
 }
 // V72 : archivage de tous les documents (appels + quittances) d'un mois
 function askArchiveMoisDocs(locId, mois) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
   const docs = (loc.historique||[]).filter(h => h.mois === mois);
@@ -10130,6 +10394,7 @@ function askArchiveMoisDocs(locId, mois) {
   document.getElementById('loc-delete-modal').style.display = 'flex';
 }
 function confirmArchiveHistoriqueEntry() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!archiveTarget) return;
   const loc = ensureLocatairesArray().find(l => l.id === archiveTarget.locId);
   if(!loc) { closeLocataireDeleteModal(); return; }
@@ -10253,6 +10518,7 @@ function kmTotauxMois(km, mois) {
 
 // ── Paramètres (fenêtre dédiée) ──
 function openKmParamsModal() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   renderKmParams();
   document.getElementById('km-params-modal').style.display = 'flex';
 }
@@ -10286,6 +10552,7 @@ function renderKmParams() {
   if(cred2El && document.activeElement !== cred2El) cred2El.value = km.compteCredit2 || '';
 }
 function addKmVehicule() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const inp = document.getElementById('km-new-vehicule');
   const nom = inp.value.trim();
   if(!nom) { toast('Nom du véhicule requis','error'); return; }
@@ -10299,6 +10566,7 @@ function addKmVehicule() {
 // Suppression "douce" : le véhicule n'est plus proposé pour les nouveaux trajets,
 // mais il reste en base pour que les trajets déjà saisis gardent leur nom et leur barème.
 function removeKmVehicule(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const v = kmVehicule(km, id);
   if(!v) return;
@@ -10310,6 +10578,7 @@ function removeKmVehicule(id) {
   renderKmSaisieMois();
 }
 function saveKmVehiculeBareme(id, taux) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const v = kmVehicule(km, id);
   if(!v) return;
@@ -10326,6 +10595,7 @@ function toggleKmCreditDouble() {
   saveKmConfig();
 }
 function saveKmConfig() {
+  if(bloqueSiCloture(true)) return;
   const km = ensureKm();
   const g = id => (document.getElementById(id)?.value || '').trim();
   km.compteDebit = g('km-compte-debit');
@@ -10478,6 +10748,7 @@ function kmLireTrajetForm(prefix, mois) {
   return { date, vehiculeId, lieu, motif, km: kmVal };
 }
 function addKmTrajet() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const mois = getKmSaisieMois();
   if(kmMoisComptabilise(km, mois)) { toast('Mois déjà comptabilisé','error'); return; }
@@ -10492,6 +10763,7 @@ function addKmTrajet() {
   setTimeout(() => document.getElementById('km-new-date')?.focus(), 0);
 }
 function removeKmTrajet(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   km.trajets = km.trajets.filter(t => t.id !== id);
   saveDB();
@@ -10499,6 +10771,7 @@ function removeKmTrajet(id) {
   renderKmFichesList();
 }
 function saveKmTrajetEdit(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const t = km.trajets.find(x => x.id === id);
   if(!t) return;
@@ -10592,6 +10865,7 @@ function askComptabiliserKmMois(mois) {
 }
 function closeKmComptaModal() { document.getElementById('km-compta-modal').style.display = 'none'; _kmComptaPending = null; }
 function confirmKmCompta() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!_kmComptaPending) return;
   const { mois, mode } = _kmComptaPending;
   closeKmComptaModal();
@@ -10620,15 +10894,15 @@ function comptabiliserKmMois(mois) {
   const numDoc = 'KM_' + mm + '/' + yy.slice(-2);
   const io = Date.now();
   const total = fiche.total;
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc, debit:total, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc, debit:total, credit:0});
   if(km.crediteDouble && km.compteCredit2) {
     // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur, le 2e le solde exact.
     const part1 = Math.ceil(total * 50) / 100;
     const part2 = Math.round((total - part1) * 100) / 100;
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit2, libelleCompte:getLib(km.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit2, libelleCompte:getLib(km.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
   } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:total});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:total});
   }
   fiche.comptabilise = true;
   fiche.dateEmission = dateLocale(new Date());
@@ -10650,6 +10924,7 @@ function openKmMarquerModal() {
 }
 function closeKmMarquerModal() { document.getElementById('km-marquer-modal').style.display = 'none'; }
 function confirmKmMarquer() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const mm = document.getElementById('km-marquer-mois-sel').value;
   const yy = document.getElementById('km-marquer-annee-sel').value;
   const mois = `${yy}-${mm}`;
@@ -10727,6 +11002,7 @@ function viewKmFiche(id) {
 // ── Archivage générique (fiches km, PV d'AGO...) ──
 let _archivePending = null;
 function askArchiveKmFiche(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const f = km.fiches.find(x => x.id === id);
   if(!f) return;
@@ -10735,6 +11011,7 @@ function askArchiveKmFiche(id) {
   document.getElementById('archive-confirm-modal').style.display = 'flex';
 }
 function askArchivePvApprobation(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const pv = (DB.pvApprobations||[]).find(p => p.id === id);
   if(!pv) return;
   _archivePending = {type:'pvApprobation', id};
@@ -10743,6 +11020,7 @@ function askArchivePvApprobation(id) {
 }
 function closeArchiveConfirmModal() { document.getElementById('archive-confirm-modal').style.display = 'none'; _archivePending = null; }
 function confirmArchiveGenerique() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!_archivePending) return;
   const {type, id} = _archivePending;
   if(type === 'kmFiche') {
@@ -11058,6 +11336,7 @@ function renderEcheanciers() {
 }
 
 function openEcheancierModal(editId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const typeSel = document.getElementById('ech-type-piece');
   typeSel.innerHTML = '<option value="">—</option>' + TYPEDOC_LIST.map(t => `<option value="${t.code}">${t.code} — ${esc(t.label)}</option>`).join('');
   document.getElementById('ech-edit-id').value = editId || '';
@@ -11099,6 +11378,7 @@ function openEcheancierModal(editId) {
 function closeEcheancierModal() { document.getElementById('echeancier-modal').style.display = 'none'; }
 
 function saveEcheancier() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const editId = document.getElementById('ech-edit-id').value;
   const libelle = document.getElementById('ech-libelle').value.trim();
   const categorie = document.getElementById('ech-categorie').value.trim();
@@ -11141,6 +11421,7 @@ function saveEcheancier() {
 
 let echeancierDeleteTargetId = null;
 function askDeleteEcheancier(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const ech = ensureEcheanciersArray().find(e => e.id === id);
   if(!ech) return;
   echeancierDeleteTargetId = id;
@@ -11149,6 +11430,7 @@ function askDeleteEcheancier(id) {
 }
 function closeEcheancierDeleteModal() { document.getElementById('echeancier-delete-modal').style.display = 'none'; echeancierDeleteTargetId = null; }
 function confirmDeleteEcheancier() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!echeancierDeleteTargetId) return;
   DB.echeanciers = ensureEcheanciersArray().filter(e => e.id !== echeancierDeleteTargetId);
   saveDB();
@@ -11232,15 +11514,15 @@ function postEcheancierMois(ech, mois) {
   ech.moisIo = ech.moisIo || {};
   ech.moisIo[mois] = io;
 
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
+  DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'echeancier', _echId:ech.id, _mois:mois, journal, date:dateEcr, compte:ech.compteDebit, libelleCompte:getLib(ech.compteDebit)||'', libelleEcriture, numDoc, debit:ech.montant, credit:0});
 
   if(ech.crediteDouble && ech.compteCredit2) {
     const part1 = Math.ceil(ech.montant * 50) / 100;
     const part2 = Math.round((ech.montant - part1) * 100) / 100;
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit2, libelleCompte:getLib(ech.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'echeancier', _echId:ech.id, _mois:mois, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'echeancier', _echId:ech.id, _mois:mois, journal, date:dateEcr, compte:ech.compteCredit2, libelleCompte:getLib(ech.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
   } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:ech.montant});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'echeancier', _echId:ech.id, _mois:mois, journal, date:dateEcr, compte:ech.compteCredit, libelleCompte:getLib(ech.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:ech.montant});
   }
 
   ech.moisComptabilises = ech.moisComptabilises || [];
@@ -11285,9 +11567,69 @@ function askDecomptabiliserKmMois(mois) {
   document.getElementById('decompta-confirm-modal').style.display = 'flex';
 }
 function closeDecomptaConfirmModal() { document.getElementById('decompta-confirm-modal').style.display = 'none'; _decomptaPending = null; }
+// V81 (M10) : annulations des écritures de dotation, d'intérêts, de constatation et d'affectation
+function demanderAnnulation(type, id, message) {
+  if(bloqueSiCloture()) return;
+  _decomptaPending = { type, id };
+  document.getElementById('decompta-confirm-msg').innerHTML = message;
+  document.getElementById('decompta-confirm-modal').style.display = 'flex';
+}
+function ecrituresDotation(immo, annee) {
+  const libEcr = `Amortissement ${annee} - ${immo.libelle}`;
+  return e => (e._module === 'dotation' && e._immoId === immo.id && e._annee === annee) ||
+              (!e._module && e.journal === 'OD' && e.libelleEcriture === libEcr && [String(immo.compteDotation), String(immo.compteAmort)].includes(String(e.compte)));
+}
+function askAnnulerDotation(immoId) {
+  const immo = ensureImmoArray().find(i => i.id === immoId); if(!immo) return;
+  const n = DB.ecritures.filter(ecrituresDotation(immo, anneeCompta())).length;
+  if(!n) { toast(`Aucune dotation ${anneeCompta()} trouvée pour « ${immo.libelle} »`, 'error'); return; }
+  demanderAnnulation('dotation', immoId, `Annuler la dotation ${anneeCompta()} de <strong style="color:var(--cyan)">${esc(immo.libelle)}</strong> ?<br>L'écriture sera supprimée du Grand Livre.`);
+}
+function askAnnulerCCInterets() {
+  const f = e => moduleDeLaLigne(e) === 'ccInterets';
+  if(!DB.ecritures.some(f)) { toast('Aucun intérêt de compte courant comptabilisé sur cet exercice', 'error'); return; }
+  demanderAnnulation('ccInterets', null, "Annuler les intérêts des comptes courants d'associés comptabilisés ?<br>Les écritures (une par associé) seront supprimées du Grand Livre.");
+}
+function askAnnulerConstatation() {
+  const f = e => moduleDeLaLigne(e) === 'constatation';
+  if(!DB.ecritures.some(f)) { toast("Aucune constatation du résultat sur cet exercice", 'error'); return; }
+  demanderAnnulation('constatation', null, "Annuler la constatation du résultat de l'exercice ?<br>L'écriture CLOTURE sera supprimée du Grand Livre ; vous pourrez constater à nouveau.");
+}
+function askAnnulerAffectation(pvId) {
+  const pv = (DB.pvApprobations||[]).find(p => p.id === pvId); if(!pv) return;
+  demanderAnnulation('approbation', pvId, `Annuler l'affectation du résultat ${pv.anneeConcernee} ?<br>L'écriture d'affectation <strong>et</strong> le PV d'AGO seront supprimés.`);
+}
+function ecrituresAffectation(pv) {
+  return e => (e._module === 'approbation' && e._pvId === pv.id) ||
+              (!e._module && e.numDoc === 'DP/PV AG' && e.date === pv.dateAG && String(e.libelleEcriture||'') === `Affectation du résultat ${pv.anneeConcernee}`);
+}
+function executerAnnulation(type, id) {
+  if(bloqueSiCloture()) return;
+  let n = 0;
+  if(type === 'dotation') {
+    const immo = ensureImmoArray().find(i => i.id === id); if(!immo) return;
+    n = supprimerEcrituresParModule(ecrituresDotation(immo, anneeCompta()));
+  } else if(type === 'ccInterets') {
+    n = supprimerEcrituresParModule(e => moduleDeLaLigne(e) === 'ccInterets');
+  } else if(type === 'constatation') {
+    n = supprimerEcrituresParModule(e => moduleDeLaLigne(e) === 'constatation');
+  } else if(type === 'approbation') {
+    const pv = (DB.pvApprobations||[]).find(p => p.id === id); if(!pv) return;
+    n = supprimerEcrituresParModule(ecrituresAffectation(pv));
+    DB.pvApprobations = DB.pvApprobations.filter(p => p.id !== id);
+  }
+  renum(); saveDB(); updateNavCounts(); renderPostItPieces();
+  const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
+  if(active === 'immos') renderImmos(); else if(active === 'inventaire') renderInventaire(); else if(active === 'approbation') renderApprobation();
+  toast(`Annulation effectuée (${n} ligne(s) d'écriture supprimée(s))`, 'success');
+}
 function confirmDecompta() {
   if(!_decomptaPending) return;
   const {type, id, mois} = _decomptaPending;
+  if(['dotation','ccInterets','constatation','approbation'].includes(type)) {
+    document.getElementById('decompta-confirm-modal').style.display = 'none'; _decomptaPending = null;
+    executerAnnulation(type, id); return;
+  }
   document.getElementById('decompta-confirm-modal').style.display = 'none';
   _decomptaPending = null;
   if(type === 'echeancier') decomptabiliserEcheancierMois(id, mois);
@@ -11403,11 +11745,13 @@ async function downloadEmpruntTemplate() {
 
 let _empruntImportTargetId = null;
 function triggerEmpruntImport(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   _empruntImportTargetId = id;
   document.getElementById('emprunt-import-input').click();
 }
 
 async function handleEmpruntImport(evt) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const file = evt.target.files[0];
   if(!file || !_empruntImportTargetId) return;
   await ensureXLSXLoaded();
@@ -11670,6 +12014,7 @@ function closeEmpruntScheduleModal() {
 }
 
 function openEmpruntModal(editId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('emp-edit-id').value = editId || '';
   // Peupler le dropdown des types de pièces à chaque ouverture (dynamique — reflète les paramètres)
   const typeSel = document.getElementById('emp-type-piece');
@@ -11703,6 +12048,7 @@ function openEmpruntModal(editId) {
 function closeEmpruntModal() { document.getElementById('emprunt-modal').style.display = 'none'; }
 
 function saveEmprunt() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const editId = document.getElementById('emp-edit-id').value;
   const libelle = document.getElementById('emp-libelle').value.trim();
   const banque = document.getElementById('emp-banque').value.trim();
@@ -11738,6 +12084,7 @@ function saveEmprunt() {
 
 let empruntDeleteTargetId = null;
 function askDeleteEmprunt(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const emp = ensureEmpruntsArray().find(e => e.id === id);
   if(!emp) return;
   empruntDeleteTargetId = id;
@@ -11746,6 +12093,7 @@ function askDeleteEmprunt(id) {
 }
 function closeEmpruntDeleteModal() { document.getElementById('emprunt-delete-modal').style.display = 'none'; empruntDeleteTargetId = null; }
 function confirmDeleteEmprunt() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!empruntDeleteTargetId) return;
   DB.emprunts = ensureEmpruntsArray().filter(e => e.id !== empruntDeleteTargetId);
   saveDB();
@@ -11758,6 +12106,7 @@ function confirmDeleteEmprunt() {
 // ── Marquer des mois comme déjà comptabilisés, sans passer d'écriture ──
 // Utile pour rattraper l'historique quand les écritures ont déjà été passées manuellement avant l'usage de ce module.
 function openEmpruntMarquerModal(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const emp = ensureEmpruntsArray().find(e => e.id === id);
   if(!emp) return;
   document.getElementById('emp-marquer-id').value = id;
@@ -11768,6 +12117,7 @@ function openEmpruntMarquerModal(id) {
 function closeEmpruntMarquerModal() { document.getElementById('emprunt-marquer-modal').style.display = 'none'; }
 
 function confirmMarquerEmpruntFait() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const id = document.getElementById('emp-marquer-id').value;
   const moisLimite = document.getElementById('emp-marquer-mois').value;
   if(!moisLimite) { toast('Choisissez un mois','error'); return; }
@@ -11838,9 +12188,9 @@ function comptabiliserEmpruntMois(id, mois) {
     emp.moisIo = emp.moisIo || {};
     emp.moisIo[mois] = io;
 
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal, date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'emprunt', _empId:emp.id, _mois:mois, journal, date:dateEcr, compte:emp.compteEmprunt, libelleCompte:getLib(emp.compteEmprunt)||'Emprunt', libelleEcriture, numDoc:numDocEmp, debit:row.capitalRembourse, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'emprunt', _empId:emp.id, _mois:mois, journal, date:dateEcr, compte:emp.compteInterets, libelleCompte:getLib(emp.compteInterets)||'Intérêts', libelleEcriture, numDoc:numDocEmp, debit:row.interets, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'emprunt', _empId:emp.id, _mois:mois, journal, date:dateEcr, compte:emp.compteCredit, libelleCompte:getLib(emp.compteCredit)||'Banque', libelleEcriture, numDoc:numDocEmp, debit:0, credit:row.mensualite});
 
     emp.moisComptabilises.push(mois);
     renum();
@@ -11948,6 +12298,7 @@ function renderCCInteretsTauxList() {
 }
 
 function saveTauxCC(compte, value) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const config = ensureCcInteretsConfig();
   const taux = parseFloat(value) || 0;
   config[compte] = {taux};
@@ -12089,8 +12440,8 @@ function confirmerComptabiliserCCInterets() {
   lignes.forEach(l => {
     // Une écriture distincte par compte courant (chacune avec son propre numéro de pièce comptable)
     const io = Date.now() + Math.floor(Math.random()*1000);
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'661500', libelleCompte:getLib('661500')||'Intérêts des comptes courants', libelleEcriture, numDoc, debit:l.interet, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:l.compte, libelleCompte:l.libelle, libelleEcriture, numDoc, debit:0, credit:l.interet});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'ccInterets', journal:'OD', date:dateEcr, compte:'661500', libelleCompte:getLib('661500')||'Intérêts des comptes courants', libelleEcriture, numDoc, debit:l.interet, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'ccInterets', journal:'OD', date:dateEcr, compte:l.compte, libelleCompte:l.libelle, libelleEcriture, numDoc, debit:0, credit:l.interet});
     // Hook post-it (une entrée par ligne, car chaque associé a sa pièce)
     notifierPieceGeneree('inventaires', numDoc, libelleEcriture + ' — ' + l.libelle, dateEcr);
   });
@@ -12107,7 +12458,7 @@ function renderInventaire() {
 function openInventaireModal() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   if(resultatDejaConstate()) {
-    toast('Le résultat de cet exercice a déjà été constaté — supprimez l\'écriture CLOTURE existante dans le Grand Livre avant de recommencer','error');
+    toast('Le résultat de cet exercice a déjà été constaté — utilisez « Annuler la constatation » avant de recommencer','error',6000);
     return;
   }
   const {totalCharges, totalProduits, resultat} = computeResultatExercice();
@@ -12168,11 +12519,11 @@ function confirmerConstatationResultat() {
   const io = Date.now();
 
   if(isBenefice) {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'800120', libelleCompte:'Contrepartie résultat (bénéfice)', libelleEcriture, numDoc:'CLOTURE', debit:resultat, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc:'CLOTURE', debit:0, credit:resultat});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'constatation', journal:'OD', date:dateEcr, compte:'800120', libelleCompte:'Contrepartie résultat (bénéfice)', libelleEcriture, numDoc:'CLOTURE', debit:resultat, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'constatation', journal:'OD', date:dateEcr, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc:'CLOTURE', debit:0, credit:resultat});
   } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc:'CLOTURE', debit:Math.abs(resultat), credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date:dateEcr, compte:'800129', libelleCompte:'Contrepartie résultat (perte)', libelleEcriture, numDoc:'CLOTURE', debit:0, credit:Math.abs(resultat)});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'constatation', journal:'OD', date:dateEcr, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc:'CLOTURE', debit:Math.abs(resultat), credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'constatation', journal:'OD', date:dateEcr, compte:'800129', libelleCompte:'Contrepartie résultat (perte)', libelleEcriture, numDoc:'CLOTURE', debit:0, credit:Math.abs(resultat)});
   }
   // Hook post-it
   notifierPieceGeneree('inventaires', 'CLOTURE', libelleEcriture, dateEcr);
@@ -12920,6 +13271,7 @@ function renderApprobationPvList() {
       ${list.map(pv => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line1);font-size:11px;">
         <span style="flex:1;cursor:pointer;color:var(--cyan);text-decoration:underline;" onclick="viewPVApprobation('${pv.id}')">📜 PV d'AGO — Affectation du résultat ${pv.anneeConcernee}</span>
         <span style="color:var(--text2);">${fmt(pv.montant)} €</span>
+        <button class="btn btn-sm" onclick="askAnnulerAffectation('${pv.id}')" title="Supprimer l'écriture d'affectation et ce PV" style="padding:1px 8px;font-size:9px;">↩ ANNULER L'AFFECTATION</button>
         <button class="btn btn-sm" onclick="askArchivePvApprobation('${pv.id}')" title="Archiver" style="padding:1px 8px;font-size:9px;">📦 ARCHIVER</button>
       </div>`).join('')}
     </div>`;
@@ -12946,9 +13298,11 @@ function genererPVApprobation() {
   const lieu = document.getElementById('appro-lieu').value.trim();
   const adresse = document.getElementById('appro-adresse').value.trim();
   if(!date || !heure || !lieu || !adresse) { toast("Merci de renseigner toutes les informations de l'Assemblée Générale","error"); return; }
+  if(!dateDansExercice(date)) { toast("Date d'AG : " + messageDateHorsExercice(date), 'error', 6000); return; }
 
   // ── Écriture comptable ──
   const io = Date.now();
+  const pvId = crypto.randomUUID();
   const anneeConcernee = parseInt(date.split('-')[0], 10) - 1;
   const libelleEcriture = `Affectation du résultat ${anneeConcernee}`;
   const numDoc = 'DP/PV AG';
@@ -12956,11 +13310,11 @@ function genererPVApprobation() {
   if(isBenefice) {
     const compteDest = destination === 'reserve' ? '106100' : '110000';
     const libDest = destination === 'reserve' ? 'Réserve légale' : 'Report à nouveau (solde créditeur)';
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc, debit:montant, credit:0});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:compteDest, libelleCompte:libDest, libelleEcriture, numDoc, debit:0, credit:montant});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'approbation', _pvId:pvId, journal:'OD', date, compte:'120000', libelleCompte:"Résultat de l'exercice (bénéfice)", libelleEcriture, numDoc, debit:montant, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'approbation', _pvId:pvId, journal:'OD', date, compte:compteDest, libelleCompte:libDest, libelleEcriture, numDoc, debit:0, credit:montant});
   } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc, debit:0, credit:montant});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, journal:'OD', date, compte:'119000', libelleCompte:'Report à nouveau (solde débiteur)', libelleEcriture, numDoc, debit:montant, credit:0});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'approbation', _pvId:pvId, journal:'OD', date, compte:'129000', libelleCompte:"Résultat de l'exercice (perte)", libelleEcriture, numDoc, debit:0, credit:montant});
+    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'approbation', _pvId:pvId, journal:'OD', date, compte:'119000', libelleCompte:'Report à nouveau (solde débiteur)', libelleEcriture, numDoc, debit:montant, credit:0});
   }
   // Hook post-it
   notifierPieceGeneree('approbation', numDoc, libelleEcriture, date);
@@ -13018,7 +13372,7 @@ function genererPVApprobation() {
 
   const docTitle = `PV_AGO_Approbation_${anneeTxt - 1}`;
   DB.pvApprobations = DB.pvApprobations || [];
-  DB.pvApprobations.push({id:crypto.randomUUID(), dateEmission:dateLocale(new Date()), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, docHtml:html, docTitle});
+  DB.pvApprobations.push({id:pvId, dateEmission:dateLocale(new Date()), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, docHtml:html, docTitle});
   saveDB();
 
   printDoc(html, docTitle, false);
@@ -13365,6 +13719,7 @@ function renderImmos() {
         <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
         <td style="text-align:center;white-space:nowrap;">
           ${scheduleBtn}
+          ${isDotationAlreadyPosted(immo) ? `<button class="btn btn-sm btn-icon" onclick="askAnnulerDotation('${immo.id}')" title="Annuler la dotation ${anneeCompta()}" style="padding:1px 5px;font-size:10px;">↩</button>` : ''}
           <button class="btn btn-sm btn-icon" onclick="openImmoModal('${immo.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
           <button class="btn btn-sm btn-danger btn-icon" onclick="askDeleteImmo('${immo.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>
         </td>
@@ -13399,6 +13754,7 @@ function renderImmos() {
 }
 
 function openImmoModal(editId) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   document.getElementById('immo-edit-id').value = editId || '';
   if(editId) {
     const immo = ensureImmoArray().find(i => i.id === editId);
@@ -13429,6 +13785,7 @@ function closeImmoModal() {
 }
 
 function saveImmo() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const editId = document.getElementById('immo-edit-id').value;
   const libelle = document.getElementById('immo-libelle').value.trim();
   const compteImmo = document.getElementById('immo-compte-immo').value.trim();
@@ -13474,6 +13831,7 @@ let immoDeleteTargetId = null;
 let _dotationPending = [];
 
 function isDotationAlreadyPosted(immo) {
+  if(DB.ecritures.some(e => e._module === 'dotation' && e._immoId === immo.id && e._annee === anneeCompta())) return true;
   const libEcr = `Amortissement ${anneeCompta()} - ${immo.libelle}`;
   return DB.ecritures.some(e => e.journal === 'OD' && e.libelleEcriture === libEcr && String(e.compte) === String(immo.compteDotation));
 }
@@ -13553,12 +13911,12 @@ function confirmDotationEcritures() {
     const io = base + i; // _io unique et croissant → passera après les écritures déjà présentes
     const libelleEcriture = `Amortissement ${anneeCompta()} - ${immo.libelle}`;
     DB.ecritures.push({
-      id: crypto.randomUUID(), _io: io, journal: 'OD', date,
+      id: crypto.randomUUID(), _io: io, _module: 'dotation', _immoId: immo.id, _annee: anneeCompta(), journal: 'OD', date,
       compte: immo.compteDotation, libelleCompte: getLib(immo.compteDotation) || 'Dotation aux amortissements',
       libelleEcriture, numDoc: '', debit: montant, credit: 0
     });
     DB.ecritures.push({
-      id: crypto.randomUUID(), _io: io, journal: 'OD', date,
+      id: crypto.randomUUID(), _io: io, _module: 'dotation', _immoId: immo.id, _annee: anneeCompta(), journal: 'OD', date,
       compte: immo.compteAmort, libelleCompte: getLib(immo.compteAmort) || 'Amortissements',
       libelleEcriture, numDoc: '', debit: 0, credit: montant
     });
@@ -13574,6 +13932,7 @@ function confirmDotationEcritures() {
 }
 
 function askDeleteImmo(id) {
+  if(bloqueSiCloture()) return; // V81 (M3)
   const immo = ensureImmoArray().find(i => i.id === id);
   if(!immo) return;
   immoDeleteTargetId = id;
@@ -13585,6 +13944,7 @@ function closeImmoDeleteModal() {
   immoDeleteTargetId = null;
 }
 function confirmDeleteImmo() {
+  if(bloqueSiCloture()) return; // V81 (M3)
   if(!immoDeleteTargetId) return;
   const list = ensureImmoArray();
   DB.immobilisations = list.filter(i => i.id !== immoDeleteTargetId);
