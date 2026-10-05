@@ -891,7 +891,7 @@ applyTheme();
               <th class="td-num" style="width:7%">DÉBIT</th>
               <th class="td-num" style="width:7%">CRÉDIT</th>
               <th class="td-num" style="width:7%">SOLDE</th>
-              <th style="width:56px;padding-right:6px;"></th>
+              <th style="width:168px;padding-right:6px;"></th>
             </tr>
           </thead>
           <tbody id="gl-body"></tbody>
@@ -4713,6 +4713,7 @@ function moduleDeLaLigne(e) {
   if(nd === 'OD/Calcul des intérêts de c:c') return 'ccInterets';
   if(nd === 'DP/PV AG' && lib.startsWith('Affectation du résultat')) return 'approbation';
   if(nd === 'BAO') return 'bao';
+  if(String(e.date) === `${anneeCompta()}-01-01` && /nouveau|balance d.ouverture/i.test(lib)) return 'bao';
   if(e.journal === 'OD' && !nd && /^Amortissement \d{4} - /.test(lib)) return 'dotation';
   return '';
 }
@@ -5957,6 +5958,7 @@ async function createNewExerciseConfirm() {
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   startLiveSync();
+  showTab('saisie');
   toast('Exercice "' + label + '" créé', 'success');
 }
 function createNewExercise() { createNewExerciseStep1(); }
@@ -6179,6 +6181,7 @@ async function clotureCreateNext() {
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(); updateNextNum(); upTotals();
   startLiveSync();
+  showTab('saisie');
   const fnoMsg = fnoEcritures.length ? ` — ${fnoEcritures.length} FNO générées` : '';
   toast(`Exercice "${label}" créé et ouvert${fnoMsg} — modules repris.`, 'success');
   refreshAlerteTaux();
