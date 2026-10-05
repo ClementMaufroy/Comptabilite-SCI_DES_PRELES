@@ -5144,6 +5144,7 @@ function moduleDeLaLigne(e) {
   const nd = String(e.numDoc||''), lib = String(e.libelleEcriture||'');
   if((nd.startsWith('KM_') || nd.startsWith('KM/')) && lib.startsWith('Kilomètres')) return 'km';
   if(nd === 'CLOTURE') return 'constatation';
+  if(String(e.date) === `${anneeCompta()}-12-31` && /^(12|8)/.test(String(e.compte || ''))) return 'constatation'; // V85v2 : constatation saisie à la main
   if(nd === 'OD/Calcul des intérêts de c:c') return 'ccInterets';
   if(nd === 'DP/PV AG' && lib.startsWith('Affectation du résultat')) return 'approbation';
   if(nd === 'BAO') return 'bao';
@@ -7452,7 +7453,12 @@ function rubriqueProposee(compte) {
   return '';
 }
 function rubriqueValide(code, compte) { const d = RUBRIQUES[code]; return !!d && d.etat === (String(compte)[0] <= '5' ? 'B' : 'C'); }
-function estLigneConstatation(e) { return e._module === 'constatation' || e.numDoc === 'CLOTURE'; }
+// V85v2 : constatation du résultat reconnue aussi lorsqu'elle a été passée à la main (pièce quelconque) :
+// toute ligne 12x ou de classe 8 datée du 31/12 est l'écriture de constatation du résultat de l'exercice
+function estLigneConstatation(e) {
+  if(e._module === 'constatation' || e.numDoc === 'CLOTURE') return true;
+  return /-12-31$/.test(String(e.date || '')) && /^(12|8)/.test(String(e.compte || ''));
+}
 // Soldes des comptes de classes 1 à 7 et rubrique effective de chacun (sur un exercice quelconque : src = {ecritures, tbData})
 function classementComptes(src) {
   const tb = new Map((src.tbData || []).map(r => [String(r.compte), r]));
@@ -13125,7 +13131,7 @@ function decomptabiliserEmpruntMois(id, mois) {
 // Vérifie si le résultat a déjà été constaté cette année (présence d'une écriture CLOTURE au 31/12)
 function resultatDejaConstate() {
   const dateCloture = anneeCompta() + '-12-31';
-  return DB.ecritures.some(e => e.numDoc === 'CLOTURE' && e.date === dateCloture);
+  return DB.ecritures.some(e => e.date === dateCloture && /^12/.test(String(e.compte)) && estLigneConstatation(e)); // V85v2 : aussi si passée à la main
 }
 
 // V84 (M5) : montant réellement constaté (écriture CLOTURE : crédit 120 / débit 129) et écart avec le résultat
