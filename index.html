@@ -4358,7 +4358,7 @@ function getLines() {
     const le=document.getElementById('le'+id)?.value.trim();
     const d=pn(document.getElementById('ld'+id)?.value);
     const cr=pn(document.getElementById('lcr'+id)?.value);
-    if(c||d||cr) lines.push({compte:c,libelle:l,libelleEcriture:le,debit:d,credit:cr});
+    if(c||d||cr) lines.push({compte:c,libelle:l,libelleEcriture:le,debit:Math.round(d*100)/100,credit:Math.round(cr*100)/100}); // V84v2 : au centime
   });
   return lines;
 }
@@ -5431,7 +5431,7 @@ function previewImport(){
     if(!s) return 0;
     s = s.replace(/€/g,'').replace(/\s/g,'').replace(/\xa0/g,'').replace(',','.').trim();
     const n = parseFloat(s);
-    return isNaN(n) ? 0 : n;
+    return isNaN(n) ? 0 : Math.round(n * 100) / 100; // V84v2 : au centime
   }
 
   function parseJournal(s) {
@@ -7423,11 +7423,13 @@ function classementComptes(src) {
       code = def.double[sens];
       reclasse = !!def.habituel && sens !== def.habituel && Math.abs(solde) >= 0.005;
     }
-    return { compte: c, lib: (row && row.libelle) || sol[c].lib, solde, code0, code, propose: !choisie, reclasse, etat: c[0] <= '5' ? 'B' : 'C' };
+    return { compte: c, lib: (row && row.libelle) || sol[c].lib, solde, brut: sol[c].d - sol[c].c, code0, code, propose: !choisie, reclasse, etat: c[0] <= '5' ? 'B' : 'C' };
   });
 }
-function _sommeRubrique(cl, code) { return cl.reduce((t, l) => l.code === code ? t + l.solde : t, 0); }
-function resultatClasses67(cl) { return Math.round(-cl.reduce((t, l) => l.etat === 'C' ? t + l.solde : t, 0) * 100) / 100; }
+// V84v2 : en mode exact (contrôle de bouclage), soldes non arrondis compte par compte — sinon des montants à plus de
+// 2 décimales (tableau d'emprunt Excel, import) créent de faux écarts d'un centime
+function _sommeRubrique(cl, code, exact) { return cl.reduce((t, l) => l.code === code ? t + (exact ? l.brut : l.solde) : t, 0); }
+function resultatClasses67(cl, exact) { const r = -cl.reduce((t, l) => l.etat === 'C' ? t + (exact ? l.brut : l.solde) : t, 0); return exact ? r : Math.round(r * 100) / 100; }
 // Contrôle de bouclage d'un exercice (calcul exact, sans arrondi à l'euro)
 function controleEtats(src) {
   const cl = classementComptes(src);
@@ -7440,9 +7442,12 @@ function controleEtats(src) {
     const c8 = Math.round((src.ecritures || []).filter(e => String(e.compte)[0] === '8' && !estLigneConstatation(e)).reduce((t, e) => t + (+e.debit || 0) - (+e.credit || 0), 0) * 100) / 100;
     pb.push(`Bilan : total actif ${fmt(b.actif.net_total)} € ≠ total passif ${fmt(b.passif.total)} € (écart ${fmt(eB)} €)${Math.abs(c8) >= 0.01 ? ` — comptes de classe 8 (ex. 890000) soldés à ${fmt(c8)} €` : ''}`);
   }
-  const R = resultatClasses67(cl);
+  const R = resultatClasses67(cl, true);
   const eC = Math.round((cr.resultatNet - R) * 100) / 100;
   if(Math.abs(eC) >= 0.01) pb.push(`Compte de résultat : résultat ${fmt(cr.resultatNet)} € ≠ solde des classes 6 et 7 ${fmt(R)} € (écart ${fmt(eC)} €)`);
+  // montants à plus de 2 décimales : signalés (ils ne bloquent pas)
+  const fins = (src.ecritures || []).filter(e => [e.debit, e.credit].some(v => Math.abs((+v || 0) * 100 - Math.round((+v || 0) * 100)) > 1e-6));
+  if(fins.length) console.warn(`${fins.length} ligne(s) d'écriture avec plus de 2 décimales`, fins.map(e => [e.num, e.date, e.compte, e.libelleEcriture, e.debit, e.credit]));
   return pb;
 }
 // Comptes à double sens classés du côté inhabituel (mention sur les éditions)
@@ -7501,23 +7506,65 @@ function getSoldesComptes(comptes) {
 }
 
 // ── BILAN PCG ──
+// V84v3 : arrondi à l'euro SANS écart. Chaque ligne est arrondie, puis les quelques euros d'écart dus aux
+// arrondis sont reportés sur les lignes dont l'arrondi était le plus « limite » (méthode du plus fort reste),
+// de sorte que les totaux imprimés soient exactement cohérents. Ne s'applique que si les comptes bouclent au centime.
+// lignes : [{ cle, x (montant exact), s (+1 ou -1 : sens dans l'égalité) }] ; cible : valeur de Σ s·arrondi à atteindre
+function arrondirSansEcart(lignes, cible, cibleExacte) {
+  const r = {};
+  lignes.forEach(l => { r[l.cle] = Math.round(l.x); });
+  let e = lignes.reduce((t, l) => t + l.s * r[l.cle], 0) - cible;
+  const exact = lignes.reduce((t, l) => t + l.s * l.x, 0) - (cibleExacte === undefined ? cible : cibleExacte);
+  if(Math.abs(exact) >= 0.01 || Math.abs(e) > lignes.length) return r; // vrai écart : on ne le masque pas
+  const deja = new Set();
+  while(Math.round(e) !== 0) {
+    const sens = e > 0 ? -1 : 1; // sens de la correction de Σ s·r
+    let best = null, bestScore = -Infinity;
+    lignes.forEach(l => {
+      if(deja.has(l.cle) || Math.abs(l.x) < 0.005) return;
+      const delta = sens * l.s;                  // +1 ou -1 sur la ligne
+      const score = delta * (l.x - r[l.cle]);    // plus il est grand, moins la correction s'éloigne du montant exact
+      if(score > bestScore) { bestScore = score; best = l; }
+    });
+    if(!best) break;
+    r[best.cle] += sens * best.s; deja.add(best.cle);
+    e += sens;
+  }
+  return r;
+}
 function buildBilanPCG(src, exact) {
   src = src || DB;
   const cl = classementComptes(src);
-  const S = code => _sommeRubrique(cl, code);
-  // Arrondi à l'entier pour l'édition (exact : au centime, pour le contrôle de bouclage)
-  const ri = exact ? (v => Math.round(v * 100) / 100) : (v => Math.round(v));
+  const S = code => _sommeRubrique(cl, code, true);
+  // Montants exacts des lignes de base
+  const X = {
+    brut_terrain: S('A_TERRAIN'), brut_constructions: S('A_CONSTR'), brut_instal: S('A_INSTAL'), brut_immoEnCours: S('A_ENCOURS'), brut_immoFinanciere: S('A_FIN'),
+    brut_clients: S('A_CLIENTS'), brut_autresCreances: S('A_CREANCES'), brut_commandesEnCours: S('A_STOCKS'), brut_banque: S('A_BANQUE'),
+    amort_constructions: -S('A_AM_CONSTR'), amort_instal: -S('A_AM_INSTAL'),
+    capital: -S('P_CAPITAL'), primesCapital: -S('P_PRIMES'), reserves: -S('P_RESERVES'), reportANouveau: -S('P_RAN'), resultatEnInstance: -S('P_RESULTAT'),
+    provisions_charges: -S('P_PROVISIONS'), emprunts: -S('P_EMPRUNTS'), depots: -S('P_DEPOTS'),
+    fournisseurs: -S('P_FOURN'), autresDettesExploit: -S('P_DETTES_EXPL'), autresDettes: -S('P_DETTES')
+  };
+  const cca = cl.filter(l => l.code === 'P_CCA');
+  cca.forEach(l => { X['cc_' + l.compte] = -l.brut; });
+  const resExact = resultatClasses67(cl, true);
+  let V, resultatNet;
+  if(exact) { V = X; resultatNet = resExact; }
+  else {
+    // Le résultat imprimé est celui du compte de résultat (lui-même arrondi sans écart)
+    resultatNet = buildCRPCG(src).resultatNet;
+    const actifs = ['brut_terrain','brut_constructions','brut_instal','brut_immoEnCours','brut_immoFinanciere','brut_clients','brut_autresCreances','brut_commandesEnCours','brut_banque'];
+    const lignes = Object.keys(X).map(k => ({ cle: k, x: X[k], s: actifs.includes(k) ? 1 : -1 }));
+    // Σ actif − Σ amort − Σ passif = résultat ; écart exact entre bilan et CR pris en compte dans la cible
+    V = arrondirSansEcart(lignes, resultatNet, resExact);
+  }
 
   // ── ACTIF IMMOBILISÉ ──
-  const brut_terrain = ri(S('A_TERRAIN'));
-  const brut_constructions = ri(S('A_CONSTR'));
-  const brut_instal = ri(S('A_INSTAL'));
-  const brut_immoEnCours = ri(S('A_ENCOURS'));
-  const brut_immoFinanciere = ri(S('A_FIN'));
+  const brut_terrain = V.brut_terrain, brut_constructions = V.brut_constructions, brut_instal = V.brut_instal;
+  const brut_immoEnCours = V.brut_immoEnCours, brut_immoFinanciere = V.brut_immoFinanciere;
   const brut_immoCorpo = brut_terrain + brut_constructions + brut_instal;
   const brut_total = brut_immoCorpo + brut_immoEnCours + brut_immoFinanciere;
-  const amort_constructions = ri(-S('A_AM_CONSTR'));
-  const amort_instal = ri(-S('A_AM_INSTAL'));
+  const amort_constructions = V.amort_constructions, amort_instal = V.amort_instal;
   const amort_immoCorpo = amort_constructions + amort_instal;
   const amort_total = amort_immoCorpo;
   const net_terrain = brut_terrain;
@@ -7529,11 +7576,9 @@ function buildBilanPCG(src, exact) {
   const net_immoTotal = net_immoCorpo + net_immoEnCours + net_immoFinanciere;
 
   // ── ACTIF CIRCULANT ──
-  const brut_clients = ri(S('A_CLIENTS'));
-  const brut_autresCreances = ri(S('A_CREANCES'));
+  const brut_clients = V.brut_clients, brut_autresCreances = V.brut_autresCreances;
   const brut_creances = brut_clients + brut_autresCreances;
-  const brut_commandesEnCours = ri(S('A_STOCKS'));
-  const brut_banque = ri(S('A_BANQUE'));
+  const brut_commandesEnCours = V.brut_commandesEnCours, brut_banque = V.brut_banque;
   const brut_circulant = brut_creances + brut_commandesEnCours + brut_banque;
   const net_circulant = brut_circulant;
   const brut_total_actif = brut_total + brut_circulant;
@@ -7541,26 +7586,17 @@ function buildBilanPCG(src, exact) {
   const net_total_actif = net_immoTotal + net_circulant;
 
   // ── PASSIF ──
-  const capital = ri(-S('P_CAPITAL'));
-  const primesCapital = ri(-S('P_PRIMES'));
-  const reserves = ri(-S('P_RESERVES'));
-  const reportANouveau = ri(-S('P_RAN'));
-  // 120/129 hors constatation de l'exercice : résultat antérieur pas encore affecté par l'AG
-  const resultatEnInstance = ri(-S('P_RESULTAT'));
-  // Résultat de l'exercice : toujours celui des classes 6 et 7 (provisoire tant qu'il n'est pas constaté)
-  const resultatNet = ri(resultatClasses67(cl));
+  const capital = V.capital, primesCapital = V.primesCapital, reserves = V.reserves, reportANouveau = V.reportANouveau;
+  const resultatEnInstance = V.resultatEnInstance; // 120/129 hors constatation : résultat antérieur pas encore affecté
   const isResultatProvisoire = !(src.ecritures || []).some(estLigneConstatation);
   const totalCapitauxPropres = capital + primesCapital + reserves + reportANouveau + resultatEnInstance + resultatNet;
-  const provisions_charges = ri(-S('P_PROVISIONS'));
+  const provisions_charges = V.provisions_charges;
   const totalProvisions = provisions_charges;
-  const emprunts = ri(-S('P_EMPRUNTS'));
-  const depots = ri(-S('P_DEPOTS'));
-  const ccDetail = cl.filter(l => l.code === 'P_CCA').map(l => ({ compte: l.compte, lib: l.lib || l.compte, montant: ri(-l.solde) }));
+  const emprunts = V.emprunts, depots = V.depots;
+  const ccDetail = cca.map(l => ({ compte: l.compte, lib: l.lib || l.compte, montant: V['cc_' + l.compte] }));
   const ccTotal = ccDetail.reduce((t, c) => t + c.montant, 0);
   const dettesFinancieres = emprunts + depots + ccTotal;
-  const fournisseurs = ri(-S('P_FOURN'));
-  const autresDettesExploit = ri(-S('P_DETTES_EXPL'));
-  const autresDettes = ri(-S('P_DETTES'));
+  const fournisseurs = V.fournisseurs, autresDettesExploit = V.autresDettesExploit, autresDettes = V.autresDettes;
   const dettesExploitation = fournisseurs + autresDettesExploit;
   const totalDettes = dettesFinancieres + dettesExploitation + autresDettes;
   const totalPassif = totalCapitauxPropres + totalProvisions + totalDettes;
@@ -8042,78 +8078,70 @@ async function generateBilanPDF() {
 function buildCRPCG(src, exact) {
   src = src || DB;
   const cl = classementComptes(src);
-  const S = code => _sommeRubrique(cl, code);
-  const ri = exact ? (v => Math.round(v * 100) / 100) : (v => Math.round(v));
+  const S = code => _sommeRubrique(cl, code, true);
+  // Lignes de base : s = +1 pour ce qui augmente le résultat (produits, reprises), -1 pour les charges et les rabais
+  const P = (k, v) => ({ k, v, s: 1 }), C = (k, v) => ({ k, v, s: -1 });
+  const base = [
+    P('loyersBrut', -S('C_LOYERS')), C('rabaisRemises', S('C_RABAIS')), P('locSaisonniere', -S('C_LOCSAIS')), P('provChargesLoc', -S('C_PROVCH')),
+    P('subventions', -S('C_SUBV')), P('indemnAssurance', -S('C_INDEMN')), P('autresProduits', -S('C_AUTRESPROD')), P('reprises781', -S('C_REPRISES')),
+    P('reprisesFinanc786', -S('C_REPFIN')), P('prodFinanciers', -S('C_PRODFIN')), P('prodCessions', -S('C_CESSIONS')), P('autresProdExcept', -S('C_PRODEXC')),
+    C('eau', S('C_ENERGIE')), C('chargesExternes', S('C_CHEXT')), C('matOutillage', S('C_MATOUT')),
+    C('locLogiciel', S('C_LOGICIEL')), C('chargesLoc', S('C_CHLOC')), C('entretienRep', S('C_ENTRETIEN')), C('travauxAmelio', S('C_TRAVAUX')), C('assurances', S('C_ASSUR')), C('fraisDivers', S('C_FRAISDIV')),
+    C('honoraires', S('C_HONO')), C('fraisActes', S('C_ACTES')), C('annonces', S('C_ANNONCES')), C('voyages', S('C_VOYAGES')), C('internet', S('C_INTERNET')),
+    C('fraisPostaux', S('C_POSTAUX')), C('servicesBanc', S('C_BANC')), C('servicesDivers', S('C_SERVDIV')),
+    C('cfe', S('C_CFE')), C('tf', S('C_TF')), C('crl', S('C_CRL')), C('autresImpots', S('C_AUTIMP')), C('autresCharges', S('C_AUTRESCH')),
+    C('dotAmort', S('C_DOTAMORT')), C('dotProvExploit', S('C_DOTPROV')), C('interetsEmprunts', S('C_INTERETS')), C('dotProvFinanc', S('C_DOTFIN')),
+    C('indemnEviction', S('C_INDEVIC')), C('vcnaCedes', S('C_VNC')), C('autresChargesExcept', S('C_CHEXC')), C('is', S('C_IS'))
+  ];
+  let V = {};
+  if(exact) base.forEach(b => { V[b.k] = b.v; });
+  else {
+    // V84v3 : résultat imprimé = résultat exact arrondi à l'euro, lignes ajustées pour que tout s'additionne exactement
+    const cible = Math.round(resultatClasses67(cl, true));
+    V = arrondirSansEcart(base.map(b => ({ cle: b.k, x: b.v, s: b.s })), cible, resultatClasses67(cl, true));
+  }
 
   // ── PRODUITS ──
-  const loyersBrut = ri(-S('C_LOYERS'));
-  const rabaisRemises = ri(S('C_RABAIS'));            // déduit des loyers
+  const loyersBrut = V.loyersBrut, rabaisRemises = V.rabaisRemises;
   const loyers = loyersBrut - rabaisRemises;
-  const locSaisonniere = ri(-S('C_LOCSAIS'));
-  const provChargesLoc = ri(-S('C_PROVCH'));
-  const subventions = ri(-S('C_SUBV'));
-  const indemnAssurance = ri(-S('C_INDEMN'));
+  const locSaisonniere = V.locSaisonniere, provChargesLoc = V.provChargesLoc, subventions = V.subventions, indemnAssurance = V.indemnAssurance;
   const totalCA = loyers + locSaisonniere + provChargesLoc + subventions + indemnAssurance;
-  const autresProduits = ri(-S('C_AUTRESPROD'));      // V84 : autres produits de gestion
-  const reprises781 = ri(-S('C_REPRISES'));           // déduites des charges
-  const reprisesFinanc786 = ri(-S('C_REPFIN'));
+  const autresProduits = V.autresProduits;
+  const reprises781 = V.reprises781, reprisesFinanc786 = V.reprisesFinanc786;
   const totalProduitsExploit = totalCA + autresProduits;
 
   // ── CHARGES ──
-  const eau = ri(S('C_ENERGIE')), elec = 0;
-  const chargesExternes = ri(S('C_CHEXT'));
-  const matOutillage = ri(S('C_MATOUT'));
+  const eau = V.eau, elec = 0, chargesExternes = V.chargesExternes, matOutillage = V.matOutillage;
   const totalAchats = eau + elec + chargesExternes + matOutillage;
-  const locLogiciel = ri(S('C_LOGICIEL'));
-  const chargesLoc = ri(S('C_CHLOC'));
-  const entretienRep = ri(S('C_ENTRETIEN'));
-  const travauxAmelio = ri(S('C_TRAVAUX'));
-  const assurances = ri(S('C_ASSUR'));
-  const fraisDivers = ri(S('C_FRAISDIV'));
+  const locLogiciel = V.locLogiciel, chargesLoc = V.chargesLoc, entretienRep = V.entretienRep, travauxAmelio = V.travauxAmelio, assurances = V.assurances, fraisDivers = V.fraisDivers;
   const totalServExt = locLogiciel + chargesLoc + entretienRep + travauxAmelio + assurances + fraisDivers;
-  const honoraires = ri(S('C_HONO'));
-  const fraisActes = ri(S('C_ACTES'));
-  const annonces = ri(S('C_ANNONCES'));
-  const voyages = ri(S('C_VOYAGES')), receptions = 0;
-  const internet = ri(S('C_INTERNET')), telephone = 0;
-  const fraisPostaux = ri(S('C_POSTAUX'));
-  const servicesBanc = ri(S('C_BANC'));
-  const servicesDivers = ri(S('C_SERVDIV'));
+  const honoraires = V.honoraires, fraisActes = V.fraisActes, annonces = V.annonces, voyages = V.voyages, receptions = 0, internet = V.internet, telephone = 0;
+  const fraisPostaux = V.fraisPostaux, servicesBanc = V.servicesBanc, servicesDivers = V.servicesDivers;
   const totalAutresServExt = honoraires + fraisActes + annonces + voyages + receptions + internet + telephone + fraisPostaux + servicesBanc + servicesDivers;
-  const cfe = ri(S('C_CFE'));
-  const tf = ri(S('C_TF'));
-  const crl = ri(S('C_CRL'));
-  const teom = 0;
-  const autresImpots = ri(S('C_AUTIMP'));
+  const cfe = V.cfe, tf = V.tf, crl = V.crl, teom = 0, autresImpots = V.autresImpots;
   const totalImpots = cfe + tf + crl + teom + autresImpots;
-  const autresCharges = ri(S('C_AUTRESCH'));          // V84 : autres charges de gestion courante (ex. 654)
-  const dotAmort = ri(S('C_DOTAMORT'));
-  const dotProvExploit = ri(S('C_DOTPROV'));
+  const autresCharges = V.autresCharges;
+  const dotAmort = V.dotAmort, dotProvExploit = V.dotProvExploit;
   const totalDotations = dotAmort + dotProvExploit;
   const reprisesCharges = reprises781;
   const totalChargesExploit = totalAchats + totalServExt + totalAutresServExt + totalImpots + autresCharges + totalDotations - reprisesCharges;
   const resultatExploit = totalProduitsExploit - totalChargesExploit;
 
   // ── FINANCIER ──
-  const prodFinanciers = ri(-S('C_PRODFIN'));
-  const reprisesFinancieres = reprisesFinanc786;
+  const prodFinanciers = V.prodFinanciers, reprisesFinancieres = reprisesFinanc786;
   const totalProduitsFinanc = prodFinanciers + reprisesFinancieres;
-  const interetsEmprunts = ri(S('C_INTERETS'));
-  const dotProvFinanc = ri(S('C_DOTFIN'));
+  const interetsEmprunts = V.interetsEmprunts, dotProvFinanc = V.dotProvFinanc;
   const totalChargesFinanc = interetsEmprunts + dotProvFinanc;
   const resultatFinancier = totalProduitsFinanc - totalChargesFinanc;
   const resultatCourant = resultatExploit + resultatFinancier;
 
   // ── EXCEPTIONNEL ──
-  const prodCessions = ri(-S('C_CESSIONS'));
-  const autresProdExcept = ri(-S('C_PRODEXC'));
+  const prodCessions = V.prodCessions, autresProdExcept = V.autresProdExcept;
   const totalProduitsExcept = prodCessions + autresProdExcept;
-  const indemnEviction = ri(S('C_INDEVIC'));
-  const vcnaCedes = ri(S('C_VNC'));
-  const autresChargesExcept = ri(S('C_CHEXC'));
+  const indemnEviction = V.indemnEviction, vcnaCedes = V.vcnaCedes, autresChargesExcept = V.autresChargesExcept;
   const totalChargesExcept = indemnEviction + vcnaCedes + autresChargesExcept;
   const resultatExcept = totalProduitsExcept - totalChargesExcept;
-  const is = ri(S('C_IS'));
+  const is = V.is;
   const resultatNet = resultatCourant + resultatExcept - is;
 
   return {
@@ -12559,7 +12587,7 @@ async function handleEmpruntImport(evt) {
       dateEcheance = yy+'-'+mm.padStart(2,'0')+'-'+dd.padStart(2,'0');
     }
     // V84 (M9) : montants lus au format français, contrôlés ligne à ligne
-    const n = [2,3,4,5,6].map(k => nombreFR(r[k]));
+    const n = [2,3,4,5,6].map(k => { const x = nombreFR(r[k]); return x === null ? null : Math.round(x * 100) / 100; }); // V84v2 : au centime
     const lig = `Ligne ${i+1} (${mois})`;
     if(!/^\d{4}-\d{2}$/.test(mois)) erreursImport.push(`${lig} : mois illisible (attendu AAAA-MM)`);
     if(!/^\d{4}-\d{2}-\d{2}$/.test(String(dateEcheance || ''))) erreursImport.push(`${lig} : date d'échéance illisible`);
@@ -13238,7 +13266,7 @@ function openCCInteretsConfirmModal() {
   const lignes = comptes.map(c => {
     const taux = config[c.compte]?.taux || 0;
     const {totalInteret} = computeInteretsCompte(c.compte, taux);
-    return {compte:c.compte, libelle:c.libelle, taux, interet: totalInteret};
+    return {compte:c.compte, libelle:c.libelle, taux, interet: Math.round(totalInteret * 100) / 100}; // V84v2 : au centime
   }).filter(l => Math.abs(l.interet) > 0.001);
 
   if(!lignes.length) { toast('Aucun intérêt à comptabiliser (taux à 0 ou soldes nuls)','error'); return; }
