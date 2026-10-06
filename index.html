@@ -774,7 +774,7 @@ applyTheme();
   </div>
 </div>
 
-<!-- V89→V92 : ANIMATION D'OUVERTURE (3 s, à chaque démarrage, pendant le chargement) -->
+<!-- V89→V94 : ANIMATION D'OUVERTURE (3 s, à chaque démarrage, pendant le chargement) -->
 <style>
 #atrium-splash { position: fixed; inset: 0; z-index: 200000; display: flex; flex-direction: column; align-items: center; justify-content: center;
   background: radial-gradient(ellipse 55% 50% at 50% 45%, rgba(var(--accent-rgb),0.13), transparent 70%), var(--bg0);
@@ -784,7 +784,7 @@ applyTheme();
     linear-gradient(rgba(var(--accent-rgb),0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(var(--accent-rgb),0.06) 1px, transparent 1px);
   background-size: 44px 44px; transform: perspective(600px) rotateX(58deg) translateY(10%); transform-origin: 50% 60%;
   mask-image: radial-gradient(ellipse 45% 40% at 50% 55%, #000 20%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse 45% 40% at 50% 55%, #000 20%, transparent 75%);
-  animation: spGrid 3s linear both; }
+  animation: spGrid 3s linear both; pointer-events: none; } /* V94 : la grille décorative ne doit jamais intercepter les clics */
 #atrium-splash .sp-core { position: relative; width: 190px; height: 190px; display: grid; place-items: center; }
 #atrium-splash svg.sp-rings { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 #atrium-splash .sp-r1 { fill: none; stroke: var(--cyan); stroke-width: 1.6; stroke-linecap: round; stroke-dasharray: 440; stroke-dashoffset: 440;
@@ -810,6 +810,8 @@ applyTheme();
 #atrium-splash .sp-stage { display: flex; flex-direction: column; align-items: center; transition: transform .9s cubic-bezier(.2,.8,.2,1); transform-origin: 50% 100%; }
 #atrium-splash .sp-login { width: 320px; max-width: calc(100vw - 32px); max-height: 0; opacity: 0; overflow: hidden; transform: translateY(18px);
   transition: max-height .9s cubic-bezier(.2,.8,.2,1), opacity .6s ease .35s, transform .7s cubic-bezier(.2,.8,.2,1) .3s, margin-top .9s cubic-bezier(.2,.8,.2,1); text-align: center; }
+#atrium-splash .sp-stage, #atrium-splash .sp-login { position: relative; z-index: 1; } /* V94 : au-dessus de la grille, quelle que soit la taille d'écran */
+#atrium-splash.login { overflow-y: auto; justify-content: safe center; } /* V94 : écran bas → on peut faire défiler jusqu'au formulaire */
 #atrium-splash.login .sp-stage { transform: scale(.82); }
 #atrium-splash.login .sp-login { max-height: 420px; opacity: 1; transform: none; margin-top: 26px; overflow: visible; }
 #atrium-splash .sp-login .sp-sub { font-family: var(--mono); font-size: 9.5px; letter-spacing: .22em; text-transform: uppercase; color: var(--text2); margin-bottom: 18px; }
