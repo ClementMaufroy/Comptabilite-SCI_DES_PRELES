@@ -1960,7 +1960,7 @@ applyTheme();
         <input type="number" step="0.01" id="loc-loyer" style="font-family:var(--mono);">
       </div>
       <div class="form-field">
-        <label>Montant provision pour charges (€) *</label>
+        <label>Montant provision pour charges (€) <span style="color:var(--text2);font-weight:400;">(facultatif)</span></label>
         <input type="number" step="0.01" id="loc-provision" style="font-family:var(--mono);">
       </div>
     </div>
@@ -1976,7 +1976,7 @@ applyTheme();
         <input type="text" id="loc-compte-ca" placeholder="706001" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-ca')" onkeydown="genAcKey(event,'loc-compte-ca')" onblur="genAcBlur('loc-compte-ca')" autocomplete="off">
       </div>
       <div class="form-field">
-        <label>Compte provision charges *</label>
+        <label>Compte provision charges <span style="color:var(--text2);font-weight:400;">(si provision)</span></label>
         <input type="text" id="loc-compte-provision" placeholder="708100" maxlength="6" style="font-family:var(--mono);" oninput="genAcSearch('loc-compte-provision')" onkeydown="genAcKey(event,'loc-compte-provision')" onblur="genAcBlur('loc-compte-provision')" autocomplete="off">
       </div>
       <div class="form-field">
@@ -2665,7 +2665,7 @@ applyTheme();
         </div>
       </div>
       <div style="flex:1;min-width:260px;">
-        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">COMPTES COMPTABLES</div>
+        <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:6px;">COMPTES COMPTABLES <span style="font-weight:400;">(règle par défaut — ⚙ sur un véhicule pour lui donner ses propres comptes)</span></div>
         <div class="form-row c2 mb8">
           <div class="form-field">
             <label>Compte à débiter</label>
@@ -2816,6 +2816,25 @@ applyTheme();
 <div class="ed-doc" id="print-container"></div>
 
 <!-- EXERCISE MODAL -->
+<!-- V96 : base vide → création du premier exercice (au lieu d'ouvrir un exercice vide jamais créé) -->
+<div id="premier-ex-modal" class="modal-overlay" style="z-index:1500;">
+  <div class="modal" style="width:520px;">
+    <div class="modal-title">🏁 PREMIER EXERCICE</div>
+    <p style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:12px;">Aucun exercice n'existe encore. Créez le premier exercice de la société : il se termine toujours le 31/12 de son année, et peut commencer l'année précédente (premier exercice de plus de 12 mois) ou en cours d'année.</p>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+      <div><label style="font-size:9px;margin-bottom:4px;">Exercice (année de clôture)</label>
+        <input type="number" id="premier-ex-annee" style="height:32px;font-family:var(--mono);font-size:13px;width:110px;" oninput="majPremierExerciceBornes()"></div>
+      <div><label style="font-size:9px;margin-bottom:4px;">Date de début</label>
+        <input type="date" id="premier-ex-debut" style="height:32px;font-family:var(--mono);font-size:12px;width:170px;" onchange="majPremierExerciceBornes()"></div>
+    </div>
+    <div id="premier-ex-aide" style="font-size:10px;color:var(--text2);margin-bottom:12px;line-height:1.5;"></div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:12px;">Vous voulez plutôt reprendre une sauvegarde ? Fermez cette fenêtre et passez par le menu Exercices.</div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" id="premier-ex-btn" onclick="creerPremierExercice()">✓ CRÉER L'EXERCICE</button>
+      <button class="btn ml-auto" onclick="document.getElementById('premier-ex-modal').style.display='none'">PLUS TARD</button>
+    </div>
+  </div>
+</div>
 <div id="exercise-modal" class="modal-overlay">
   <div class="modal" style="width:580px;max-height:90vh;overflow-y:auto;">
     <div class="modal-title"><span>⚙</span> GESTION DES EXERCICES</div>
@@ -2837,6 +2856,11 @@ applyTheme();
       </div>
       <div id="new-ex-confirm" style="display:none;margin-top:10px;padding:10px 12px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--radius);">
         <div id="new-ex-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
+        <div id="new-ex-debut-zone" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px dashed var(--line2);border-radius:var(--radius);">
+          <label style="font-size:9px;margin-bottom:4px;">Date de début de l'exercice</label>
+          <input type="date" id="new-ex-debut" style="height:30px;font-family:var(--mono);font-size:12px;width:170px;">
+          <div id="new-ex-debut-aide" style="font-size:10px;color:var(--text2);margin-top:6px;line-height:1.5;"></div>
+        </div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-primary" onclick="createNewExerciseConfirm()">✓ CONFIRMER</button>
           <button class="btn btn-sm" onclick="createNewExerciseCancel()">ANNULER</button>
@@ -2879,8 +2903,12 @@ applyTheme();
       <div id="cloture-blocages" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);font-size:11px;line-height:1.5;max-height:320px;overflow-y:auto;"></div>
       <div id="cloture-confirm" style="display:none;padding:10px 12px;background:rgba(255,85,85,0.08);border:1px solid rgba(255,85,85,0.3);border-radius:var(--radius);">
         <div id="cloture-confirm-msg" style="font-size:12px;color:var(--text1);margin-bottom:10px;line-height:1.5;"></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+          <input type="password" id="cloture-pw" placeholder="Votre mot de passe" autocomplete="current-password" style="height:30px;font-family:var(--mono);font-size:12px;flex:1;max-width:240px;" onkeydown="if(event.key==='Enter')clotureGoToNext()">
+          <span id="cloture-pw-err" style="font-family:var(--mono);font-size:10px;color:var(--red);"></span>
+        </div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-sm btn-danger" onclick="clotureGoToNext()">🔒 CLÔTURER ET CONTINUER →</button>
+          <button class="btn btn-sm btn-danger" id="cloture-go-btn" onclick="clotureGoToNext()">🔒 CLÔTURER ET CONTINUER →</button>
           <button class="btn btn-sm" onclick="clotureCancel()">ANNULER</button>
         </div>
       </div>
@@ -3348,6 +3376,29 @@ function anneeCompta() {
   const n = parseInt(CURRENT_YEAR, 10);
   return isNaN(n) ? new Date().getFullYear() : n;
 }
+// ══ V96 : BORNES DE L'EXERCICE ══
+// Un exercice va du 01/01 au 31/12 de son année comptable. Seule exception : le PREMIER exercice de la société,
+// dont la date de début est choisie à sa création (DB._dateDebut), au plus tôt le 01/01 de N-1 (exercice de plus de 12 mois)
+// ou en cours d'année N (rien n'est alors accepté avant cette date). La fin reste toujours le 31/12 de N.
+// La date de début n'est retenue que si aucun exercice réel antérieur n'existe : dès qu'il y en a un, retour au 01/01.
+function dateDebutExercice() {
+  const Y = anneeCompta();
+  const d = DB && DB._dateDebut;
+  if(d && /^\d{4}-\d{2}-\d{2}$/.test(String(d)) && d >= `${Y - 1}-01-01` && d <= `${Y}-12-31` && !exercicePrecedentLabel()) return String(d);
+  return `${Y}-01-01`;
+}
+function dateFinExercice() { return `${anneeCompta()}-12-31`; }
+function exerciceLong() { return dateDebutExercice() < `${anneeCompta()}-01-01`; }
+function moisDebutExercice() { return dateDebutExercice().slice(0, 7); }
+// Tous les mois de l'exercice (12 en temps normal, jusqu'à 24 pour un premier exercice long)
+function moisExercice() {
+  const out = []; let m = moisDebutExercice(); const fin = `${anneeCompta()}-12`;
+  for(let g = 0; m <= fin && g < 30; g++) { out.push(m); m = moisSuivant(m); }
+  return out;
+}
+function periodeExerciceLabel() { return `Exercice du ${dateIsoFr(dateDebutExercice())} au ${dateIsoFr(dateFinExercice())}`; }
+// Années civiles couvertes par l'exercice (dotations, barème km)
+function anneesExercice() { const a = parseInt(dateDebutExercice().slice(0, 4), 10), Y = anneeCompta(); const out = []; for(let y = a; y <= Y; y++) out.push(y); return out; }
 let EXERCISE_STATUS = 'open'; // 'open' | 'closed'
 let _unsubscribeListen = null;
 
@@ -3784,7 +3835,8 @@ function exercicePrecedentLabel() {
 }
 // Ouverture anticipée : N+1 créé depuis N encore ouvert
 function estOuvertureAnticipee(label, isTest) {
-  return !isTest && EXERCISE_STATUS !== 'closed' && !isTestExercise(CURRENT_YEAR) && String(label) === String(anneeCompta() + 1);
+  // V96 : l'exercice affiché doit exister dans Firebase (pas d'ouverture anticipée depuis l'exercice vide du premier démarrage)
+  return !isTest && EXERCISE_STATUS !== 'closed' && !isTestExercise(CURRENT_YEAR) && LOADED_REV[String(CURRENT_YEAR)] !== 'new' && String(label) === String(anneeCompta() + 1);
 }
 
 // ── Recalcul de la balance d'ouverture de l'exercice affiché (N+1) à partir de N clôturé ──
@@ -3923,7 +3975,8 @@ const LIB_CHAMPS_PARAM = { loyer:'Loyer', provision:'Provision', provisionLabel:
   banque:'Banque', compteEmprunt:'Compte emprunt', compteInterets:"Compte d'intérêts", montantInitial:'Montant emprunté', tableau:"Tableau d'amortissement",
   dateDebut:'Date de début', valeurBrute:'Valeur brute', dureeAnnees:'Durée (années)', dateAchat:"Date d'acquisition", compteImmo:"Compte d'immobilisation",
   compteDotation:'Compte de dotation', compteAmort:"Compte d'amortissement", nonAmortissable:'Non amortissable', notes:'Notes', nom:'Nom', code:'Code',
-  label:'Libellé', prefixePiece:'Préfixe de pièce', formatPiece:'Format de pièce', rubrique:'Rubrique' };
+  label:'Libellé', prefixePiece:'Préfixe de pièce', formatPiece:'Format de pièce', rubrique:'Rubrique',
+  regle:'Comptes propres au véhicule', tauxAnterieur:'Barème année précédente', taux:'Barème (€/km)' };
 function _valParam(v) {
   if(v === undefined || v === null || v === '') return '(vide)';
   if(typeof v === 'boolean') return v ? 'oui' : 'non';
@@ -4251,11 +4304,10 @@ function renderEditions() {
 function esc(s) { return String(s === null || s === undefined ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 // V81 (M2) : une date saisie doit appartenir à l'année comptable de l'exercice affiché
 function dateDansExercice(d) {
-  const Y = anneeCompta();
   if(!d || !/^\d{4}-\d{2}-\d{2}$/.test(String(d))) return false;
-  return String(d) >= `${Y}-01-01` && String(d) <= `${Y}-12-31`;
+  return String(d) >= dateDebutExercice() && String(d) <= dateFinExercice(); // V96 : bornes de l'exercice
 }
-function messageDateHorsExercice(d) { const Y = anneeCompta(); return `Date ${d ? fmtDateGL(d) : 'absente'} hors exercice : elle doit être comprise entre le 01/01/${Y} et le 31/12/${Y}`; }
+function messageDateHorsExercice(d) { return `Date ${d ? fmtDateGL(d) : 'absente'} hors exercice : elle doit être comprise entre le ${dateIsoFr(dateDebutExercice())} et le ${dateIsoFr(dateFinExercice())}`; }
 // Contrôle d'une ligne : renvoie un message d'erreur, ou '' si la ligne est correcte
 function erreurLigne(l, nom) {
   const d = +l.debit || 0, c = +l.credit || 0;
@@ -5308,27 +5360,49 @@ function selectRubriqueTB(r, i) {
   const opts = Object.keys(RUBRIQUES).filter(k => RUBRIQUES[k].etat === etat)
     .map(k => `<option value="${k}" ${(choisie || prop) === k ? 'selected' : ''}>${esc(RUBRIQUES[k].lib)}${!choisie && prop === k ? ' (proposée)' : ''}</option>`).join('');
   const style = choisie ? '' : (prop ? 'font-style:italic;color:var(--text2);' : 'color:var(--red);');
-  return `<select class="tb-inp" onchange="tbu(${i},'rubrique',this.value)" style="width:100%;font-size:10px;${style}" ${EXERCISE_STATUS === 'closed' ? 'disabled' : ''}>${prop ? '' : '<option value="" selected>— à choisir —</option>'}${opts}</select>`;
+  return `<select class="tb-inp" onchange="tbu('${i}','rubrique',this.value)" style="width:100%;font-size:10px;${style}" ${EXERCISE_STATUS === 'closed' ? 'disabled' : ''}>${prop ? '' : '<option value="" selected>— à choisir —</option>'}${opts}</select>`;
 }
-function renderTBData() {
+// V95 : chaque ligne de TB Data est repérée par une clé propre à l'affichage (jamais enregistrée),
+// et non plus par sa position : un tri ou une vérification Firebase en cours ne peut plus faire écrire sur une autre ligne.
+const _tbCles = new WeakMap(); let _tbSeq = 0;
+function tbCle(r) { let k = _tbCles.get(r); if(!k) { k = 't' + (++_tbSeq); _tbCles.set(r, k); } return k; }
+function tbLigneParCle(k) { return (DB.tbData || []).find(r => _tbCles.get(r) === k) || null; }
+function trierTBData() { DB.tbData.sort((a, b) => { const x = String(a.compte || ''), y = String(b.compte || ''); if(!x !== !y) return x ? -1 : 1; return x.localeCompare(y); }); }
+// V95 : racines 1, 2 et 3 (et leurs libellés) reprises d'un autre compte du plan qui les porte déjà ; jamais d'écrasement d'une valeur saisie
+function completerRacinesTB(row) {
+  const c = String(row.compte || ''); if(!c) return;
+  [['r1','libR1',1],['r2','libR2',2],['r3','libR3',3]].forEach(([fr, fl, n]) => {
+    if(c.length < n) return;
+    const rac = c.slice(0, n);
+    if(!row[fr]) row[fr] = rac;
+    if(String(row[fr]) !== rac || row[fl]) return;
+    const src = DB.tbData.find(x => x !== row && String(x[fr] || '') === rac && String(x[fl] || '').trim());
+    if(src) row[fl] = src[fl];
+  });
+}
+function renderTBData(focusApres) {
   const q=(document.getElementById('tb-search')?.value||'').toLowerCase();
   const rows=DB.tbData.filter(r=>!q||String(r.compte).includes(q)||(r.libelle||'').toLowerCase().includes(q));
   document.getElementById('tb-body').innerHTML=rows.map(r=>{
-    const i=DB.tbData.indexOf(r);
+    const i=tbCle(r);
     return `<tr>
-      <td><input class="tb-inp" value="${esc(r.compte||'')}" onblur="tbu(${i},'compte',this.value)" style="font-family:var(--mono);"></td>
-      <td><input class="tb-inp" value="${esc(r.libelle||'')}" onblur="tbu(${i},'libelle',this.value)"></td>
-      <td><input class="tb-inp" value="${esc(r.r1||'')}" onblur="tbu(${i},'r1',this.value)" style="width:36px;font-family:var(--mono);"></td>
-      <td><input class="tb-inp" value="${esc(r.libR1||'')}" onblur="tbu(${i},'libR1',this.value)"></td>
-      <td><input class="tb-inp" value="${esc(r.r2||'')}" onblur="tbu(${i},'r2',this.value)" style="width:36px;font-family:var(--mono);"></td>
-      <td><input class="tb-inp" value="${esc(r.libR2||'')}" onblur="tbu(${i},'libR2',this.value)"></td>
-      <td><input class="tb-inp" value="${esc(r.r3||'')}" onblur="tbu(${i},'r3',this.value)" style="width:36px;font-family:var(--mono);"></td>
-      <td><input class="tb-inp" value="${esc(r.libR3||'')}" onblur="tbu(${i},'libR3',this.value)"></td>
+      <td><input class="tb-inp" value="${esc(r.compte||'')}" onblur="tbu('${i}','compte',this.value,event.relatedTarget&&event.relatedTarget.dataset.tbk==='${i}')" style="font-family:var(--mono);"></td>
+      <td><input class="tb-inp" data-tbk="${i}" value="${esc(r.libelle||'')}" onblur="tbu('${i}','libelle',this.value)"></td>
+      <td><input class="tb-inp" value="${esc(r.r1||'')}" onblur="tbu('${i}','r1',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${esc(r.libR1||'')}" onblur="tbu('${i}','libR1',this.value)"></td>
+      <td><input class="tb-inp" value="${esc(r.r2||'')}" onblur="tbu('${i}','r2',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${esc(r.libR2||'')}" onblur="tbu('${i}','libR2',this.value)"></td>
+      <td><input class="tb-inp" value="${esc(r.r3||'')}" onblur="tbu('${i}','r3',this.value)" style="width:36px;font-family:var(--mono);"></td>
+      <td><input class="tb-inp" value="${esc(r.libR3||'')}" onblur="tbu('${i}','libR3',this.value)"></td>
       <td>${selectRubriqueTB(r, i)}</td>
-      <td class="td-act"><button class="btn btn-sm btn-danger btn-icon" onclick="delTB(${i})">✕</button></td>
+      <td class="td-act"><button class="btn btn-sm btn-danger btn-icon" onclick="delTB('${i}')">✕</button></td>
     </tr>`;
   }).join('');
   document.getElementById('nc-tb').textContent=DB.tbData.length;
+  if(focusApres) {
+    const el = document.querySelector(`#tb-body input[data-tbk="${focusApres}"]`);
+    if(el) { el.closest('tr')?.scrollIntoView({block:'center'}); el.focus(); }
+  }
 }
 // V82 : n° de pièce réservé à la balance d'ouverture (A-nouveaux) — comparaison sans casse, accents ni séparateurs,
 // pour reconnaître « OD/BG Ouverture », « OD - BG Ouverture » ou « BG Ouverture »
@@ -5429,20 +5503,28 @@ async function usagesCompte(c) {
   }
   return u;
 }
-async function tbu(i,f,v){
-  if(!DB.tbData[i] || String(DB.tbData[i][f] ?? '') === String(v)) return; // rien n'a changé
+async function tbu(k,f,v,versLibelle){
+  const row = tbLigneParCle(k); // V95 : la ligne elle-même, pas sa position
+  if(!row || String(row[f] ?? '') === String(v)) return; // rien n'a changé
   if(bloqueSiCloture()) { renderTBData(); return; }
   if(f === 'compte') {
-    const ancien = String(DB.tbData[i].compte || ''), nouveau = String(v).trim();
-    if(nouveau && DB.tbData.some((r,j) => j !== i && String(r.compte) === nouveau)) { toast(`Le compte ${nouveau} existe déjà dans le plan comptable`, 'error', 5000); renderTBData(); return; }
+    const ancien = String(row.compte || ''), nouveau = String(v).trim();
+    if(nouveau && DB.tbData.some(r => r !== row && String(r.compte) === nouveau)) { toast(`Le compte ${nouveau} existe déjà dans le plan comptable`, 'error', 5000); renderTBData(); return; }
     if(ancien) {
       let u;
       try { u = await usagesCompte(ancien); } catch(e) { toast('Firebase ne répond pas : impossible de vérifier ce compte, modification annulée', 'error', 5000); renderTBData(); return; }
       if(u.length) { toast(`Numéro non modifiable : le compte ${ancien} est utilisé (${u.slice(0,3).join(', ')}${u.length>3?'…':''}). Créez un nouveau compte et passez une écriture de reclassement.`, 'error', 8000); renderTBData(); return; }
     }
     v = nouveau;
+    if(!DB.tbData.includes(row)) { renderTBData(); return; } // exercice rechargé pendant la vérification
+    row.compte = v;
+    completerRacinesTB(row); // V95
+    trierTBData();           // V95 : rangé tout de suite dans l'ordre des comptes
+    saveDB(); upDl();
+    renderTBData(versLibelle ? k : null);
+    return;
   }
-  DB.tbData[i][f]=v; saveDB(); upDl();
+  row[f]=v; saveDB(); upDl();
 }
 function addTBRow(){
   if(bloqueSiCloture()) return; // V81 (M3)
@@ -5456,14 +5538,15 @@ function addTBRow(){
     setTimeout(()=>lastRow.querySelector('input')?.focus(), 100);
   }
 }
-async function delTB(i){
+async function delTB(k){
   if(bloqueSiCloture()) return; // V81 (M3)
-  const r = DB.tbData[i]; if(!r) return;
+  const r = tbLigneParCle(k); if(!r) return;
   if(r.compte) {
     let u;
     try { u = await usagesCompte(r.compte); } catch(e) { toast('Firebase ne répond pas : impossible de vérifier ce compte, suppression annulée', 'error', 5000); return; }
     if(u.length) { toast(`Suppression impossible : le compte ${r.compte} est utilisé (${u.slice(0,3).join(', ')}${u.length>3?'…':''})`, 'error', 8000); return; }
   }
+  const i = DB.tbData.indexOf(r); if(i < 0) { renderTBData(); return; } // V95 : position relue après la vérification
   DB.tbData.splice(i,1); saveDB(); renderTBData(); upDl();
 }
 function showTBImport() {
@@ -6615,7 +6698,10 @@ function applyExerciseStatus() {
 
 // V79 : liste et statuts lus UNIQUEMENT dans Firebase. Lève une exception si Firebase ne répond pas.
 async function loadKnownYears(excludeYear) {
-  window._exerciseStatuses = window._exerciseStatuses || {};
+  // V96 : statuts reconstruits entièrement depuis Firebase (un exercice affiché mais jamais créé — ex. l'exercice
+  // vide proposé au tout premier démarrage — ne doit plus être pris pour un N+1). En cas d'erreur Firebase,
+  // une exception est levée avant tout remplacement : l'ancienne liste reste en place (règle V79).
+  const st = {};
   let years = (await window._fbListYears()).map(String).filter(y => y && y.trim() !== '' && y !== 'NaN');
   const curStr = String(CURRENT_YEAR);
   if(!years.includes(curStr) && curStr !== String(excludeYear)) years.push(curStr);
@@ -6623,10 +6709,11 @@ async function loadKnownYears(excludeYear) {
   years = [...new Set(years)];
   // Statuts (ouvert/clôturé, test) de chaque exercice, depuis Firebase
   for(const y of years) {
-    if(y === curStr) { window._exerciseStatuses[y] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest }; continue; }
+    if(y === curStr) { st[y] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest }; continue; }
     const r = await chargerExercice(y);
-    if(r) window._exerciseStatuses[y] = { _status: r.data._status || 'open', _isTest: r.data._isTest !== undefined ? !!r.data._isTest : false };
+    if(r) st[y] = { _status: r.data._status || 'open', _isTest: r.data._isTest !== undefined ? !!r.data._isTest : false };
   }
+  window._exerciseStatuses = st;
   // Tri : années les plus récentes d'abord, exercices test en bas
   years.sort((a, b) => {
     const aTest = isTestExercise(a), bTest = isTestExercise(b);
@@ -6869,18 +6956,48 @@ function createNewExerciseStep1() {
     <span style="color:var(--text2);font-size:11px;">${estOuvertureAnticipee(label, isTestChecked)
       ? `<strong style="color:var(--amber);">Ouverture anticipée</strong> : ${CURRENT_YEAR} n'est pas clôturé. Les modules sont repris et une balance d'ouverture <strong>provisoire</strong> est calculée sur ${CURRENT_YEAR} tel qu'il est aujourd'hui ; elle sera recalculée (avec comparaison avant/après) une fois ${CURRENT_YEAR} clôturé. Tout changement de paramétrage fait ensuite dans ${CURRENT_YEAR} sera listé dans « À reporter en N+1 ».`
       : `La TB Data sera copiée depuis l'exercice en cours (${CURRENT_YEAR}).`}</span>`;
+  // V96 : premier exercice de la société → date de début au choix (01/01/N-1 au 31/12/N), fin au 31/12/N
+  const zone = document.getElementById('new-ex-debut-zone');
+  if(zone) {
+    const elig = premierExerciceEligible(label, isTestChecked, existing);
+    zone.style.display = elig ? 'block' : 'none';
+    if(elig) {
+      const d = document.getElementById('new-ex-debut');
+      d.min = `${label - 1}-01-01`; d.max = `${label}-12-31`; d.value = `${label}-01-01`;
+      document.getElementById('new-ex-debut-aide').innerHTML = `<strong style="color:var(--cyan);">Premier exercice de la société.</strong> Il se termine le 31/12/${label} et peut commencer en ${label - 1} (exercice de plus de 12 mois, au plus tôt le 01/01/${label - 1}) ou en cours d'année ${label}. Aucune écriture ne sera acceptée avant cette date. Ce choix n'est possible qu'à la création.`;
+    }
+  }
   document.getElementById('new-ex-confirm').style.display = 'block';
+}
+// V96 : un premier exercice = aucun exercice réel (hors test) d'une année antérieure
+function premierExerciceEligible(label, isTest, existants) {
+  if(isTest || typeof label !== 'number' || isNaN(label)) return false;
+  return !(existants || []).some(y => String(parseInt(y, 10)) === String(y) && parseInt(y, 10) < label && !isTestExercise(y));
+}
+// Revérification dans Firebase au moment de créer (lève une exception si Firebase ne répond pas)
+async function verifierPremierExercice(label) {
+  const years = (await window._fbListYears()).map(String);
+  for(const y of years) {
+    if(String(parseInt(y, 10)) !== y) continue;
+    if(parseInt(y, 10) < label) { const r = await chargerExercice(y); if(r && !r.data._isTest) return `l'exercice ${y} existe déjà : ${label} n'est pas le premier exercice`; }
+  }
+  return '';
 }
 function createNewExerciseCancel() {
   document.getElementById('new-ex-step1').style.display = 'flex';
   document.getElementById('new-ex-confirm').style.display = 'none';
 }
-async function createNewExerciseConfirm() {
+async function createNewExerciseConfirm(pwVerifie) {
   // Depuis un exercice clôturé, la création de l'exercice suivant passe par la même logique que la clôture
   // (balance d'ouverture + reprise des modules), pour ne jamais créer un N+1 "vide" par erreur.
   const _nomSaisi = (document.getElementById('new-ex-name')?.value || '').trim();
   const _testCoche = !!document.getElementById('new-ex-istest')?.checked;
   const _anticipee = estOuvertureAnticipee(parseInt(_nomSaisi, 10), _testCoche) && String(parseInt(_nomSaisi, 10)) === _nomSaisi;
+  // V95 : ouverture anticipée de N+1 = même exigence que la clôture (mot de passe revérifié par Firebase)
+  if(_anticipee && !pwVerifie) {
+    demanderMotDePasse('OUVERTURE ANTICIPÉE', `Ouvrir <strong style="color:var(--cyan)">${esc(_nomSaisi)}</strong> alors que ${esc(String(CURRENT_YEAR))} n'est pas clôturé ?`, 'OUVRIR ' + esc(_nomSaisi), () => createNewExerciseConfirm(true));
+    return;
+  }
   if((EXERCISE_STATUS === 'closed' && !isTestExercise(CURRENT_YEAR)) || _anticipee) {
     window._ouvertureAnticipee = _anticipee; // V83 (C5) : N+1 créé depuis N encore ouvert → balance d'ouverture provisoire
     const nameEl = document.getElementById('new-ex-name');
@@ -6903,28 +7020,85 @@ async function createNewExerciseConfirm() {
   if(!label || (typeof label === 'number' && isNaN(label))) {
     toast('Erreur : nom d\'exercice invalide', 'error'); return;
   }
-  const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
-  const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
-  const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
+  // V96 : date de début d'un premier exercice
+  let dateDebut = null;
+  const zoneDebut = document.getElementById('new-ex-debut-zone');
+  if(zoneDebut && zoneDebut.style.display !== 'none' && typeof label === 'number') {
+    const d = (document.getElementById('new-ex-debut')?.value || '').trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d) || d < `${label - 1}-01-01` || d > `${label}-12-31`) { toast(`Date de début invalide : entre le 01/01/${label - 1} et le 31/12/${label}`, 'error', 6000); return; }
+    if(d !== `${label}-01-01`) {
+      let motif;
+      try { motif = await verifierPremierExercice(label); } catch(e) { toast('Firebase ne répond pas : création annulée', 'error', 6000); return; }
+      if(motif) { toast('Date de début refusée : ' + motif, 'error', 7000); return; }
+      dateDebut = d;
+    }
+  }
+  // V96 : pas d'exercice antérieur au premier exercice de la société (celui dont la date de début est fixée)
+  if(typeof label === 'number' && !isTestChecked) {
+    try {
+      const suiv = await chargerExercice(String(label + 1));
+      if(suiv && suiv.data._dateDebut && !suiv.data._isTest) { toast(`${label + 1} est le premier exercice de la société (début le ${dateIsoFr(suiv.data._dateDebut)}) : impossible de créer ${label}.`, 'error', 8000); return; }
+    } catch(e) { toast('Firebase ne répond pas : création annulée', 'error', 6000); return; }
+  }
   input.value = '';
   createNewExerciseCancel();
   closeExerciseModal();
-  if(!(await toutEnregistrer())) { toast("Création impossible : des modifications ne sont pas enregistrées", 'error', 6000); return; }
+  await installerNouvelExercice(label, isTestChecked, dateDebut);
+}
+// V96 : création d'un exercice vierge (menu Exercices ou premier démarrage) — TB Data et rappels repris de l'exercice affiché
+async function installerNouvelExercice(label, isTestChecked, dateDebut) {
+  const tbDataCopy = JSON.parse(JSON.stringify(DB.tbData));
+  const rappelsMCopy = JSON.parse(JSON.stringify(DB.rappelsMensuelList));
+  const rappelsACopy = JSON.parse(JSON.stringify(DB.rappelsAnnuelList));
+  if(!(await toutEnregistrer())) { toast("Création impossible : des modifications ne sont pas enregistrées", 'error', 6000); return false; }
   CURRENT_YEAR = label;
   LOADED_REV[String(label)] = 'new'; // V79 : l'enregistrement sera refusé si cet exercice existe déjà dans Firebase
   DB = { ecritures:[], tbData:tbDataCopy, rappelsMensuel:{}, rappelsMensuelList:rappelsMCopy, rappelsAnnuel:{}, rappelsAnnuelList:rappelsACopy, nextGlobalNum:1, journalNums:{VE:1,HA:1,IMMO:1,OD:1,TRESO:1}, _status:'open' };
   setTestFlag(label, isTestChecked); // après la création de DB, pour que DB._isTest soit bien posé sur le NOUVEL exercice
   if(!isNaN(parseInt(label, 10))) DB._anneeComptable = parseInt(label, 10);
+  if(dateDebut) DB._dateDebut = dateDebut; // V96 : premier exercice ne commençant pas au 01/01
   EXERCISE_STATUS = 'open';
-  if(!(await saveDBNow())) return; // exercice déjà existant ou Firebase indisponible : bandeau affiché
-  try { await loadKnownYears(); } catch(e) { afficherErreurConnexion(e); return; }
+  initRefParametres(); // V96 : référence du paramétrage = celle du nouvel exercice
+  if(!(await saveDBNow())) return false; // exercice déjà existant ou Firebase indisponible : bandeau affiché
+  try { await loadKnownYears(); } catch(e) { afficherErreurConnexion(e); return false; }
   renum(); updateNavCounts(); applyExerciseStatus(); fillYears();
   document.getElementById('lines-body').innerHTML=''; lineIdCounter=0; addLine(undefined,true); updateNextNum(); upTotals();
   startLiveSync();
   showTab('saisie');
   toast('Exercice "' + label + '" créé', 'success');
+  return true;
 }
 function createNewExercise() { createNewExerciseStep1(); }
+// V96 : premier démarrage sur une base vide
+function ouvrirPremierExercice() {
+  const a = document.getElementById('premier-ex-annee'); if(!a) return;
+  a.value = new Date().getFullYear();
+  majPremierExerciceBornes();
+  document.getElementById('premier-ex-modal').style.display = 'flex';
+}
+function majPremierExerciceBornes() {
+  const y = parseInt(document.getElementById('premier-ex-annee').value, 10);
+  const d = document.getElementById('premier-ex-debut');
+  if(isNaN(y)) { document.getElementById('premier-ex-aide').textContent = ''; return; }
+  d.min = `${y - 1}-01-01`; d.max = `${y}-12-31`;
+  if(!d.value || d.value < d.min || d.value > d.max) d.value = `${y}-01-01`;
+  document.getElementById('premier-ex-aide').innerHTML = `Exercice <strong>${y}</strong> : du ${d.value ? dateIsoFr(d.value) : '…'} au 31/12/${y}. Date de début possible entre le 01/01/${y - 1} et le 31/12/${y}.`;
+}
+async function creerPremierExercice() {
+  const y = parseInt(document.getElementById('premier-ex-annee').value, 10);
+  const d = document.getElementById('premier-ex-debut').value;
+  if(isNaN(y) || y < 1990 || y > 2200) { toast('Année invalide', 'error'); return; }
+  if(!d || d < `${y - 1}-01-01` || d > `${y}-12-31`) { toast(`Date de début : entre le 01/01/${y - 1} et le 31/12/${y}`, 'error', 6000); return; }
+  const btn = document.getElementById('premier-ex-btn'); btn.disabled = true;
+  try {
+    let years, motif;
+    try { years = (await window._fbListYears()).map(String); motif = await verifierPremierExercice(y); }
+    catch(e) { toast('Firebase ne répond pas : création annulée', 'error', 6000); return; }
+    if(years.includes(String(y))) { toast(`L'exercice ${y} existe déjà`, 'error', 6000); return; }
+    if(motif) { toast('Création refusée : ' + motif, 'error', 7000); return; }
+    if(await installerNouvelExercice(y, false, d !== `${y}-01-01` ? d : null)) document.getElementById('premier-ex-modal').style.display = 'none';
+  } finally { btn.disabled = false; }
+}
 
 // ══════════════════════════════════════════════
 // CONTRÔLES AVANT CLÔTURE — la clôture est refusée tant qu'un point reste en suspens
@@ -6937,7 +7111,7 @@ function controlesAvantCloture() {
   aReporterNonFaits().forEach(x => _bloqV83.push({ module: 'À reporter en N+1', detail: `${x.module} — ${x.libelle} (${LIB_ACTION_REPORT[x.action] || x.action}${(x.details||[]).length ? ' : ' + x.details.join(' ; ') : ''}) : à reporter dans ${Y + 1} puis cocher` }));
   const blocages = [];
   if(isNaN(Y)) return blocages; // exercice test sans année : pas de contrôle
-  const mois12 = Array.from({length:12}, (_,i) => `${Y}-${String(i+1).padStart(2,'0')}`);
+  const mois12 = moisExercice(); // V96 : tous les mois de l'exercice (premier exercice long compris)
   const lbl = m => moisLabelFromYYYYMM(m);
   const liste = arr => arr.length > 4 ? arr.slice(0,4).join(', ') + ` … (+${arr.length-4})` : arr.join(', ');
 
@@ -6965,14 +7139,14 @@ function controlesAvantCloture() {
   // 2. Échéanciers
   ensureEcheanciersArray().forEach(ech => {
     const done = ech.moisComptabilises || [];
-    const manquants = computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => m.startsWith(Y + '-') && !done.includes(m));
+    const manquants = computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => moisDansExerciceCourant(m) && !done.includes(m));
     if(manquants.length) blocages.push({ module: 'Échéanciers', detail: `${ech.libelle} : ${liste(manquants.map(lbl))}` });
   });
 
   // 3. Emprunts
   ensureEmpruntsArray().forEach(emp => {
     const done = emp.moisComptabilises || [];
-    const manquants = (emp.tableau || []).map(r => r.mois).filter(m => m.startsWith(Y + '-') && !done.includes(m));
+    const manquants = (emp.tableau || []).map(r => r.mois).filter(m => moisDansExerciceCourant(m) && !done.includes(m));
     if(manquants.length) blocages.push({ module: 'Emprunts', detail: `${emp.libelle} : ${liste(manquants.map(lbl))}` });
   });
 
@@ -6983,8 +7157,7 @@ function controlesAvantCloture() {
 
   // 5. Dotations aux amortissements de l'exercice
   const dotations = ensureImmoArray().filter(i => !i.nonAmortissable).filter(immo => {
-    const row = computeAmortSchedule(immo).find(s => s.annee === Y);
-    return row && row.dotation > 0 && !isDotationAlreadyPosted(immo);
+    return dotationExercice(immo) > 0 && !isDotationAlreadyPosted(immo); // V96
   });
   if(dotations.length) blocages.push({ module: 'Immobilisations', detail: `Dotation ${Y} non comptabilisée : ${liste(dotations.map(i => i.libelle))}` });
 
@@ -7041,8 +7214,12 @@ function clotureStep1() {
     `⚠️ Clôturer définitivement l'exercice <strong style="color:var(--red)">${CURRENT_YEAR}</strong> ?<br>
     <span style="color:var(--text2);font-size:11px;">Cette action est irréversible. L'exercice passera en lecture seule.<br>Vous pourrez ensuite ouvrir ou créer l'exercice suivant.</span>`;
   document.getElementById('cloture-confirm').style.display = 'block';
+  // V95 : mot de passe obligatoire pour clôturer
+  const pw = document.getElementById('cloture-pw'); if(pw) { pw.value = ''; setTimeout(() => pw.focus(), 50); }
+  const pe = document.getElementById('cloture-pw-err'); if(pe) pe.textContent = '';
 }
 function clotureCancel() {
+  const pw = document.getElementById('cloture-pw'); if(pw) pw.value = '';
   document.getElementById('cloture-step1').style.display = 'block';
   document.getElementById('cloture-confirm').style.display = 'none';
   document.getElementById('cloture-next').style.display = 'none';
@@ -7051,6 +7228,19 @@ async function clotureGoToNext() {
   // Sécurité : on revérifie au moment de clôturer
   const blocages = controlesAvantCloture();
   if(blocages.length) { afficherBlocagesCloture(blocages); clotureCancel(); return; }
+  // V95 : la clôture exige le mot de passe de connexion, revérifié par Firebase (rien dans le code ; hors ligne = refus)
+  const pwEl = document.getElementById('cloture-pw'), pwErr = document.getElementById('cloture-pw-err'), goBtn = document.getElementById('cloture-go-btn');
+  if(!pwEl || !pwEl.value) { if(pwErr) pwErr.textContent = 'Mot de passe requis.'; pwEl?.focus(); return; }
+  if(goBtn) goBtn.disabled = true;
+  let pwOk = false; try { pwOk = await verifierMotDePasse(pwEl.value); } catch(e) { pwOk = false; }
+  if(goBtn) goBtn.disabled = false;
+  pwEl.value = '';
+  if(!pwOk) { if(pwErr) pwErr.textContent = 'Mot de passe incorrect.'; pwEl.focus(); return; }
+  if(pwErr) pwErr.textContent = '';
+  // Contrôles rejoués après l'attente de Firebase (une modification a pu arriver d'un autre poste entre-temps)
+  const blocages2 = controlesAvantCloture();
+  if(blocages2.length) { afficherBlocagesCloture(blocages2); clotureCancel(); return; }
+  if(EXERCISE_STATUS === 'closed') return;
   // Capture écritures BEFORE closing (for FNO generation)
   window._closingEcritures = JSON.parse(JSON.stringify(DB.ecritures));
   window._closingTbData = JSON.parse(JSON.stringify(DB.tbData));
@@ -7404,20 +7594,13 @@ function buildFNO(ecritures, tbData, opts) {
   const result = [];
   let num = 1;
   let totalDebit = 0, totalCredit = 0;
-  // Debitors first
-  debitors.forEach(s => {
+  // V95 : une seule liste dans l'ordre des comptes (débits et crédits mêlés), au lieu de tous les débits puis tous les crédits
+  debitors.concat(creditors).sort((a,b) => a.compte.localeCompare(b.compte)).forEach(s => {
+    const d = s.net > 0 ? s.net : 0, c = s.net < 0 ? Math.abs(s.net) : 0;
     result.push({ id: crypto.randomUUID(), _io: 0, _module: 'bao', num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
       libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
-      numDoc:PIECE_BAO, debit:s.net, credit:0 });
-    totalDebit += s.net;
-    num++;
-  });
-  // Creditors second
-  creditors.forEach(s => {
-    result.push({ id: crypto.randomUUID(), _io: 0, _module: 'bao', num, journal:'OD', numJ:num, date:dateStr, compte:s.compte,
-      libelleCompte: s.libelle, libelleEcriture:"Balance d'ouverture",
-      numDoc:PIECE_BAO, debit:0, credit:Math.abs(s.net) });
-    totalCredit += Math.abs(s.net);
+      numDoc:PIECE_BAO, debit:d, credit:c });
+    totalDebit += d; totalCredit += c;
     num++;
   });
   // V84 (M5) : ouverture anticipée → le résultat de N, pas encore constaté, figure en résultat provisoire (120/129)
@@ -7435,6 +7618,9 @@ function buildFNO(ecritures, tbData, opts) {
       num++;
     }
   }
+  // V95 : la ligne de résultat provisoire prend aussi sa place dans l'ordre des comptes ; numéros de ligne recalés
+  result.sort((a,b) => String(a.compte).localeCompare(String(b.compte)));
+  result.forEach((l, i) => { l.num = i + 1; l.numJ = i + 1; });
   // V84 (M5) : plus d'équilibrage automatique sur le 890000 — l'écart est signalé et la balance refusée
   result.ecart = Math.round((totalDebit - totalCredit) * 100) / 100;
   return result;
@@ -7744,7 +7930,7 @@ async function generateBG(fmt) {
     const vartot = hasN1 ? `<td style="${totS}">${rn(totNet25-totNet24)}</td>` : '';
 
     const html = `<div class="rpt">
-      ${rptHeader('Balance Générale', `Exercice du 01/01/${anneeCompta()} au 31/12/${anneeCompta()} — Montants en euros entiers`)}
+      ${rptHeader('Balance Générale', `${periodeExerciceLabel()} — Montants en euros entiers`)}
       <table style="width:100%;border-collapse:collapse;table-layout:fixed;">
         <colgroup>${cols}</colgroup>
         <thead><tr>
@@ -8316,7 +8502,7 @@ function renderBilanHTML(b, bn1, n1Year, noteHtml) {
     + '</tbody></table>';
 
   return '<div class="rpt">'
-    + rptHeader('Bilan', 'Exercice du 01/01/' + anneeCompta() + ' au 31/12/' + anneeCompta() + ' — Montants en euros entiers')
+    + rptHeader('Bilan', periodeExerciceLabel() + (exerciceLong() ? ` (${moisExercice().length} mois)` : '') + ' — Montants en euros entiers')
     + '<div style="margin-bottom:20px;">' + actifHTML + '</div>'
     + '<div>' + passifHTML + '</div>'
     + (noteHtml || '')
@@ -8853,7 +9039,7 @@ function renderCRHTML(cr, crn1, n1Year, noteHtml) {
     + '</tbody></table>';
 
   return '<div class="rpt">'
-    + rptHeader('Compte de Résultat', 'Exercice du 01/01/' + anneeCompta() + ' au 31/12/' + anneeCompta() + ' — Montants en euros entiers')
+    + rptHeader('Compte de Résultat', periodeExerciceLabel() + (exerciceLong() ? ` (${moisExercice().length} mois)` : '') + ' — Montants en euros entiers')
     + html
     + (noteHtml || '')
     + rptFooter()
@@ -10099,7 +10285,7 @@ function updateMouvementTotal() {
 
 // Ouverture de la modale de saisie/édition d'un mouvement
 // V83 (M11) : un mouvement daté d'un exercice précédent appartient à cet exercice — lecture seule ici
-function mouvementVerrouille(mvt) { return !!(mvt && mvt.dateOperation && mvt.dateOperation < `${anneeCompta()}-01-01`); }
+function mouvementVerrouille(mvt) { return !!(mvt && mvt.dateOperation && mvt.dateOperation < dateDebutExercice()); } // V96
 function refuserMouvementVerrouille(mvt) {
   if(!mouvementVerrouille(mvt)) return false;
   toast(`Mouvement du ${fmtDateFr(mvt.dateOperation)} : il appartient à l'exercice ${String(mvt.dateOperation).slice(0,4)}, modifiable uniquement dans cet exercice.`, 'error', 7000);
@@ -10880,8 +11066,16 @@ function renderLocataires() {
         ${labelHtml}
         ${doublonHtml}
         <span style="color:var(--text0);text-align:right;font-family:var(--mono);white-space:nowrap;min-width:72px;">${fmt(montant)} €</span>
+        <button class="btn btn-sm" onclick="askArchiveHistoriqueEntry('${loc.id}','${h.id}')" title="Archiver ce document seul" style="padding:0 5px;font-size:9px;flex:none;">📦</button>
       </div>`;
     };
+    // V95 : document archivé seul → la case n'est pas laissée vide (évite de croire qu'il reste à émettre)
+    const archiveHtml = (type) => `<div class="loc-doc" style="display:flex;align-items:center;gap:10px;margin:3px 0;padding:4px 8px;font-size:10px;border-radius:3px;border-left:3px solid var(--line2);opacity:.6;">
+        <span style="width:12px;display:inline-block;flex:none;"></span>
+        <span style="flex:1;min-width:0;color:var(--text2);font-style:italic;cursor:pointer;" onclick="ouvrirArchives('loc')" title="Consulter les archives">📦 ${type === 'appel' ? 'Appel de loyer archivé' : 'Quittance archivée'}</span>
+      </div>`;
+    const archivesParMois = {};
+    (loc.historique||[]).forEach(h => { if(h.mois && h.archived && !h._exercicePrecedent) { const a = archivesParMois[h.mois] = archivesParMois[h.mois] || {}; a[h.type] = true; } });
     const historique = (loc.historique||[]).filter(h => h.mois && !h.archived && !h._exercicePrecedent); // V82 : archivés et documents de N-1 hors liste
     let docsHtml = '';
     if(historique.length) {
@@ -10901,8 +11095,9 @@ function renderLocataires() {
       const sep = 'border-top:1px solid var(--bg3);';
       const rows = moisSuite.map((k,i) => {
         const g = parMois[k] || { appels: [], quittances: [] };
-        const left = g.appels.sort(byDate).map(docItemHtml).join('');
-        const right = g.quittances.sort(byDate).map(docItemHtml).join('');
+        const arch = archivesParMois[k] || {};
+        const left = g.appels.sort(byDate).map(docItemHtml).join('') || (arch.appel ? archiveHtml('appel') : '');
+        const right = g.quittances.sort(byDate).map(docItemHtml).join('') || (arch.quittance ? archiveHtml('quittance') : '');
         const vide = !left && !right;
         const t = i ? sep : '';
         return `<div style="${t}padding:1px 10px;min-height:26px;">${left}</div>
@@ -11132,10 +11327,10 @@ function openAppelModal(locId) {
   const annee = anneeCompta();
   document.getElementById('appel-annee-lib').textContent = 'exercice ' + annee;
   document.getElementById('appel-mois').innerHTML = '<option value="">— Choisir le mois —</option>' +
-    MOIS_LABELS.map((m, i) => {
-      const v = annee + '-' + String(i + 1).padStart(2, '0');
+    moisExercice().map(v => { // V96 : mois de l'exercice (premier exercice long compris)
+      const m = MOIS_LABELS[parseInt(v.slice(5, 7), 10) - 1];
       let deja = false; try { deja = documentsDuMois(loc, 'appel', v).ici.length > 0; } catch(e) {}
-      return `<option value="${v}">${m.charAt(0).toUpperCase() + m.slice(1)} ${annee}${deja ? ' — appel déjà émis' : ''}</option>`;
+      return `<option value="${v}">${m.charAt(0).toUpperCase() + m.slice(1)} ${v.slice(0, 4)}${deja ? ' — appel déjà émis' : ''}</option>`;
     }).join('');
   majControleAppel();
   document.getElementById('appel-apl').value = 0;
@@ -11200,7 +11395,7 @@ function generateAppelLoyerV2() {
   if(!mois) { toast('Choisissez le mois de l\'appel','error'); return; }
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   // V87 : mois obligatoirement dans l'année de l'exercice ouvert
-  if(mois.slice(0, 4) !== String(anneeCompta())) { toast('Le mois doit appartenir à l\'exercice ' + anneeCompta(), 'error'); return; }
+  if(!moisDansExerciceCourant(mois)) { toast('Le mois doit appartenir à l\'exercice ' + CURRENT_YEAR, 'error'); return; } // V96
   // V87 : blocage tant que les mouvements du mois (loyer, provision) ne sont pas créés
   const manquantsAppel = mouvementsManquantsAppel(loc, mois);
   if(manquantsAppel.length) { majControleAppel(); toast(`Appel impossible : mouvement « + » manquant pour ${moisLabelFromYYYYMM(mois)} — ${manquantsAppel.join(' et ')}`, 'error', 7000); return; }
@@ -11444,11 +11639,13 @@ function generateQuittance() {
   const periodeDebut = '01/'+mm+'/'+yy;
   const periodeFin = String(dd).padStart(2,'0')+'/'+mm+'/'+yy;
 
-  const lignes = [docLigne('Loyer', loyer, false), docLigne(loc.provisionLabel||'Provision', provision, false)];
+  // V95 : pas de ligne « Provision » à 0 (les documents déjà émis, figés, ne changent pas)
+  const avecProvision = Math.abs(parseFloat(provision) || 0) > 0.005;
+  const lignes = [docLigne('Loyer', loyer, false)].concat(avecProvision ? [docLigne(loc.provisionLabel||'Provision', provision, false)] : []);
 
   const paiementDetail = (hasApl && aplMontant > 0)
     ? `<p>Nous confirmons avoir reçu <strong>${fmt(montantPaye)}€</strong> de votre part le ${datePaiement?fmtDateFr(datePaiement):''}, et <strong>${fmt(aplMontant)}€</strong> au titre de l'APL le ${fmtDateFr(aplDate)}, soit un total de ${fmt(totalRecu)}€.</p>`
-    : `<p>Nous confirmons avoir reçu le paiement du loyer et de la ${lowerFirst(loc.provisionLabel||'Provision')} pour un montant total de ${fmt(montantPaye)}€, le ${datePaiement?fmtDateFr(datePaiement):''}.</p>`;
+    : `<p>Nous confirmons avoir reçu le paiement du loyer${avecProvision ? ' et de la ' + lowerFirst(loc.provisionLabel||'Provision') : ''} pour un montant total de ${fmt(montantPaye)}€, le ${datePaiement?fmtDateFr(datePaiement):''}.</p>`;
 
   const infoHtml = `<p>Bonjour,</p>
     <p>Veuillez trouver votre quittance pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
@@ -11616,13 +11813,18 @@ function confirmArchiveHistoriqueEntry() {
   // et l'appel archivé compte toujours pour le contrôle de clôture (m4)
   const auj = dateLocale(new Date());
   if(archiveTarget.mois) {
-    (loc.historique||[]).filter(h => h.mois === archiveTarget.mois).forEach(h => { h.archived = true; h.dateArchivage = auj; });
+    (loc.historique||[]).filter(h => h.mois === archiveTarget.mois && !h._exercicePrecedent).forEach(h => { h.archived = true; h.dateArchivage = auj; }); // V95 : traces de N-1 exclues
     if(!Array.isArray(loc.moisDocsMasques)) loc.moisDocsMasques = [];
     if(!loc.moisDocsMasques.includes(archiveTarget.mois)) loc.moisDocsMasques.push(archiveTarget.mois);
   } else {
     const entry = (loc.historique||[]).find(h => h.id === archiveTarget.entryId);
-    if(!entry) { closeLocataireDeleteModal(); return; }
+    if(!entry || entry._exercicePrecedent) { closeLocataireDeleteModal(); return; } // V95 : trace de N-1 non archivable
     entry.archived = true; entry.dateArchivage = auj;
+    // V95 : plus aucun document visible ce mois-là → la ligne du mois est masquée (réaffichée à la restauration)
+    if(!(loc.historique||[]).some(h => h.mois === entry.mois && !h.archived && !h._exercicePrecedent)) {
+      if(!Array.isArray(loc.moisDocsMasques)) loc.moisDocsMasques = [];
+      if(!loc.moisDocsMasques.includes(entry.mois)) loc.moisDocsMasques.push(entry.mois);
+    }
   }
   saveDB();
   closeLocataireDeleteModal();
@@ -11702,7 +11904,7 @@ function kmMoisSaisissables() {
   const km = ensureKm();
   const annee = kmAnneeExercice();
   const moisActuel = moisActuelYYYYMM();
-  return Array.from({length:12}, (_,i) => annee + '-' + String(i+1).padStart(2,'0'))
+  return moisExercice() // V96 : mois de l'exercice (premier exercice long compris)
     .filter(m => m <= moisActuel && !kmMoisComptabilise(km, m));
 }
 function populateKmMoisSelect() {
@@ -11730,7 +11932,14 @@ function kmTrajetsDuMois(km, mois) {
 function kmVehicule(km, id) { return km.vehicules.find(v => v.id === id) || null; }
 function kmVehiculesActifs(km) { return km.vehicules.filter(v => !v.supprime); }
 // V82 : un trajet d'un mois comptabilisé garde le taux (et le nom du véhicule) en vigueur à la comptabilisation
-function kmTauxTrajet(km, t) { if(t.tauxFige !== undefined) return t.tauxFige; const v = kmVehicule(km, t.vehiculeId); return v ? (v.taux || 0) : 0; }
+// V96 : premier exercice long commencé en N-1 → barème propre à l'année N-1 (tauxAnterieur) pour les trajets de N-1
+function kmBaremeAnterieurRequis(mois) { return !!mois && exerciceLong() && parseInt(String(mois).slice(0, 4), 10) < anneeCompta(); }
+function kmTauxVehiculeMois(v, mois) {
+  if(!v) return 0;
+  if(kmBaremeAnterieurRequis(mois)) return (v.tauxAnterieur !== undefined && v.tauxAnterieur !== null && v.tauxAnterieur !== '') ? (parseFloat(v.tauxAnterieur) || 0) : 0;
+  return v.taux || 0;
+}
+function kmTauxTrajet(km, t) { if(t.tauxFige !== undefined) return t.tauxFige; return kmTauxVehiculeMois(kmVehicule(km, t.vehiculeId), t.mois); }
 function kmNomVehicule(km, t) {
   if(t.tauxFige !== undefined && t.vehiculeNom) return t.vehiculeNom;
   const v = kmVehicule(km, t.vehiculeId);
@@ -11762,18 +11971,97 @@ function closeKmParamsModal() {
   document.getElementById('km-params-modal').style.display = 'none';
   renderKmModule();
 }
+// ══ V97 : RÈGLE DE COMPTABILISATION PAR VÉHICULE ══
+// Chaque véhicule peut avoir ses propres comptes (débit, crédit, crédit réparti 50/50) ; sinon il suit la règle par défaut.
+// La saisie reste commune ; chaque mois donne UNE fiche (un tableau par véhicule si les règles diffèrent) et UNE écriture
+// qui additionne, compte par compte, les montants de tous les véhicules.
+let _kmRegleOuverte = null;
+function kmRegleProprePresente(v) { return !!(v && v.regle && v.regle.actif); }
+function kmRegleVehicule(km, v) {
+  const r = kmRegleProprePresente(v) ? v.regle : km;
+  return { compteDebit: String(r.compteDebit || ''), compteCredit: String(r.compteCredit || ''), crediteDouble: !!r.crediteDouble, compteCredit2: String(r.compteCredit2 || ''), propre: kmRegleProprePresente(v) };
+}
+function kmRegleLibelle(r) { return `débit ${r.compteDebit || '?'} · crédit ${r.compteCredit || '?'}${r.crediteDouble ? ' + ' + (r.compteCredit2 || '?') + ' (50/50)' : ''}`; }
+function toggleKmRegleEditeur(id) { _kmRegleOuverte = _kmRegleOuverte === id ? null : id; renderKmParams(); }
+function kmRegleEditeurHtml(v) {
+  const r = v.regle || {}, actif = kmRegleProprePresente(v), km = ensureKm();
+  const inp = (champ, val) => `<input type="text" maxlength="6" value="${esc(val || '')}" ${actif ? '' : 'disabled'} onchange="saveKmRegleVehicule('${v.id}','${champ}',this.value)" style="width:70px;height:26px;font-family:var(--mono);font-size:11px;">`;
+  return `<tr><td colspan="${exerciceLong() ? 5 : 4}" style="background:var(--bg2);padding:8px 10px;font-size:10px;">
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-weight:400;margin-bottom:6px;text-transform:none;letter-spacing:0;">
+      <input type="checkbox" ${actif ? 'checked' : ''} onchange="saveKmRegleVehicule('${v.id}','actif',this.checked)" style="width:13px;height:13px;margin:0;"> Comptes propres à <strong>${esc(v.nom)}</strong>
+      ${actif ? '' : `<span style="color:var(--text2);">— sinon règle par défaut : ${esc(kmRegleLibelle(kmRegleVehicule(km, null)))}</span>`}
+    </label>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+      <span>Débit ${inp('compteDebit', r.compteDebit)}</span>
+      <span>Crédit ${inp('compteCredit', r.compteCredit)}</span>
+      <label style="display:flex;align-items:center;gap:4px;font-weight:400;margin:0;text-transform:none;letter-spacing:0;"><input type="checkbox" ${r.crediteDouble ? 'checked' : ''} ${actif ? '' : 'disabled'} onchange="saveKmRegleVehicule('${v.id}','crediteDouble',this.checked)" style="width:13px;height:13px;margin:0;"> 50/50 sur</label>
+      ${inp('compteCredit2', r.compteCredit2)}
+    </div></td></tr>`;
+}
+function saveKmRegleVehicule(id, champ, val) {
+  if(bloqueSiCloture()) return; // V81 (M3)
+  const km = ensureKm(); const v = kmVehicule(km, id); if(!v) return;
+  if(!v.regle) v.regle = { actif: false, compteDebit: km.compteDebit || '', compteCredit: km.compteCredit || '', crediteDouble: !!km.crediteDouble, compteCredit2: km.compteCredit2 || '' };
+  if(champ === 'actif' || champ === 'crediteDouble') v.regle[champ] = !!val;
+  else v.regle[champ] = String(val || '').trim();
+  if(champ === 'crediteDouble' && !val) v.regle.compteCredit2 = '';
+  if(!v.regle.actif && champ === 'actif') delete v.regle; // retour à la règle par défaut : rien de propre n'est gardé
+  saveDB(); renderKmParams();
+}
+// Lignes de l'écriture d'un mois : montants regroupés par véhicule, puis additionnés compte par compte.
+// Renvoie { lignes:[{compte, debit, credit}], groupes:[{vehiculeId, nom, regle, trajets, totalKm, montant}], erreurs:[] }
+function kmVentilationMois(km, mois) {
+  const trajets = kmTrajetsDuMois(km, mois);
+  const parVeh = new Map();
+  trajets.forEach(t => { const k = t.vehiculeId || ''; if(!parVeh.has(k)) parVeh.set(k, []); parVeh.get(k).push(t); });
+  const groupes = [], erreurs = [], deb = new Map(), cred = new Map(), parRegle = new Map();
+  const ajoute = (m, c, x) => m.set(c, Math.round(((m.get(c) || 0) + x) * 100) / 100);
+  const plan = new Set((DB.tbData || []).map(r => String(r.compte)));
+  parVeh.forEach((ts, vid) => {
+    const v = kmVehicule(km, vid);
+    const regle = kmRegleVehicule(km, v);
+    const montant = Math.round(ts.reduce((s, t) => s + kmMontantTrajet(t.km, kmTauxTrajet(km, t)), 0) * 100) / 100;
+    const totalKm = Math.round(ts.reduce((s, t) => s + (t.km || 0), 0) * 10) / 10;
+    const nom = ts[0] ? kmNomVehicule(km, ts[0]) : '';
+    groupes.push({ vehiculeId: vid, nom, regle, trajets: ts, totalKm, montant });
+    const qui = regle.propre ? `véhicule « ${nom} »` : 'règle par défaut';
+    if(!regle.compteDebit || !regle.compteCredit) { erreurs.push(`comptes à débiter et à créditer manquants (${qui})`); return; }
+    if(regle.crediteDouble && !regle.compteCredit2) { erreurs.push(`2ᵉ compte à créditer manquant (${qui})`); return; }
+    [regle.compteDebit, regle.compteCredit].concat(regle.crediteDouble ? [regle.compteCredit2] : [])
+      .forEach(c => { if(!plan.has(c)) erreurs.push(`compte ${c} absent du plan comptable (${qui})`); });
+    if(montant <= 0) return;
+    // montants cumulés par règle (deux véhicules à la même règle = un seul montant, réparti une seule fois)
+    const k = kmRegleLibelle(regle);
+    if(!parRegle.has(k)) parRegle.set(k, { regle, montant: 0 });
+    parRegle.get(k).montant = Math.round((parRegle.get(k).montant + montant) * 100) / 100;
+  });
+  parRegle.forEach(({ regle, montant }) => {
+    ajoute(deb, regle.compteDebit, montant);
+    if(regle.crediteDouble) { const [p1, p2] = repartir5050(montant); ajoute(cred, regle.compteCredit, p1); ajoute(cred, regle.compteCredit2, p2); } // V84 (m1)
+    else ajoute(cred, regle.compteCredit, montant);
+  });
+  const lignes = [...deb].map(([compte, debit]) => ({ compte, debit, credit: 0 })).concat([...cred].map(([compte, credit]) => ({ compte, debit: 0, credit })));
+  return { lignes, groupes, erreurs: [...new Set(erreurs)] };
+}
+// Plusieurs véhicules aux règles différentes ce mois-ci → fiche en tableaux par véhicule
+function kmFicheParVehicule(km, mois) {
+  const g = kmVentilationMois(km, mois).groupes;
+  return g.length > 1 && new Set(g.map(x => kmRegleLibelle(x.regle))).size > 1;
+}
 function renderKmParams() {
   const km = ensureKm();
   const actifs = kmVehiculesActifs(km);
   const vList = document.getElementById('km-vehicules-list');
   if(vList) {
     vList.innerHTML = actifs.length
-      ? `<table style="font-size:11px;margin-bottom:6px;"><thead><tr><th>Véhicule</th><th class="td-num" style="width:90px">€/km</th><th style="width:30px"></th></tr></thead><tbody>
+      ? `<table style="font-size:11px;margin-bottom:6px;"><thead><tr><th>Véhicule</th>${exerciceLong() ? `<th class="td-num" style="width:90px">€/km ${anneeCompta() - 1}</th>` : ''}<th class="td-num" style="width:90px">€/km${exerciceLong() ? ' ' + anneeCompta() : ''}</th><th style="width:110px">Comptes</th><th style="width:30px"></th></tr></thead><tbody>
         ${actifs.map(v => `<tr>
           <td>${esc(v.nom)}</td>
+          ${exerciceLong() ? `<td class="td-num"><input type="number" step="0.001" value="${v.tauxAnterieur ?? ''}" placeholder="à saisir" onchange="saveKmVehiculeBareme('${v.id}',this.value,true)" style="width:80px;font-family:var(--mono);text-align:right;"></td>` : ''}
           <td class="td-num"><input type="number" step="0.001" value="${v.taux||0}" onchange="saveKmVehiculeBareme('${v.id}',this.value)" style="width:80px;font-family:var(--mono);text-align:right;"></td>
+          <td><button class="btn btn-sm" onclick="toggleKmRegleEditeur('${v.id}')" title="Règle de comptabilisation de ce véhicule" style="padding:1px 6px;font-size:9px;${kmRegleProprePresente(v) ? 'color:var(--cyan);border-color:var(--cyan);' : ''}">${kmRegleProprePresente(v) ? '⚙ propres' : '⚙ par défaut'}</button></td>
           <td style="text-align:center;"><button class="btn btn-sm btn-danger btn-icon" onclick="removeKmVehicule('${v.id}')" title="Supprimer (les trajets déjà saisis sont conservés)" style="padding:1px 5px;font-size:9px;">✕</button></td>
-        </tr>`).join('')}
+        </tr>${_kmRegleOuverte === v.id ? kmRegleEditeurHtml(v) : ''}`).join('')}
       </tbody></table>`
       : `<div style="font-size:10px;color:var(--text2);font-style:italic;">Aucun véhicule enregistré.</div>`;
   }
@@ -11812,12 +12100,13 @@ function removeKmVehicule(id) {
   renderKmParams();
   renderKmSaisieMois();
 }
-function saveKmVehiculeBareme(id, taux) {
+function saveKmVehiculeBareme(id, taux, anterieur) {
   if(bloqueSiCloture()) return; // V81 (M3)
   const km = ensureKm();
   const v = kmVehicule(km, id);
   if(!v) return;
-  v.taux = parseFloat(taux) || 0;
+  if(anterieur) { if(String(taux).trim() === '') delete v.tauxAnterieur; else v.tauxAnterieur = parseFloat(taux) || 0; } // V96 : barème N-1
+  else v.taux = parseFloat(taux) || 0;
   marquerTauxAJour('km', id);
   saveDB();
   renderKmSaisieMois();
@@ -11857,8 +12146,8 @@ function renderKmSuiviStrip() {
   const moisActuel = moisActuelYYYYMM();
   const annee = kmAnneeExercice();
   const lbl = document.getElementById('km-suivi-annee');
-  if(lbl) lbl.textContent = annee;
-  const mois12 = Array.from({length:12}, (_,i) => annee + '-' + String(i+1).padStart(2,'0'));
+  if(lbl) lbl.textContent = exerciceLong() ? `${moisDebutExercice().slice(0,4)}–${annee}` : annee;
+  const mois12 = moisExercice(); // V96
   zone.innerHTML = `<div style="display:flex;gap:4px;flex-wrap:wrap;">` + mois12.map(m => {
     const done = kmMoisComptabilise(km, m);
     const lettre = MOIS_LABELS[parseInt(m.split('-')[1],10)-1].charAt(0).toUpperCase();
@@ -11878,14 +12167,14 @@ function kmVehiculeOptions(km, selectedId) {
   const opts = kmVehiculesActifs(km).slice();
   const sel = kmVehicule(km, selectedId);
   if(sel && sel.supprime) opts.push(sel); // trajet existant sur un véhicule supprimé
-  return opts.map(v => `<option value="${v.id}" ${v.id===selectedId?'selected':''}>${esc(v.nom)}${v.supprime?' (supprimé)':''} — ${String(v.taux||0).replace('.',',')} €/km</option>`).join('');
+  return opts.map(v => `<option value="${v.id}" ${v.id===selectedId?'selected':''}>${esc(v.nom)}${v.supprime?' (supprimé)':''} — ${String(kmTauxVehiculeMois(v, getKmSaisieMois())).replace('.',',')} €/km</option>`).join('');
 }
 function kmMajMontantApercu(prefix) {
   const km = ensureKm();
   const v = kmVehicule(km, document.getElementById(prefix+'veh')?.value);
   const kmVal = parseFloat(document.getElementById(prefix+'km')?.value) || 0;
   const el = document.getElementById(prefix+'montant');
-  if(el) el.textContent = fmt(kmMontantTrajet(kmVal, v ? v.taux : 0)) + ' €';
+  if(el) el.textContent = fmt(kmMontantTrajet(kmVal, kmTauxVehiculeMois(v, getKmSaisieMois()))) + ' €'; // V96
 }
 function renderKmSaisieMois() {
   const km = ensureKm();
@@ -12023,8 +12312,15 @@ function saveKmTrajetEdit(id) {
 // ── Fiche papier du mois (tous véhicules sur une seule fiche, format paysage) ──
 // V82 (C3) : données figées d'une fiche km (une ligne par trajet, avec son taux)
 function instantaneKm(km, mois, trajets, totalKm, montant) {
-  return { g: 'km', v: 1, soc: socInstantane(), mois, exercice: String(CURRENT_YEAR), totalKm, montant,
+  const d = { g: 'km', v: 1, soc: socInstantane(), mois, exercice: String(CURRENT_YEAR), totalKm, montant,
     lignes: trajets.map(t => [t.date, kmNomVehicule(km, t), t.lieu || '', t.motif || '', t.km, kmTauxTrajet(km, t)]) };
+  // V97 : véhicules aux règles différentes → un tableau par véhicule (comptes figés dans la fiche) ; sinon fiche inchangée
+  if(kmFicheParVehicule(km, mois)) {
+    d.v = 2;
+    d.groupes = kmVentilationMois(km, mois).groupes.map(g => ({ nom: g.nom, comptes: kmRegleLibelle(g.regle), totalKm: g.totalKm, montant: g.montant,
+      lignes: g.trajets.map(t => [t.date, kmNomVehicule(km, t), t.lieu || '', t.motif || '', t.km, kmTauxTrajet(km, t)]) }));
+  }
+  return d;
 }
 function buildFicheKmMoisHtml(km, mois, trajets, totalKm, montant) { return renderDocKm(instantaneKm(km, mois, trajets, totalKm, montant)); }
 // ── Fiche papier du mois (tous véhicules sur une seule fiche, format paysage) ──
@@ -12041,7 +12337,7 @@ function renderDocKm(d) {
         <div style="font-size:10px;color:#555;">Fiche kilométrique</div>
       </div>
     </div>
-    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
+    ${d.v === 2 && Array.isArray(d.groupes) ? renderDocKmGroupes(d, td, th, orange) : `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;">
       <tr><td colspan="7" style="${orange}text-align:center;">FRAIS KILOMÉTRIQUES — ${moisLabelFromYYYYMM(mois).toUpperCase()}</td></tr>
       <tr>
         <td style="${th}">Date</td><td style="${th}">Véhicule</td><td style="${th}">Lieu</td><td style="${th}">Motif</td>
@@ -12049,7 +12345,7 @@ function renderDocKm(d) {
       </tr>
       ${(d.lignes||[]).map(([date, vehicule, lieu, motif, nbKm, taux]) => `<tr>
         <td style="${td}">${fmtDateFr(date)}</td>
-        <td style="${td}">${vehicule}</td>
+        <td style="${td}">${esc(vehicule)}</td>
         <td style="${td}">${esc(lieu||'')}</td>
         <td style="${td}">${esc(motif||'')}</td>
         <td style="${td}text-align:right;">${nbKm}</td>
@@ -12060,9 +12356,26 @@ function renderDocKm(d) {
       <td style="${orange}text-align:right;">${totalKm} km</td>
       <td style="${orange}"></td>
       <td style="${orange}text-align:right;">${fmt(montant)}€</td></tr>
-    </table>
-    <div class="rpt-footer">${esc(SOCIETE.nom)} — Document généré automatiquement par l'outil de comptabilité — Exercice ${d.exercice}</div>
+    </table>`}
+    <div class="rpt-footer">${esc(SOCIETE.nom)} — Document généré automatiquement par l'outil de comptabilité — Exercice ${esc(d.exercice)}</div>
   </div>`;
+}
+// V97 : fiche d'un mois à plusieurs règles — un tableau par véhicule, puis le total général
+function renderDocKmGroupes(d, td, th, orange) {
+  const sous = 'background:' + SOCIETE.couleurClaire + ';font-weight:700;padding:6px 8px;border:1px solid #ccc;-webkit-print-color-adjust:exact;print-color-adjust:exact;';
+  const tables = d.groupes.map(g => `<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px;">
+      <tr><td colspan="6" style="${orange}">${esc(g.nom)} <span style="font-weight:400;font-size:10px;">— ${esc(g.comptes)}</span></td></tr>
+      <tr><td style="${th}">Date</td><td style="${th}">Lieu</td><td style="${th}">Motif</td>
+        <td style="${th}text-align:right;">Km</td><td style="${th}text-align:right;">Barème</td><td style="${th}text-align:right;">Montant</td></tr>
+      ${(g.lignes||[]).map(([date, vehicule, lieu, motif, nbKm, taux]) => `<tr>
+        <td style="${td}">${fmtDateFr(date)}</td><td style="${td}">${esc(lieu||'')}</td><td style="${td}">${esc(motif||'')}</td>
+        <td style="${td}text-align:right;">${nbKm}</td><td style="${td}text-align:right;">${String(taux).replace('.',',')} €/km</td>
+        <td style="${td}text-align:right;">${fmt(kmMontantTrajet(nbKm, taux))}€</td></tr>`).join('')}
+      <tr><td colspan="3" style="${sous}">Sous-total ${esc(g.nom)}</td><td style="${sous}text-align:right;">${g.totalKm} km</td><td style="${sous}"></td><td style="${sous}text-align:right;">${fmt(g.montant)}€</td></tr>
+    </table>`).join('');
+  return `<div style="${orange}text-align:center;margin-bottom:10px;">FRAIS KILOMÉTRIQUES — ${moisLabelFromYYYYMM(d.mois).toUpperCase()}</div>${tables}
+    <table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:16px;"><tr><td style="${orange}">TOTAL GÉNÉRAL</td>
+      <td style="${orange}text-align:right;width:120px;">${d.totalKm} km</td><td style="${orange}text-align:right;width:120px;">${fmt(d.montant)}€</td></tr></table>`;
 }
 // Fiche mensuelle (nouveau format, sans vehiculeId). Une fiche comptabilisée est figée.
 function getOrBuildKmFicheMois(km, mois) {
@@ -12091,6 +12404,14 @@ function getOrBuildKmFicheMois(km, mois) {
   return fiche;
 }
 let _kmComptaPending = null;
+// V97 : aperçu de l'écriture (comptes additionnés sur tous les véhicules) dans la fenêtre de comptabilisation
+function kmApercuEcritureHtml(km, mois) {
+  const v = kmVentilationMois(km, mois);
+  if(v.erreurs.length) return `<div style="margin-top:8px;font-size:11px;color:var(--red);">⚠ ${v.erreurs.map(esc).join('<br>⚠ ')}</div>`;
+  const parVeh = v.groupes.length > 1 ? `<div style="margin-top:6px;font-size:10px;color:var(--text2);">${v.groupes.map(g => `${esc(g.nom)} : ${fmt(g.montant)} € (${esc(kmRegleLibelle(g.regle))})`).join('<br>')}</div>` : '';
+  return parVeh + `<table style="margin-top:8px;font-size:11px;width:100%;"><thead><tr><th>Compte</th><th class="td-num">Débit</th><th class="td-num">Crédit</th></tr></thead><tbody>${v.lignes.map(l =>
+    `<tr><td style="font-family:var(--mono);">${esc(l.compte)} <span style="color:var(--text2);">${esc(getLib(l.compte) || '')}</span></td><td class="td-num">${l.debit ? fmt(l.debit) : ''}</td><td class="td-num">${l.credit ? fmt(l.credit) : ''}</td></tr>`).join('')}</tbody></table>`;
+}
 function askComptabiliserKmMois(mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const km = ensureKm();
@@ -12101,7 +12422,7 @@ function askComptabiliserKmMois(mois) {
   if(trajets.length && montant > 0) {
     _kmComptaPending = { mois, mode: 'compta' };
     title.textContent = '✓ COMPTABILISER ' + moisLabelFromYYYYMM(mois).toUpperCase();
-    msg.innerHTML = `${trajets.length} trajet(s) — <strong>${totalKm} km</strong> — <strong style="color:var(--cyan);">${fmt(montant)} €</strong><br><span style="color:var(--text2);font-size:11px;">L'écriture sera passée au ${fmtDateFr(mois + '-' + String(dernierJourMois(mois)).padStart(2,'0'))} (pièce KM_${mois.slice(5,7)}/${mois.slice(2,4)}) et la saisie du mois sera verrouillée.</span>`;
+    msg.innerHTML = `${trajets.length} trajet(s) — <strong>${totalKm} km</strong> — <strong style="color:var(--cyan);">${fmt(montant)} €</strong><br><span style="color:var(--text2);font-size:11px;">L'écriture sera passée au ${fmtDateFr(mois + '-' + String(dernierJourMois(mois)).padStart(2,'0'))} (pièce KM_${mois.slice(5,7)}/${mois.slice(2,4)}) et la saisie du mois sera verrouillée.</span>` + kmApercuEcritureHtml(km, mois);
     btn.textContent = 'COMPTABILISER';
   } else {
     _kmComptaPending = { mois, mode: 'sansFrais' };
@@ -12131,9 +12452,15 @@ function comptabiliserKmMois(mois) {
   const km = ensureKm();
   if(!mois) mois = getKmSaisieMois();
   if(refuserMoisHorsExercice(mois)) return; // V83 (M4)
-  if(!km.compteDebit || !km.compteCredit) { toast('Renseignez les comptes à débiter et créditer (⚙ Paramètres)','error'); return; }
-  if(km.crediteDouble && !km.compteCredit2) { toast('Renseignez le 2ᵉ compte à créditer (⚙ Paramètres)','error'); return; }
   if(kmMoisComptabilise(km, mois)) { toast('Mois déjà comptabilisé','error'); return; }
+  // V97 : comptes de chaque véhicule (règle propre ou règle par défaut), tous présents au plan
+  const _vent = kmVentilationMois(km, mois);
+  if(_vent.erreurs.length) { toast('Comptabilisation impossible : ' + _vent.erreurs.join(' ; ') + ' — ⚙ Paramètres', 'error', 9000); return; }
+  // V96 : trajets de N-1 (premier exercice long) → le barème N-1 de chaque véhicule doit être renseigné
+  if(kmBaremeAnterieurRequis(mois)) {
+    const sansBareme = [...new Set(kmTrajetsDuMois(km, mois).filter(t => t.tauxFige === undefined).map(t => kmVehicule(km, t.vehiculeId)).filter(v => v && (v.tauxAnterieur === undefined || v.tauxAnterieur === null || v.tauxAnterieur === '')).map(v => v.nom))];
+    if(sansBareme.length) { toast(`Renseignez le barème ${mois.slice(0,4)} (€/km ${mois.slice(0,4)}) de : ${sansBareme.join(', ')} — ⚙ Paramètres`, 'error', 8000); return; }
+  }
   const fiche = getOrBuildKmFicheMois(km, mois);
   if(!fiche) { toast('Aucun trajet à comptabiliser pour ce mois','error'); return; }
 
@@ -12143,15 +12470,11 @@ function comptabiliserKmMois(mois) {
   const numDoc = 'KM_' + mm + '/' + yy.slice(-2);
   const io = Date.now();
   const total = fiche.total;
-  DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteDebit, libelleCompte:getLib(km.compteDebit)||'', libelleEcriture, numDoc, debit:total, credit:0});
-  if(km.crediteDouble && km.compteCredit2) {
-    // Répartition 50/50 au centime près : le 1er compte reçoit l'arrondi supérieur, le 2e le solde exact.
-    const [part1, part2] = repartir5050(total); // V84 (m1)
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:part1});
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit2, libelleCompte:getLib(km.compteCredit2)||'', libelleEcriture, numDoc, debit:0, credit:part2});
-  } else {
-    DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:km.compteCredit, libelleCompte:getLib(km.compteCredit)||'', libelleEcriture, numDoc, debit:0, credit:total});
-  }
+  // V97 : une seule écriture, montants additionnés compte par compte sur tous les véhicules du mois
+  const lignesKm = _vent.lignes;
+  const tD = Math.round(lignesKm.reduce((t, l) => t + l.debit, 0) * 100) / 100, tC = Math.round(lignesKm.reduce((t, l) => t + l.credit, 0) * 100) / 100;
+  if(Math.abs(tD - tC) > 0.005 || Math.abs(tD - total) > 0.005) { toast(`Comptabilisation refusée : écriture déséquilibrée (débit ${fmt(tD)} €, crédit ${fmt(tC)} €, fiche ${fmt(total)} €)`, 'error', 9000); return; }
+  lignesKm.forEach(l => DB.ecritures.push({id:crypto.randomUUID(), _io:io, _module:'km', _mois:mois, journal:'HA', date:dateEcr, compte:l.compte, libelleCompte:getLib(l.compte)||'', libelleEcriture, numDoc, debit:l.debit, credit:l.credit}));
   fiche.comptabilise = true;
   figerTauxKmMois(km, mois); // V82 : taux figé au moment de la comptabilisation
   fiche.dateEmission = dateLocale(new Date());
@@ -12673,13 +12996,13 @@ function checkEcheanciersExpirationAuBoot() {
 //    les carrés d'un même mois soient alignés verticalement d'un échéancier à l'autre.
 // Premier mois de l'exercice ouvert (null pour un exercice test sans année) : les mois antérieurs
 // appartiennent à l'exercice précédent et ne sont plus ni affichés ni comptabilisables ici.
-function moisDebutExerciceCourant() { return `${anneeCompta()}-01`; }
+function moisDebutExerciceCourant() { return moisDebutExercice(); } // V96 : premier exercice long
 // V83 (M4) : borne haute — décembre de l'année comptable
 function moisFinExerciceCourant() { return `${anneeCompta()}-12`; }
 function moisDansExerciceCourant(m) { return !!m && m >= moisDebutExerciceCourant() && m <= moisFinExerciceCourant(); }
 function refuserMoisHorsExercice(m) {
   if(moisDansExerciceCourant(m)) return false;
-  toast(`${moisLabelFromYYYYMM(m)} n'appartient pas à l'exercice ${CURRENT_YEAR} (janvier à décembre ${anneeCompta()}) : à comptabiliser dans l'exercice concerné.`, 'error', 7000);
+  toast(`${moisLabelFromYYYYMM(m)} n'appartient pas à l'exercice ${CURRENT_YEAR} (${moisLabelFromYYYYMM(moisDebutExerciceCourant())} à ${moisLabelFromYYYYMM(moisFinExerciceCourant())}) : à comptabiliser dans l'exercice concerné.`, 'error', 7000);
   return true;
 }
 function moisEcheancierExercice(ech) {
@@ -13134,7 +13457,13 @@ function confirmDecompta() {
 function decomptabiliserKmMois(mois) {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé','error'); return; }
   const km = ensureKm();
-  DB.ecritures = DB.ecritures.filter(e => !(e.date && e.date.startsWith(mois) && e.numDoc && (e.numDoc.startsWith('KM_') || e.numDoc.startsWith('KM/'))));
+  // V95 : on ne retire que les écritures du module km pour ce mois (marque du module, ou ancienne écriture km reconnue),
+  // jamais une écriture saisie à la main dont la pièce commencerait par « KM_ » ; la pièce quitte aussi le post-it.
+  const estKmDuMois = e => e.date && String(e.date).startsWith(mois) && moduleDeLaLigne(e) === 'km' && (!e._mois || e._mois === mois);
+  const pieces = new Set(DB.ecritures.filter(estKmDuMois).map(e => (e.numDoc || '') + '||' + e.date));
+  DB.ecritures = DB.ecritures.filter(e => !estKmDuMois(e));
+  pieces.forEach(k => { const [nd, dt] = k.split('||'); if(!DB.ecritures.some(e => e.numDoc === nd && e.date === dt)) retirerPieceDuPostIt('km', nd, dt); });
+  renderPostItPieces();
   km.fiches.forEach(f => { if(f.mois === mois) f.comptabilise = false; });
   libererTauxKmMois(km, mois); // V82 : le mois redevient modifiable, au taux en vigueur
   km.moisMarquesSansEcriture = km.moisMarquesSansEcriture.filter(m => m !== mois);
@@ -13151,7 +13480,7 @@ function decomptabiliserEcheancierMois(id, mois) {
   const numDocsSupprimes = new Set();
   if(io !== undefined) {
     DB.ecritures.filter(e => e._io === io).forEach(e => {
-      if(e.numDoc) numDocsSupprimes.add(e.numDoc);
+      if(e.numDoc) numDocsSupprimes.add(e.numDoc + '||' + e.date); // V95 : pièce = n° + date
     });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete ech.moisIo[mois];
@@ -13159,12 +13488,9 @@ function decomptabiliserEcheancierMois(id, mois) {
     toast('Écriture introuvable pour ce mois — retrait du suivi uniquement','warn');
   }
   ech.moisComptabilises = (ech.moisComptabilises||[]).filter(m => m !== mois);
-  numDocsSupprimes.forEach(numDoc => {
-    const encoreUtilise = DB.ecritures.some(e => e.numDoc === numDoc);
-    if(!encoreUtilise) {
-      const list = ensurePiecesAFormaliser();
-      DB.piecesAFormaliser = list.filter(p => p.numDoc !== numDoc);
-    }
+  numDocsSupprimes.forEach(k => { // V95 : retrait par module + n° + date (une autre pièce de même n° n'est plus touchée)
+    const [numDoc, date] = k.split('||');
+    if(!DB.ecritures.some(e => e.numDoc === numDoc && e.date === date)) retirerPieceDuPostIt('echeanciers', numDoc, date);
   });
   renum(); saveDB();
   renderEcheanciers(); updateNavCounts();
@@ -13747,7 +14073,7 @@ function decomptabiliserEmpruntMois(id, mois) {
   const numDocsSupprimes = new Set();
   if(io !== undefined) {
     DB.ecritures.filter(e => e._io === io).forEach(e => {
-      if(e.numDoc) numDocsSupprimes.add(e.numDoc);
+      if(e.numDoc) numDocsSupprimes.add(e.numDoc + '||' + e.date); // V95 : pièce = n° + date
     });
     DB.ecritures = DB.ecritures.filter(e => e._io !== io);
     delete emp.moisIo[mois];
@@ -13756,12 +14082,9 @@ function decomptabiliserEmpruntMois(id, mois) {
   }
   emp.moisComptabilises = (emp.moisComptabilises||[]).filter(m => m !== mois);
   // Cleanup post-it : pour chaque numDoc supprimé, si plus aucune écriture ne l'utilise, retirer la ou les pièces
-  numDocsSupprimes.forEach(numDoc => {
-    const encoreUtilise = DB.ecritures.some(e => e.numDoc === numDoc);
-    if(!encoreUtilise) {
-      const list = ensurePiecesAFormaliser();
-      DB.piecesAFormaliser = list.filter(p => p.numDoc !== numDoc);
-    }
+  numDocsSupprimes.forEach(k => { // V95 : retrait par module + n° + date
+    const [numDoc, date] = k.split('||');
+    if(!DB.ecritures.some(e => e.numDoc === numDoc && e.date === date)) retirerPieceDuPostIt('emprunts', numDoc, date);
   });
   renum(); saveDB();
   renderEmprunts(); updateNavCounts();
@@ -14621,7 +14944,7 @@ function rvColW(strings, min, max) {
   const n = Math.max(0, ...strings.map(s => String(s||'').length));
   return Math.round(Math.min(max, Math.max(min, n * 3.9 + 10)));
 }
-function rvPeriodeLabel() { return `Exercice du 01/01/${anneeCompta()} au 31/12/${anneeCompta()}`; }
+function rvPeriodeLabel() { return periodeExerciceLabel(); }
 function rvPrintWrap(titre, sousTitre, contenu, fichier) {
   const html = `<div class="rpt">${rptHeader(titre, sousTitre)}${contenu}${rptFooter()}</div>`;
   printDoc('<style>@page{size:A4 portrait;margin:8mm} .rpt table td, .rpt table th{font-family:Arial,Helvetica,sans-serif !important;}</style>' + html, fichier);
@@ -15019,6 +15342,7 @@ async function boot() {
     const choix = await choisirExerciceDemarrage();
     installerExercice(choix.annee, choix.r);
     await loadKnownYears();
+    if(!choix.r) setTimeout(ouvrirPremierExercice, 0); // V96 : base vide → création du premier exercice
   } catch(e) { afficherErreurConnexion(e); return; }
   initDefaults();
   EXERCISE_STATUS = DB._status || 'open';
@@ -15139,9 +15463,9 @@ function buildRegistreImmoData() {
     const root = String(immo.compteImmo||'').slice(0,3) || '???';
     if(!groups[root]) groups[root] = [];
     const schedule = computeAmortSchedule(immo);
-    const anterieur = immo.nonAmortissable ? null : schedule.filter(s => s.annee < year).reduce((max,s) => s.cumul, 0);
-    const exerciceRow = immo.nonAmortissable ? null : schedule.find(s => s.annee === year);
-    const exercice = exerciceRow ? exerciceRow.dotation : 0;
+    const an0 = anneesExercice()[0]; // V96 : premier exercice long → antérieur = avant la 1re année couverte
+    const anterieur = immo.nonAmortissable ? null : schedule.filter(s => s.annee < an0).reduce((max,s) => s.cumul, 0);
+    const exercice = immo.nonAmortissable ? 0 : dotationExercice(immo);
     const valeurBrute = parseFloat(immo.valeurBrute) || 0;
     const valeurResiduelle = immo.nonAmortissable ? valeurBrute : Math.round((valeurBrute - (anterieur||0) - exercice) * 100) / 100;
     const taux = immo.nonAmortissable ? null : (immo.dureeAnnees ? Math.round((1/immo.dureeAnnees)*10000)/10000 : null);
@@ -15197,7 +15521,7 @@ function renderRegistreImmoHTML() {
   }).join('');
 
   return `<div class="rpt">
-    ${rptHeader('Registre des Immobilisations', `Exercice du 01/01/${anneeCompta()} au 31/12/${anneeCompta()} — Montants en euros`)}
+    ${rptHeader('Registre des Immobilisations', `${periodeExerciceLabel()} — Montants en euros`)}
     ${groupsHtml || '<p style="font-size:12px;color:#888;">Aucune immobilisation enregistrée.</p>'}
     ${rptFooter()}
   </div>`;
@@ -15298,8 +15622,10 @@ function renderImmos() {
       const schedule = computeAmortSchedule(immo);
       // Amortissements cumulés = années antérieures + dotation de l'exercice UNIQUEMENT si elle a été comptabilisée
       const anneeEx = parseInt(yearNow);
-      const cumulAnterieur = immo.nonAmortissable ? 0 : schedule.filter(s => s.annee < anneeEx).reduce((max,s) => s.cumul, 0);
-      const rowEx = immo.nonAmortissable ? null : schedule.find(s => s.annee === anneeEx);
+      const an0 = anneesExercice()[0]; // V96 : premier exercice long
+      const cumulAnterieur = immo.nonAmortissable ? 0 : schedule.filter(s => s.annee < an0).reduce((max,s) => s.cumul, 0);
+      const dotEx = dotationExercice(immo);
+      const rowEx = (immo.nonAmortissable || !schedule.some(s => anneesExercice().includes(s.annee))) ? null : { dotation: dotEx };
       const dotationPostee = rowEx ? isDotationAlreadyPosted(immo) : false;
       const cumulActuel = Math.round((cumulAnterieur + (rowEx && dotationPostee ? rowEx.dotation : 0)) * 100) / 100;
       const noteDotation = (rowEx && rowEx.dotation > 0 && !dotationPostee)
@@ -15431,6 +15757,12 @@ let immoDeleteTargetId = null;
 // ══════════════════════════════════════════════
 let _dotationPending = [];
 
+// V96 : dotation de l'exercice = somme des annuités des années civiles couvertes (2 pour un premier exercice long)
+function dotationExercice(immo) {
+  if(immo.nonAmortissable) return 0;
+  const ans = anneesExercice();
+  return Math.round(computeAmortSchedule(immo).filter(s => ans.includes(s.annee)).reduce((t, s) => t + s.dotation, 0) * 100) / 100;
+}
 function isDotationAlreadyPosted(immo) {
   if(DB.ecritures.some(e => e._module === 'dotation' && e._immoId === immo.id && e._annee === anneeCompta())) return true;
   // V84 (M8) : une écriture déjà rattachée à une immobilisation ne compte plus pour une autre au même libellé
@@ -15447,11 +15779,10 @@ function openDotationModal() {
   const rows = [];
 
   list.forEach(immo => {
-    const schedule = computeAmortSchedule(immo);
-    const row = schedule.find(s => s.annee === year);
-    if(!row || row.dotation <= 0) return;
+    const montantEx = dotationExercice(immo); // V96
+    if(montantEx <= 0) return;
     const alreadyPosted = isDotationAlreadyPosted(immo);
-    const item = {immo, montant: row.dotation, alreadyPosted};
+    const item = {immo, montant: montantEx, alreadyPosted};
     _dotationPending.push(item);
     rows.push(item);
   });
