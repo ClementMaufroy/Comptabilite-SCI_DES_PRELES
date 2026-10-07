@@ -4050,7 +4050,7 @@ function resynchroniserModulesDepuisN(src) {
       if(h.mois && h.mois >= moisDebut) { if(!presents.has(h.id)) ajouts.push(clone(h)); return; } // document de N+1 émis dans N
       const t = Object.assign(clone(h), { _exercicePrecedent: true });
       if(t.type === 'appel' && typeof t.montantAppel !== 'number') t.montantAppel = montantAppelHistorique(h);
-      delete t.doc; delete t.docHtml; delete t.docTitle;
+      delete t.doc; delete t.docHtml; delete t.docTitle; delete t.pdfGed;
       ajouts.push(t);
     });
     loc.historique = (loc.historique || []).filter(h => !h._exercicePrecedent).concat(ajouts);
@@ -7563,7 +7563,7 @@ function construireReprisesModules(src, newLabel) {
       if(moisDebutN1 && h.mois && h.mois >= moisDebutN1) return h;
       const t = Object.assign({}, h, { _exercicePrecedent: true });
       if(t.type === 'appel' && typeof t.montantAppel !== 'number') t.montantAppel = montantAppelHistorique(h);
-      delete t.doc; delete t.docHtml; delete t.docTitle;
+      delete t.doc; delete t.docHtml; delete t.docTitle; delete t.pdfGed;
       return t;
     });
   });
@@ -9548,7 +9548,7 @@ function htmlDuDocument(x) {
   }
   return x.docHtml || '';
 }
-function aUnDocument(x) { return !!(x && ((x.doc && ['loc','km','pv'].includes(x.doc.g)) || x.docHtml)); }
+function aUnDocument(x) { return !!(x && ((x.doc && ['loc','km','pv'].includes(x.doc.g)) || x.docHtml || (x.pdfGed && x.pdfGed.id))); } // V101 : ou PDF de la GED seul (ancien document allégé)
 
 // ── PRINT / DOWNLOAD HELPERS ──
 function printDoc(html, title, autoprint, landscape) {
@@ -11671,10 +11671,10 @@ function generateAppelLoyerV2() {
   } else {
     lignes2.push(docLigne('Paiement de votre part à charge', 0, false));
   }
+  // V101 : une ligne APL n'apparaît dans la situation que si une APL a réellement été reçue pour le mois.
+  // L'APL attendue figure déjà dans l'appel (« APL à recevoir le 05/… », déduite) : pas de ligne « APL reçues 0 ».
   if(totalPaieApl > 0.005) {
     dM.paiementsApl.forEach(p => { lignes2.push(docLigne(`APL reçue du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false)); });
-  } else {
-    lignes2.push(docLigne('APL reçues', 0, false));
   }
   // Solde du mois en cours : loyer + provisions - paiements réellement encaissés (APL à venir non déduite)
   const soldeCour = Math.round((totalLoyerProvision - dM.totalPaye) * 100) / 100;
@@ -11708,7 +11708,7 @@ function generateAppelLoyerV2() {
   });
   saveDB(); updateNavCounts();
   closeAppelModal();
-  printDoc(html, `Appel_Loyer_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1||''}`, false);
+  ouvrirDocumentModule('loc', loc.historique[loc.historique.length - 1], loc); // V101 : PDF de la GED
   toast('Appel de loyer généré','success');
   if(_locDetailId) renderLocataireDetail(); else renderLocataires();
 }
@@ -11816,7 +11816,7 @@ function generateQuittance() {
 
   saveDB(); updateNavCounts();
   closeQuittanceModal();
-  printDoc(html, `Quittance_${moisLabelFromYYYYMM(mois).replace(' ','_')}_${loc.nom1}`, false);
+  ouvrirDocumentModule('loc', loc.historique[loc.historique.length - 1], loc); // V101 : PDF de la GED
   toast('Quittance générée à partir des paiements déjà enregistrés','success');
   renderLocataires();
 }
@@ -11863,7 +11863,7 @@ async function confirmSendMail() {
     for(const id of window._mailPending.entryIds) {
       const entry = (loc.historique||[]).find(h => h.id === id);
       if(!aUnDocument(entry)) continue;
-      try { await telechargerPdfDocument(entry, false); }
+      try { await telechargerDocumentModule('loc', entry, loc); }
       catch(e) { console.error(e); printDoc(htmlDuDocument(entry), entry.docTitle || 'Document', false); toast('PDF impossible pour un document : ouvert pour impression à la place', 'warn', 5000); }
     }
   }
@@ -11887,7 +11887,7 @@ function viewHistoriqueDoc(locId, entryId) {
     if(_locDetailId === locId) renderLocataireDetail();
     else renderLocataires();
   }
-  printDoc(htmlDuDocument(entry), entry.docTitle || 'Document', false);
+  ouvrirDocumentModule('loc', entry, loc); // V101 : PDF de la GED
 }
 
 // ── Archivage : retire le document de la liste en préservant le solde via soldeInitial ──
@@ -12538,7 +12538,7 @@ function getOrBuildKmFicheMois(km, mois) {
   let fiche = km.fiches.find(f => f.mois === mois && !f.vehiculeId);
   if(fiche && fiche.comptabilise) {
     // V82 : fiche comptabilisée sans document (archivée avant V82) → reconstituée depuis les trajets figés
-    if(!fiche.doc && !fiche.docHtml) {
+    if(!fiche.doc && !fiche.docHtml && !fiche.pdfGed) {
       const t = kmTotauxMois(km, mois);
       if(t.trajets.length) fiche.doc = instantaneKm(km, mois, t.trajets, t.totalKm, t.montant);
     }
@@ -12720,13 +12720,13 @@ function viewKmFicheMois(mois) {
   const fiche = getOrBuildKmFicheMois(km, mois);
   if(!aUnDocument(fiche)) { toast('Aucun trajet pour ce mois','error'); return; }
   saveDB();
-  printDoc(htmlDuDocument(fiche), fiche.docTitle || 'Fiche_KM', false, true);
+  ouvrirDocumentModule('km', fiche); // V101 : PDF de la GED
 }
 function viewKmFiche(id) {
   const km = ensureKm();
   const f = km.fiches.find(x => x.id === id);
   if(!aUnDocument(f)) { toast('Document non disponible : fiche archivée avant la version 82, son contenu n\'a pas été conservé','error', 6000); return; }
-  printDoc(htmlDuDocument(f), f.docTitle || 'Fiche_KM', false, true);
+  ouvrirDocumentModule('km', f); // V101 : PDF de la GED
 }
 
 // ══════════════════════════════════════════════
@@ -12858,11 +12858,11 @@ function consulterArchive(module, a, b) {
     const loc = ensureLocatairesArray().find(l => l.id === a);
     const h = loc && (loc.historique||[]).find(x => x.id === b);
     if(!aUnDocument(h)) { toast('Document non disponible','error'); return; }
-    printDoc(htmlDuDocument(h), h.docTitle || 'Document', false);
+    ouvrirDocumentModule('loc', h, loc); // V101 : PDF de la GED
   } else if(module === 'km') {
     const f = ensureKm().fiches.find(x => x.id === a);
     if(!aUnDocument(f)) { toast('Document non disponible','error'); return; }
-    printDoc(htmlDuDocument(f), f.docTitle || 'Fiche_KM', false, true);
+    ouvrirDocumentModule('km', f); // V101 : PDF de la GED
   }
 }
 function restaurerArchive(module, a, b) {
@@ -15325,7 +15325,7 @@ function renderApprobationPvList() {
 function viewPVApprobation(id) {
   const pv = (DB.pvApprobations||[]).find(p => p.id === id);
   if(!aUnDocument(pv)) { toast('Document introuvable','error'); return; }
-  printDoc(htmlDuDocument(pv), pv.docTitle || 'PV_AGO', false);
+  ouvrirDocumentModule('pv', pv); // V101 : PDF de la GED
 }
 
 
@@ -15381,7 +15381,7 @@ function genererPVApprobation() {
   DB.pvApprobations.push({id:pvId, dateEmission:dateLocale(new Date()), anneeConcernee:anneeTxt-1, dateAG:date, destination, montant, doc, docTitle});
   saveDB();
 
-  printDoc(html, docTitle, false);
+  ouvrirDocumentModule('pv', DB.pvApprobations[DB.pvApprobations.length - 1]); // V101 : PDF de la GED
   toast(`Résultat affecté ${destinationTxt} — écriture comptabilisée et PV généré`,'success');
   renderApprobation();
 }
@@ -16872,39 +16872,73 @@ async function pdfDepuisHtml(html, paysage) {
 // V100 : à changer quand la mise en page des PDF évolue → les PDF existants sont refaits (exercice ouvert : automatiquement ;
 // tous exercices : bouton « ⟳ DOCUMENTS DES MODULES »)
 const VERSION_MISE_EN_PAGE_PDF = 'p2';
-// Empreinte du contenu figé d'un document : sert à détecter un document régénéré (ex. fiche km rééditée)
+// Empreinte du contenu figé d'un document : sert à détecter un document régénéré (ex. fiche km rééditée).
+// V101 : un ancien document allégé (HTML retiré, PDF de la GED seul) garde l'empreinte de son PDF.
 function signatureDoc(x) {
+  if(!x.doc && !x.docHtml && x.pdfGed && x.pdfGed.sig) return x.pdfGed.sig;
   const s = JSON.stringify(x.doc || x.docHtml || '');
   let h = 5381; for(let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
   return h.toString(36) + '-' + s.length + '-' + VERSION_MISE_EN_PAGE_PDF;
 }
 function rubriquePourPV() { const r = rubriquesDP(); return (r.find(x => x.code === 'ag') || r[0]).code; }
 function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
+// Description, pour la GED, d'un document généré par un module
+function descripteurDocument(module, x, exercice, loc) {
+  const base = { exercice: String(exercice), test: isTestExercise(exercice), x, module };
+  if(module === 'loc') {
+    const quoi = x.type === 'quittance' ? 'Quittance' : x.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
+    return Object.assign(base, { cle: 'loc:' + x.id, espace: 'compta',
+      titre: `${quoi}${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''} — ${[loc && loc.prenom1, loc && loc.nom1].filter(Boolean).join(' ')}`,
+      date: x.dateEmission || dateLocale(new Date()), typePiece: x.type === 'quittance' ? typeSiConnu('QUIT') : '', nom: x.docTitle || quoi, paysage: false });
+  }
+  if(module === 'km') return Object.assign(base, { cle: 'km:' + x.id, espace: 'compta',
+      titre: `Fiche kilométrique${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''}${x.vehiculeNom ? ' — ' + x.vehiculeNom : ''}`,
+      date: x.dateEmission || (x.mois ? x.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), nom: x.docTitle || 'Fiche_KM', paysage: true });
+  // PV d'AGO : dossier permanent (rubrique « PV d'AG et décisions »), sauf exercice test (reste dans ses pièces)
+  return Object.assign(base, { cle: 'pv:' + x.id, espace: base.test ? 'compta' : 'permanent', rubrique: rubriquePourPV(),
+      titre: `PV d'AGO — Affectation du résultat ${x.anneeConcernee || ''}`.trim(),
+      date: x.dateAG || x.dateEmission || dateLocale(new Date()), typePiece: '', nom: x.docTitle || 'PV_AGO', paysage: false });
+}
 // Documents générés présents dans les données d'un exercice
 function documentsGeneresDe(data, exercice) {
-  const out = [], test = isTestExercise(exercice);
-  const base = { exercice: String(exercice), test };
+  const out = [];
   (data.locataires || []).forEach(loc => (loc.historique || []).forEach(h => {
-    if(h._exercicePrecedent || !aUnDocument(h)) return;
-    const quoi = h.type === 'quittance' ? 'Quittance' : h.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
-    out.push(Object.assign({}, base, { cle: 'loc:' + h.id, x: h, module: 'loc', espace: 'compta',
-      titre: `${quoi}${h.mois ? ' ' + moisLabelFromYYYYMM(h.mois) : ''} — ${[loc.prenom1, loc.nom1].filter(Boolean).join(' ')}`,
-      date: h.dateEmission || dateLocale(new Date()), typePiece: h.type === 'quittance' ? typeSiConnu('QUIT') : '', nom: h.docTitle || quoi, paysage: false }));
+    if(!h._exercicePrecedent && aUnDocument(h)) out.push(descripteurDocument('loc', h, exercice, loc));
   }));
-  ((data.km || {}).fiches || []).forEach(f => {
-    if(!aUnDocument(f)) return;
-    out.push(Object.assign({}, base, { cle: 'km:' + f.id, x: f, module: 'km', espace: 'compta',
-      titre: `Fiche kilométrique${f.mois ? ' ' + moisLabelFromYYYYMM(f.mois) : ''}${f.vehiculeNom ? ' — ' + f.vehiculeNom : ''}`,
-      date: f.dateEmission || (f.mois ? f.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), nom: f.docTitle || 'Fiche_KM', paysage: true }));
-  });
-  (data.pvApprobations || []).forEach(pv => {
-    if(!aUnDocument(pv)) return;
-    // PV d'AGO : dossier permanent (rubrique « PV d'AG et décisions »), sauf exercice test (reste dans ses pièces)
-    out.push(Object.assign({}, base, { cle: 'pv:' + pv.id, x: pv, module: 'pv', espace: test ? 'compta' : 'permanent', rubrique: rubriquePourPV(),
-      titre: `PV d'AGO — Affectation du résultat ${pv.anneeConcernee || ''}`.trim(),
-      date: pv.dateAG || pv.dateEmission || dateLocale(new Date()), typePiece: '', nom: pv.docTitle || 'PV_AGO', paysage: false }));
-  });
+  ((data.km || {}).fiches || []).forEach(f => { if(aUnDocument(f)) out.push(descripteurDocument('km', f, exercice)); });
+  (data.pvApprobations || []).forEach(pv => { if(aUnDocument(pv)) out.push(descripteurDocument('pv', pv, exercice)); });
   return out;
+}
+function pieceAJourPour(d) { return (PIECES || []).find(p => p.origine === d.cle && p.origineSig === signatureDoc(d.x)) || null; }
+// Crée (ou remplace) le PDF d'un document généré. Un même document n'est jamais traité deux fois en même temps.
+const _depotsDocsEnCours = {};
+function deposerDocumentGenere(d) {
+  if(_depotsDocsEnCours[d.cle]) return _depotsDocsEnCours[d.cle];
+  const travail = (async () => {
+    const dejaFait = pieceAJourPour(d); if(dejaFait) return { meta: dejaFait, etat: 'ajour' };
+    const existant = (PIECES || []).find(p => p.origine === d.cle);
+    const html = htmlDuDocument(d.x); if(!html) throw new Error('Document sans contenu');
+    const blob = await pdfDepuisHtml(html, d.paysage);
+    const id = existant ? existant.id : crypto.randomUUID();
+    const nomFichier = nomFichierSur(d.nom).replace(/\.pdf$/i, '') + '.pdf';
+    const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${Date.now().toString(36)}_${nomFichier}`;
+    await window._fbFichierEnvoyer(chemin, blob, 'application/pdf');
+    const meta = {
+      id, titre: d.titre, dateDoc: d.date, nomFichier, mime: 'application/pdf', taille: blob.size, chemin,
+      depose: existant ? existant.depose : new Date().toISOString(), modifie: existant ? new Date().toISOString() : null,
+      origine: d.cle, origineSig: signatureDoc(d.x), origineExercice: d.exercice, module: d.module
+    };
+    if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true });
+    else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
+    try { await window._fbPieceSave(meta); }
+    catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
+    if(existant) { try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {} }
+    indexerPiece(meta);
+    return { meta, etat: existant ? 'maj' : 'cree' };
+  })();
+  _depotsDocsEnCours[d.cle] = travail;
+  travail.then(() => delete _depotsDocsEnCours[d.cle], () => delete _depotsDocsEnCours[d.cle]);
+  return travail;
 }
 let _syncGEDEnCours = false, _syncGEDTimer = null;
 // Après chaque enregistrement d'un exercice ouvert (appelé par saveDB)
@@ -16914,9 +16948,11 @@ function planifierSyncGED() {
   const ex = String(CURRENT_YEAR);
   _syncGEDTimer = setTimeout(() => {
     if(String(CURRENT_YEAR) !== ex || EXERCISE_STATUS === 'closed' || window._saveSuspended) return;
+    if(_syncGEDEnCours) { planifierSyncGED(); return; } // une copie est en cours : on repasse ensuite
     let data; try { data = JSON.parse(JSON.stringify(DB)); } catch(e) { return; }
     synchroniserGED([{ exercice: ex, data }], {}).then(r => {
       if(r && r.echecs) toast(`${r.echecs} document(s) n'ont pas pu être copiés en PDF dans la GED (nouvel essai au prochain enregistrement)`, 'warn', 6000);
+      if(r && String(CURRENT_YEAR) === ex && EXERCISE_STATUS !== 'closed') allegerAnciensDocuments();
     });
   }, 2500);
 }
@@ -16925,36 +16961,17 @@ async function synchroniserGED(sources, opts) {
   if(!window._fbStorageActif || _syncGEDEnCours) return null;
   if(PIECES === null && !(await chargerPieces())) return null;
   _syncGEDEnCours = true;
-  const res = { crees: 0, maj: 0, supprimes: 0, echecs: 0, total: 0 };
+  const res = { crees: 0, maj: 0, ajour: 0, supprimes: 0, echecs: 0, total: 0 };
   try {
     for(const src of sources) {
       const docs = documentsGeneresDe(src.data, src.exercice);
       const cles = new Set(docs.map(d => d.cle));
-      const aFaire = docs.filter(d => { const e = PIECES.find(p => p.origine === d.cle); return !e || e.origineSig !== signatureDoc(d.x); });
+      const aFaire = docs.filter(d => !pieceAJourPour(d));
+      res.ajour += docs.length - aFaire.length;
       res.total += aFaire.length;
       for(const d of aFaire) {
-        const existant = PIECES.find(p => p.origine === d.cle);
-        try {
-          const html = htmlDuDocument(d.x); if(!html) continue;
-          const blob = await pdfDepuisHtml(html, d.paysage);
-          const id = existant ? existant.id : crypto.randomUUID();
-          const nomFichier = nomFichierSur(d.nom).replace(/\.pdf$/i, '') + '.pdf';
-          const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${Date.now().toString(36)}_${nomFichier}`;
-          await window._fbFichierEnvoyer(chemin, blob, 'application/pdf');
-          const meta = {
-            id, titre: d.titre, dateDoc: d.date, nomFichier, mime: 'application/pdf', taille: blob.size, chemin,
-            depose: existant ? existant.depose : new Date().toISOString(), modifie: existant ? new Date().toISOString() : null,
-            origine: d.cle, origineSig: signatureDoc(d.x), origineExercice: d.exercice, module: d.module
-          };
-          if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true });
-          else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
-          try { await window._fbPieceSave(meta); }
-          catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
-          if(existant) {
-            try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {}
-            indexerPiece(meta); res.maj++;
-          } else { indexerPiece(meta); res.crees++; }
-        } catch(e) { console.error('Copie PDF dans la GED impossible', d.cle, e); res.echecs++; }
+        try { const r = await deposerDocumentGenere(d); if(r.etat === 'cree') res.crees++; else if(r.etat === 'maj') res.maj++; else res.ajour++; }
+        catch(e) { console.error('Copie PDF dans la GED impossible', d.cle, e); res.echecs++; }
         if(opts.progression) opts.progression(res);
       }
       // Documents générés de CET exercice dont la source n'existe plus (supprimée définitivement du module)
@@ -16970,7 +16987,6 @@ async function synchroniserGED(sources, opts) {
 // Bouton « ⟳ DOCUMENTS DES MODULES » : tous les exercices, y compris clôturés
 async function lancerSyncTousExercices() {
   if(!window._fbStorageActif) { toast('Stockage des documents non configuré', 'error'); return; }
-  if(_syncGEDEnCours) { toast('Une copie des documents est déjà en cours', 'warn'); return; }
   if(!confirm("Copier en PDF dans la GED tous les documents émis par les modules (appels, quittances, fiches km, PV d'AGO), pour tous les exercices — y compris clôturés, où seul le format change ?\n\nCela peut prendre quelques minutes ; gardez cette page ouverte.")) return;
   if(!(await toutEnregistrer())) { toast('Des modifications ne sont pas enregistrées : réessayez dans un instant', 'error'); return; }
   const barre = document.createElement('div');
@@ -16978,30 +16994,89 @@ async function lancerSyncTousExercices() {
   barre.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:3000;background:var(--bg2);border:1px solid var(--cyan);border-radius:var(--radius);padding:10px 18px;font-family:var(--mono);font-size:11px;color:var(--text0);box-shadow:0 8px 24px rgba(0,0,0,.4);';
   barre.textContent = 'Lecture des exercices…';
   document.body.appendChild(barre);
-  const sources = [], illisibles = [];
-  for(const y of exercicesConnus()) {
-    if(String(y) === String(CURRENT_YEAR)) { sources.push({ exercice: String(y), data: JSON.parse(JSON.stringify(DB)) }); continue; }
-    try { const d = await window._fbLoad(y); if(d) sources.push({ exercice: String(y), data: d }); } catch(e) { illisibles.push(y); }
-  }
-  let res = null;
+  let res = null; const illisibles = [];
   try {
+    // V101 : une copie automatique en cours (ex. à l'ouverture d'Atrium) est attendue au lieu de bloquer le bouton
+    for(let i = 0; _syncGEDEnCours && i < 600; i++) { barre.textContent = 'Copie automatique en cours, patientez…'; await new Promise(r => setTimeout(r, 500)); }
+    const sources = [];
+    for(const y of exercicesConnus()) {
+      if(String(y) === String(CURRENT_YEAR)) { sources.push({ exercice: String(y), data: JSON.parse(JSON.stringify(DB)) }); continue; }
+      try { const d = await window._fbLoad(y); if(d) sources.push({ exercice: String(y), data: d }); } catch(e) { illisibles.push(y); }
+    }
     res = await synchroniserGED(sources, { progression: r => { barre.textContent = `Création des PDF : ${r.crees + r.maj + r.echecs} / ${r.total}…`; } });
   } finally { barre.remove(); }
-  if(!res) { toast('Copie impossible : index des documents illisible', 'error', 6000); return; }
-  const parts = [`${res.crees} document(s) ajouté(s)`];
-  if(res.maj) parts.push(`${res.maj} mis à jour`);
+  if(!res) { toast('Copie impossible : index des documents illisible ou copie déjà en cours', 'error', 6000); return; }
+  const parts = [`${res.crees} ajouté(s)`, `${res.maj} mis à jour`, `${res.ajour} déjà à jour`];
   if(res.supprimes) parts.push(`${res.supprimes} retiré(s)`);
   if(res.echecs) parts.push(`${res.echecs} échec(s)`);
   if(illisibles.length) parts.push(`exercice(s) illisible(s) : ${illisibles.join(', ')}`);
-  toast(parts.join(' · '), (res.echecs || illisibles.length) ? 'warn' : 'success', 8000);
+  toast('Documents des modules : ' + parts.join(' · '), (res.echecs || illisibles.length) ? 'warn' : 'success', 9000);
 }
-// Téléchargement direct d'un document de module en PDF (envoi par mail)
-async function telechargerPdfDocument(x, paysage) {
-  const blob = await pdfDepuisHtml(htmlDuDocument(x), paysage);
+
+// ══════════════════════════════════════════════
+// V101 — UN SEUL PROCÉDÉ POUR TOUS LES DOCUMENTS DES MODULES : LE PDF DE LA GED
+// ══════════════════════════════════════════════
+// Émettre, consulter, imprimer ou envoyer un appel, une quittance, une fiche km ou un PV ouvre toujours son PDF
+// de la GED (créé à la volée s'il n'existe pas encore). Repli sur l'ancienne impression uniquement si le stockage
+// est indisponible.
+async function pdfGedDocument(module, x, loc, exercice) {
+  if(!window._fbStorageActif) return null;
+  if(PIECES === null && !(await chargerPieces())) return null;
+  if(x.pdfGed && x.pdfGed.id) { const p = PIECES.find(q => q.id === x.pdfGed.id); if(p) return p; }
+  const d = descripteurDocument(module, x, exercice || String(CURRENT_YEAR), loc);
+  return pieceAJourPour(d) || (await deposerDocumentGenere(d)).meta;
+}
+async function ouvrirDocumentModule(module, x, loc, exercice) {
+  if(!aUnDocument(x)) { toast('Document non disponible', 'error'); return; }
+  const titre = module === 'pv' ? "PV d'AGO" : module === 'km' ? 'Fiche kilométrique' : (x.type === 'quittance' ? 'Quittance' : 'Appel de loyer');
+  // La visionneuse s'ouvre tout de suite ; le PDF s'y affiche dès qu'il est prêt
+  document.getElementById('dv-titre').textContent = titre;
+  document.getElementById('dv-infos').textContent = 'Préparation du PDF…';
+  document.getElementById('dv-suppr').style.display = 'none';
+  document.getElementById('dv-corps').innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Préparation du PDF…</div>`;
+  document.getElementById('doc-viewer-modal').style.display = 'flex';
+  _vue = { id: null, url: null, blobUrl: null };
+  let p = null;
+  try { p = await pdfGedDocument(module, x, loc, exercice); } catch(e) { console.error(e); }
+  if(document.getElementById('doc-viewer-modal').style.display !== 'flex') return; // fermée entre-temps
+  if(p) { voirPiece(p.id); return; }
+  fermerVisionneuse();
+  const html = htmlDuDocument(x);
+  if(!html) { toast('PDF indisponible (stockage inaccessible) et document sans copie locale', 'error', 6000); return; }
+  toast('PDF indisponible : document ouvert pour impression', 'warn', 5000);
+  printDoc(html, x.docTitle || 'Document', false, module === 'km');
+}
+// Envoi par mail : télécharge le PDF de la GED (ou, à défaut, le produit sur place)
+async function telechargerDocumentModule(module, x, loc) {
+  let blob = null, nom = nomFichierSur(x.docTitle || 'Document').replace(/\.pdf$/i, '') + '.pdf';
+  try {
+    const p = await pdfGedDocument(module, x, loc);
+    if(p) { const url = await window._fbFichierUrl(p.chemin); blob = await blobDePiece(url); nom = p.nomFichier || nom; }
+  } catch(e) { console.error(e); }
+  if(!blob) { const html = htmlDuDocument(x); if(!html) throw new Error('Document indisponible'); blob = await pdfDepuisHtml(html, module === 'km'); }
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = nomFichierSur(x.docTitle || 'Document').replace(/\.pdf$/i, '') + '.pdf';
+  const a = document.createElement('a'); a.href = url; a.download = nom;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+// Compatibilité : ancien nom
+async function telechargerPdfDocument(x, paysage) { return telechargerDocumentModule(paysage ? 'km' : 'loc', x, null); }
+// Allègement des anciens documents (format HTML d'avant V82) de l'exercice OUVERT dont le PDF est dans la GED :
+// le HTML est retiré, le document renvoie désormais à son PDF (le montant d'un appel est conservé à part).
+function allegerAnciensDocuments() {
+  if(EXERCISE_STATUS === 'closed' || !PIECES) return 0;
+  let n = 0;
+  documentsGeneresDe(DB, String(CURRENT_YEAR)).forEach(d => {
+    const x = d.x;
+    if(!x.docHtml || x.doc) return;
+    const p = pieceAJourPour(d); if(!p) return;
+    if(d.module === 'loc' && x.type === 'appel' && typeof x.montantAppel !== 'number') x.montantAppel = montantAppelHistorique(x);
+    x.pdfGed = { id: p.id, sig: p.origineSig };
+    delete x.docHtml;
+    n++;
+  });
+  if(n) saveDB();
+  return n;
 }
 
 </script>
