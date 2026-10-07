@@ -1200,6 +1200,7 @@ applyTheme();
           <div class="ff"><label>Date début</label><input type="date" id="gl-f-date1" onchange="renderGL()"></div>
           <div class="ff"><label>Date fin</label><input type="date" id="gl-f-date2" onchange="renderGL()"></div>
           <div class="ff"><label>N° Écriture</label><input type="text" id="gl-f-num" placeholder="Ex: 42" oninput="renderGL()"></div>
+          <div class="ff"><label>Pièce jointe</label><select id="gl-f-pj" onchange="renderGL()" style="height:32px;"><option value="">Toutes</option><option value="sans">Sans pièce jointe</option><option value="avec">Avec pièce jointe</option></select></div>
           <button class="btn btn-sm" onclick="resetGLFilters()" style="align-self:flex-end;">RESET</button>
           <span id="gl-solde-chip" style="display:none;align-self:flex-end;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>
         </div>
@@ -2923,7 +2924,7 @@ applyTheme();
       <div class="form-row c3 mb8">
         <div class="form-field"><label>Exercice *</label><select id="dep-exercice"></select></div>
         <div class="form-field"><label>Type de pièce</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
-        <div class="form-field"><label>N° de pièce</label><input type="text" id="dep-numdoc" placeholder="ex. FA/024" style="font-family:var(--mono);"></div>
+        <div class="form-field"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:32px;line-height:32px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
       </div>
       <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Seuls les exercices ouverts sont proposés : une pièce ne peut pas être ajoutée à un exercice clôturé.</div>
     </div>
@@ -4490,6 +4491,8 @@ function showTab(name) {
   }
   // Quand on quitte l'onglet locataires (ou qu'on y revient), on repart toujours de la liste
   if(name !== 'locataires') _locDetailId = null;
+  // V108 : en revenant sur la GED, on repart toujours de la vue d'origine (classeurs, sans filtre)
+  if(name === 'documents' && !document.getElementById('tab-documents').classList.contains('active') && typeof reinitialiserVueGED === 'function') reinitialiserVueGED();
   document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
@@ -5321,7 +5324,10 @@ function getGLF() {
   const fD1=document.getElementById('gl-f-date1')?.value||'';
   const fD2=document.getElementById('gl-f-date2')?.value||'';
   const fN=document.getElementById('gl-f-num')?.value||'';
+  const fPJ=document.getElementById('gl-f-pj')?.value||''; // V108 : sans pièce = à joindre ou « sans justificatif » (écritures de calcul exclues)
+  if(fPJ) preparerJustifs();
   return DB.ecritures.filter(e=>{
+    if(fPJ){ const jj=justifDe(e._io); const st=jj?jj.statut:''; if(fPJ==='sans'&&!(st==='manquant'||st==='sans')) return false; if(fPJ==='avec'&&st!=='joint') return false; }
     if(fC&&!String(e.compte).toLowerCase().startsWith(fC)) return false;
     if(fJ&&e.journal!==fJ) return false;
     if(fL&&!(e.libelleEcriture||'').toLowerCase().includes(fL)&&!(e.libelleCompte||'').toLowerCase().includes(fL)) return false;
@@ -5530,7 +5536,7 @@ function glCompteAcClose() {
 let glAcIdx = -1;
 
 function resetGLFilters() {
-  ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num','gl-f-pj'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const d=document.getElementById('gl-compte-ac'); if(d) d.style.display='none';
   glUncheckedIds.clear();
   renderGL();
@@ -16517,6 +16523,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   const exDefaut = ouverts.includes(cibleFiltre) ? cibleFiltre : ouverts.includes(String(CURRENT_YEAR)) ? String(CURRENT_YEAR) : ouverts[0];
   el('dep-exercice').innerHTML = ouverts.map(y => `<option value="${esc(y)}" ${y === exDefaut ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}</option>`).join('');
   el('dep-type').innerHTML = `<option value="">—</option>` + getTypedocList().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  el('dep-type').onchange = majPrefixeNumDoc; // V108 : n° de pièce = type + « / » + suite
   el('dep-rubrique').innerHTML = rubriquesDP().map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
   el('dep-rubrique').value = source ? source.rubrique : (rubrique || rubriquesDP()[0].code);
   el('dep-numdoc').value = '';
@@ -16544,14 +16551,15 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
     el('dep-espace-compta').checked = true; el('dep-espace-permanent').checked = false; _depot.espace = 'compta';
     el('dep-espaces').style.display = 'none';
     el('dep-exercice').value = o.lien.ex;
-    if(o.numDoc) el('dep-numdoc').value = o.numDoc;
-    if(o.date) el('dep-date').value = o.date;
     if(o.typePiece) el('dep-type').value = o.typePiece;
+    if(o.numDoc) prerempliNumDoc(o.numDoc); // V108 : type + séparateur d'origine + suite
+    if(o.date) el('dep-date').value = o.date;
     if(o.titre) el('dep-titre').value = o.titre;
     el('dep-titre-modal').textContent = `⬆ JOINDRE UN JUSTIFICATIF — écriture${o.lien.ios.length > 1 ? 's' : ''} ${o.libelleEcritures || ''}`;
   }
   el('dep-exercice').disabled = !!(o && o.lien);
   if(o && !o.lien && o.typePiece) el('dep-type').value = o.typePiece; // V107 : type du classeur ouvert
+  majPrefixeNumDoc();
   depotMajEspace();
   if(fichiers && fichiers.length) depotAjouterFichiers(fichiers);
   else depotRenderFichiers();
@@ -16613,7 +16621,7 @@ async function enregistrerDepot() {
     if(!exercice) { err.textContent = "Choisissez l'exercice."; return; }
     // Contrôle au moment de l'enregistrement : l'exercice a pu être clôturé entre-temps
     if(exerciceClos(exercice)) { err.textContent = `L'exercice ${exercice} est clôturé : aucune pièce ne peut y être ajoutée.`; return; }
-    base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: el('dep-numdoc').value.trim() };
+    base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: numDocDepot() }; // V108
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
     const classeurs = Array.from(document.querySelectorAll('#dep-classeurs input:checked')).map(i => i.value); // V107
@@ -17037,7 +17045,7 @@ function descripteurDocument(module, x, exercice, loc) {
     const quoi = x.type === 'quittance' ? 'Quittance' : x.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
     return Object.assign(base, { cle: 'loc:' + x.id, espace: 'compta',
       titre: `${quoi}${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''} — ${[loc && loc.prenom1, loc && loc.nom1].filter(Boolean).join(' ')}`,
-      date: x.dateEmission || dateLocale(new Date()), typePiece: x.type === 'quittance' ? typeSiConnu('QUIT') : '', nom: x.docTitle || quoi, paysage: false });
+      date: x.dateEmission || dateLocale(new Date()), typePiece: x.type === 'quittance' ? typeSiConnu('QUIT') : x.type === 'appel' ? typeAppelLoyer(loc, x) : '', nom: x.docTitle || quoi, paysage: false }); // V108 : appels typés
   }
   if(module === 'km') return Object.assign(base, { cle: 'km:' + x.id, espace: 'compta',
       titre: `Fiche kilométrique${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''}${x.vehiculeNom ? ' — ' + x.vehiculeNom : ''}`,
@@ -17078,7 +17086,7 @@ function deposerDocumentGenere(d) {
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
       classeurs: existant ? classeursDe(existant) : [d.rubrique], typeDP: existant ? (existant.typeDP || '') : (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '' }); // V107 : classement conservé
-    else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
+    else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: (existant && existant.numDoc) || '' });
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
     catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
@@ -17116,6 +17124,8 @@ async function synchroniserGED(sources, opts) {
     for(const src of sources) {
       const docs = documentsGeneresDe(src.data, src.exercice);
       const cles = new Set(docs.map(d => d.cle));
+      // V108 : type corrigé sur les PDF déjà présents (ex. appels de loyer auparavant sans type)
+      for(const d of docs) { const p = pieceAJourPour(d); if(p && p.espace === 'compta' && d.typePiece && p.typePiece !== d.typePiece) { try { await majPiece(p, { typePiece: d.typePiece }); } catch(e) {} } }
       const aFaire = docs.filter(d => !pieceAJourPour(d));
       res.ajour += docs.length - aFaire.length;
       res.total += aFaire.length;
@@ -17259,7 +17269,7 @@ function preparerJustifs() {
   groupes.forEach((lignes, io) => {
     let module = ''; for(const l of lignes) { module = moduleDeLaLigne(l); if(module) break; }
     const pieces = liensParIo.get(io) || [];
-    const auto = pieces.length ? null : justifAuto(lignes, module);
+    const auto = null; // V108 : plus de justification « automatique » — la fiche km / le PV est réellement joint
     const statut = pieces.length ? 'joint' : MODULES_SANS_PIECE.includes(module) ? 'exempt' : auto ? 'auto' : sans.has(io) ? 'sans' : 'manquant';
     const l0 = lignes[0];
     res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module,
@@ -17297,7 +17307,7 @@ function htmlTromboneEcriture(e) {
 }
 let _pjIo = null, _pjRecherche = '', _pjTout = false, _pjRetourPostIt = false;
 function ouvrirPiecesEcriture(io, depuisPostIt) {
-  _pjIo = cleIo(io); _pjRecherche = ''; _pjTout = false; _pjRetourPostIt = !!depuisPostIt;
+  _pjIo = cleIo(io); _pjRecherche = ''; _pjTout = false; _pjEspace = 'compta'; _pjClasseur = null; _pjRetourPostIt = !!depuisPostIt;
   if(depuisPostIt) closePostItPieces(); // le panneau reviendra à la fermeture
   renderPiecesEcriture(); document.getElementById('pj-modal').style.display = 'flex';
 }
@@ -17332,9 +17342,7 @@ function renderPiecesEcriture() {
         ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « SANS JUSTIFICATIF »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ MARQUER SANS JUSTIFICATIF', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
       </div>
       ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:6px 0;">JOINDRE UNE PIÈCE DÉJÀ DANS LA GED</div>
-      <input type="text" id="pj-q" value="${esc(_pjRecherche)}" placeholder="Rechercher (titre, n° de pièce, fichier)…" oninput="_pjRecherche=this.value;clearTimeout(window._pjT);window._pjT=setTimeout(()=>{renderPiecesEcriture();const i=document.getElementById('pj-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="margin-bottom:6px;">
-      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${htmlPiecesCandidates(j)}</div>`;
+      ${htmlSelecteurPieces(j)}`;
   }
   corps.innerHTML = h;
 }
@@ -17752,18 +17760,20 @@ let _autoTimer = null, _autoEnCours = false;
 function programmerAutoLiaison() { if(_autoTimer || _autoEnCours) return; _autoTimer = setTimeout(autoLierParReference, 1200); }
 async function autoLierParReference() {
   _autoTimer = null;
-  if(_autoEnCours || EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !PIECES || !DB || !DB.ecritures) return;
+  if(_autoEnCours || !window._fbStorageActif || !PIECES || !DB || !DB.ecritures) return;
+  const clos = EXERCISE_STATUS === 'closed'; // exercice clôturé : seuls les documents de ses modules sont joints
   _autoEnCours = true;
   let nbEcr = 0; const exemples = [];
   try {
     const ex = String(CURRENT_YEAR);
-    const refs = piecesParReference(); if(!refs.size) return;
+    const refs = clos ? new Map() : piecesParReference();
     preparerJustifs();
     const refus = new Set(ensureLiensRefuses());
     const ajouts = new Map(), iosLies = new Set();
     _justifs.forEach(j => {
-      if(j.statut !== 'manquant' || !j.numDoc || _ioEnDepot.has(j.io)) return;
-      (refs.get(normRef(j.numDoc)) || []).forEach(p => {
+      if(j.statut !== 'manquant' || _ioEnDepot.has(j.io)) return;
+      const pm = pieceDuModulePourEcriture(j); // V108 : fiche km du mois / PV d'AGO
+      (pm ? [pm] : []).concat(j.numDoc ? (refs.get(normRef(j.numDoc)) || []) : []).forEach(p => {
         if(refus.has(j.io + '|' + (p.groupe || p.id))) return;
         if(!ajouts.has(p.id)) ajouts.set(p.id, { p, js: [] });
         ajouts.get(p.id).js.push(j);
@@ -17780,8 +17790,8 @@ async function autoLierParReference() {
   finally { _autoEnCours = false; }
   if(nbEcr) {
     const e0 = exemples[0];
-    toast(nbEcr === 1 ? `📎 Écriture #${e0.j.num} jointe automatiquement à « ${e0.p.titre || e0.p.nomFichier} » (même n° de pièce ${e0.j.numDoc})`
-      : `📎 ${nbEcr} écritures jointes automatiquement aux documents de même n° de pièce`, 'success', 6000);
+    toast(nbEcr === 1 ? `📎 Écriture #${e0.j.num} jointe automatiquement à « ${e0.p.titre || e0.p.nomFichier} » (${e0.p.origine ? 'document du module' : 'même n° de pièce ' + e0.j.numDoc})`
+      : `📎 ${nbEcr} écritures jointes automatiquement à leur document (même n° de pièce, fiche km, PV d'AGO)`, 'success', 6000);
     apresChangementJustifs();
   }
 }
@@ -18167,10 +18177,10 @@ function teinte(c, alpha) { return c + alpha; } // #rrggbb + alpha hexadécimal
 function htmlOrigine(p) { return pieceGeneree(p) ? `<span class="npill" style="font-size:9px;white-space:nowrap;" title="Généré automatiquement">⚙ ${esc(LIB_MODULE_ORIGINE[p.module] || 'module')}</span>` : ''; }
 
 // ── Tuiles ──
-function htmlTuileClasseur(espace, id, nom, couleur, nb, detail) {
-  return `<div onclick="ouvrirClasseur('${espace}','${esc(id)}')" style="cursor:pointer;border:1px solid ${teinte(couleur, '66')};border-left:6px solid ${couleur};background:${teinte(couleur, '14')};border-radius:var(--radius);padding:12px 14px;min-height:74px;display:flex;flex-direction:column;gap:4px;"
+function htmlTuileClasseur(espace, id, nom, couleur, nb, detail, alerte) {
+  return `<div onclick="ouvrirClasseur('${espace}','${esc(id)}')" style="cursor:pointer;border:${alerte ? 2 : 1}px solid ${teinte(couleur, alerte ? 'ff' : '66')};border-left:6px solid ${couleur};background:${teinte(couleur, '14')};border-radius:var(--radius);padding:12px 14px;min-height:74px;display:flex;flex-direction:column;gap:4px;"
       onmouseover="this.style.background='${teinte(couleur, '26')}'" onmouseout="this.style.background='${teinte(couleur, '14')}'">
-      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">📁</span><strong style="flex:1;font-size:12px;color:var(--text0);">${esc(nom)}</strong>
+      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">${alerte ? '⚠' : '📁'}</span><strong style="flex:1;font-size:12px;color:${alerte ? '#ff3b4f;font-weight:800' : 'var(--text0)'};">${esc(nom)}</strong>
         <span class="chip" style="border-color:${couleur};color:${couleur};">${nb.toLocaleString('fr-FR')}</span></div>
       ${detail ? `<div style="font-size:10px;color:var(--text2);line-height:1.4;">${detail}</div>` : ''}
     </div>`;
@@ -18193,7 +18203,7 @@ function piecesDuClasseurCompta(id, liste) {
 }
 function infoClasseurCompta(id) {
   if(id === '__tous') return { nom: 'Tous les documents', couleur: '#94a3b8', types: null };
-  if(id === '__nc') return { nom: 'Non classés', couleur: '#64748b', types: null };
+  if(id === '__nc') return { nom: 'Non classés', couleur: '#ff3b4f', types: null };
   const c = classeursCompta().find(x => x.id === id);
   return c ? { nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], types: c.types || [] } : null;
 }
@@ -18208,8 +18218,9 @@ function htmlPiecesComptablesV107() {
     const duEx = toutes.filter(p => String(p.exercice) === String(cible));
     const tuiles = classeursCompta().map(c => htmlTuileClasseur('compta', c.id, c.nom, c.couleur || COULEURS_CLASSEUR[0], piecesDuClasseurCompta(c.id, duEx).length,
       (c.types || []).length ? (c.types || []).map(t => `<span class="npill" style="font-size:9px;" title="${esc(libTypePiece(t))}">${esc(t)}</span>`).join(' ') : '<em>Aucun type rangé</em>'));
-    const nc = piecesDuClasseurCompta('__nc', duEx).length;
-    if(nc || !classeursCompta().length) tuiles.push(htmlTuileClasseur('compta', '__nc', 'Non classés', '#64748b', nc, 'Pièces sans type, ou dont le type n\'est rangé dans aucun classeur'));
+    const nc = piecesDuClasseurCompta('__nc', duEx).length, ncTous = piecesDuClasseurCompta('__nc', toutes).length; // V108 : alerte en rouge
+    if(ncTous || !classeursCompta().length) tuiles.unshift(htmlTuileClasseur('compta', '__nc', 'Non classés', ncTous ? '#ff3b4f' : '#64748b', nc,
+      ncTous ? `<strong style="color:#ff3b4f;">${ncTous.toLocaleString('fr-FR')} pièce(s) à ranger</strong>${ncTous !== nc ? ` (dont ${(ncTous - nc).toLocaleString('fr-FR')} d'autres exercices)` : ''} : sans type, ou type rangé dans aucun classeur` : 'Pièces sans type, ou dont le type n\'est rangé dans aucun classeur', !!ncTous));
     tuiles.push(htmlTuileClasseur('compta', '__tous', 'Tous les documents', '#94a3b8', duEx.length, 'Toutes les pièces, avec les filtres'));
     const depotActif = !!window._fbStorageActif && ouverts.length > 0;
     return `<div style="display:flex;align-items:center;gap:10px;">
@@ -18227,6 +18238,8 @@ function htmlPiecesComptablesV107() {
   let liste = piecesDuClasseurCompta(id, toutes);
   if(cible !== 'tous') liste = liste.filter(p => String(p.exercice) === String(cible));
   if(f.type) liste = liste.filter(p => p.typePiece === f.type);
+  preparerJustifs();
+  if(f.ecr === 'sans') liste = liste.filter(pieceSansEcriture); else if(f.ecr === 'avec') liste = liste.filter(p => !pieceSansEcriture(p)); // V108
   if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier, libTypePiece(p.typePiece), p.exercice, LIB_MODULE_ORIGINE[p.module] || ''].join(' ').toLowerCase().includes(q));
   liste.sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
   const optEx = `<option value="tous" ${cible === 'tous' ? 'selected' : ''}>Tous les exercices</option>
@@ -18253,6 +18266,7 @@ function htmlPiecesComptablesV107() {
       <div class="gl-filters">
         <div class="ff"><label>Exercice</label><select onchange="docsFiltre('exercice', this.value)">${optEx}</select></div>
         <div class="ff"><label>Type de pièce</label><select onchange="docsFiltre('type', this.value)">${optTypes}</select></div>
+        <div class="ff"><label>Écritures</label><select onchange="docsFiltre('ecr', this.value)"><option value="">Toutes les pièces</option><option value="sans" ${f.ecr === 'sans' ? 'selected' : ''}>Sans écriture affectée</option><option value="avec" ${f.ecr === 'avec' ? 'selected' : ''}>Avec écriture</option></select></div>
         <div class="ff" style="flex:1;min-width:180px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(f.q)}" placeholder="Titre, n° de pièce, fichier…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
         <span class="chip" style="align-self:flex-end;">${liste.length} document${liste.length > 1 ? 's' : ''}</span>
       </div>
@@ -18261,7 +18275,7 @@ function htmlPiecesComptablesV107() {
     <div class="tbl-wrap docs-scroll">
       <table>
         <thead><tr><th style="width:80px;">Date</th><th style="width:76px;">Exercice</th><th style="width:66px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:150px;">Origine</th><th style="width:100px;" title="Écritures auxquelles la pièce est jointe">Écritures</th><th style="width:64px;">Taille</th><th style="width:150px;"></th></tr></thead>
-        <tbody>${lignes || `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce dans ce classeur${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
+        <tbody>${lignes || `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce dans ce classeur${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || f.ecr || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
       </table>
     </div>`;
 }
@@ -18495,6 +18509,127 @@ function clicNumDoc(io) {
   if(j.statut === 'joint' && j.pieces.length === 1) return voirPiece(j.pieces[0].id, { io });
   if(j.statut === 'auto') return voirJustifAuto(io);
   ouvrirPiecesEcriture(io);
+}
+
+
+// ══════════════════════════════════════════════
+// V108 — GED, VAGUE 2
+// ══════════════════════════════════════════════
+// - Retour sur la GED : toujours la vue d'origine (pièces comptables, choix du classeur, filtres remis à zéro).
+// - Choix d'une pièce à joindre : d'abord l'espace (pièces comptables / dossier permanent), puis le classeur.
+// - Fiches km et PV d'AGO : ce ne sont plus des « justifications automatiques » ; le PDF du module est
+//   réellement joint aux écritures (liaison automatique, détachable comme toute pièce).
+function reinitialiserVueGED() {
+  _docsVue = 'compta';
+  _docsClasseur = { compta: null, permanent: null };
+  _docsFiltres.type = ''; _docsFiltres.q = ''; _docsFiltres.ecr = ''; _docsFiltres.pourExercice = null;
+  _dpFiltreType = '';
+}
+// Type des appels de loyer : celui des mouvements « + » du mois (préfixe du n° de pièce, ex. QUIT), sinon QUIT
+function typeAppelLoyer(loc, x) {
+  const prefixes = [];
+  (loc && loc.mouvements || []).filter(m => m.sens === '+' && (m.affectations || []).some(a => a.mois === x.mois)).forEach(m => {
+    const t = (loc.types || []).find(y => y.id === m.typeId);
+    if(t && t.prefixePiece) prefixes.push(String(t.prefixePiece).trim());
+  });
+  for(const p of prefixes) { const c = typeSiConnu(p); if(c) return c; }
+  return typeSiConnu('QUIT');
+}
+// Pièce sans écriture : aucun rattachement valable (écritures de l'exercice affiché vérifiées)
+function pieceSansEcriture(p) {
+  const ex = String(CURRENT_YEAR);
+  if(!_justifs) preparerJustifs();
+  return !(p.liens || []).some(l => l.ex !== ex || _justifs.has(l.io));
+}
+
+// ── N° de pièce au dépôt : type + séparateur + suffixe (ex. RBANQUE/09/26) ──
+function sepDepot() { return (_depot && _depot.sep) || '/'; }
+function majPrefixeNumDoc() {
+  const t = document.getElementById('dep-type').value;
+  const z = document.getElementById('dep-numdoc-prefixe');
+  if(z) { z.textContent = t ? t + sepDepot() : ''; z.style.display = t ? '' : 'none'; }
+}
+function numDocDepot() {
+  const t = document.getElementById('dep-type').value, s = document.getElementById('dep-numdoc').value.trim();
+  if(!t) return s;
+  if(!s) return t;
+  const u = s.toUpperCase();
+  if(u === t.toUpperCase() || u.startsWith(t.toUpperCase() + '/') || u.startsWith(t.toUpperCase() + '_')) return s; // n° complet déjà saisi
+  return t + sepDepot() + s;
+}
+// Pré-remplissage depuis un n° complet (écriture) : type + séparateur d'origine + suffixe
+function prerempliNumDoc(numDoc) {
+  const nd = String(numDoc || '');
+  const m = nd.match(/^([^\/_]+)([\/_])(.*)$/);
+  const t = m ? typeSiConnu(m[1]) : typeSiConnu(nd);
+  if(m && t) { document.getElementById('dep-type').value = t; _depot.sep = m[2]; document.getElementById('dep-numdoc').value = m[3]; }
+  else if(!m && t) { document.getElementById('dep-type').value = t; document.getElementById('dep-numdoc').value = ''; }
+  else document.getElementById('dep-numdoc').value = nd;
+  majPrefixeNumDoc();
+}
+
+// ── Sélecteur de pièce à joindre : espace → classeur → pièces ──
+let _pjEspace = 'compta', _pjClasseur = null;
+function candidatsJoindre(j) {
+  const ex = String(CURRENT_YEAR), deja = new Set(j.pieces.map(p => p.id));
+  const compta = (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === ex && !deja.has(p.id));
+  const dp = groupesDP().map(g => g.courante).filter(p => !deja.has(p.id));
+  return { compta, dp };
+}
+function htmlLignePieceCandidate(p, j) {
+  const memeRef = !!(p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
+  return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${memeRef ? '★ ' : ''}${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
+      <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" style="padding:1px 6px;font-size:10px;">👁</button>
+      <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button>
+    </div>`;
+}
+function htmlSelecteurPieces(j) {
+  const { compta, dp } = candidatsJoindre(j);
+  const q = _pjRecherche.trim().toLowerCase();
+  const filtreQ = l => q ? l.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q)) : l;
+  const tri = l => l.slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || ''));
+  // Suggestions : même n° de pièce, quel que soit le classeur
+  const sugg = [...compta, ...dp].filter(p => p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
+  let h = sugg.length ? `<div style="font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:.08em;margin:6px 0 4px;">★ MÊME N° DE PIÈCE</div>
+      <div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:8px;">${sugg.map(p => htmlLignePieceCandidate(p, j)).join('')}</div>` : '';
+  const ong = (v, lib, n) => `<button class="btn btn-sm ${_pjEspace === v ? 'btn-primary' : ''}" onclick="_pjEspace='${v}';_pjClasseur=null;renderPiecesEcriture()" style="font-size:10px;">${lib} (${n})</button>`;
+  h += `<div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:6px 0;">JOINDRE UNE PIÈCE DÉJÀ DANS LA GED</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">${ong('compta', '🧾 PIÈCES COMPTABLES ' + esc(CURRENT_YEAR), compta.length)}${ong('permanent', '🗂 DOSSIER PERMANENT', dp.length)}</div>`;
+  // Classeurs de l'espace choisi
+  let classeurs;
+  if(_pjEspace === 'compta') {
+    classeurs = classeursCompta().map(c => ({ id: c.id, nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], liste: piecesDuClasseurCompta(c.id, compta) }));
+    const nc = piecesDuClasseurCompta('__nc', compta); if(nc.length) classeurs.push({ id: '__nc', nom: 'Non classés', couleur: '#ff3b4f', liste: nc });
+    classeurs.push({ id: '__tous', nom: 'Tous', couleur: '#94a3b8', liste: compta });
+  } else {
+    const gs = dp.map(p => ({ courante: p, anciennes: [] }));
+    classeurs = rubriquesDP().map((r, i) => ({ id: r.code, nom: r.label, couleur: couleurRubrique(r, i), liste: groupesDuClasseurDP(r.code, gs).map(g => g.courante) }));
+    const sans = groupesDuClasseurDP('__sans', gs).map(g => g.courante); if(sans.length) classeurs.push({ id: '__sans', nom: 'Sans classeur', couleur: '#64748b', liste: sans });
+    classeurs.push({ id: '__tous', nom: 'Tous', couleur: '#94a3b8', liste: dp });
+  }
+  h += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${classeurs.map(c => {
+      const sel = _pjClasseur === c.id;
+      return `<button class="btn btn-sm" onclick="_pjClasseur='${esc(c.id)}';renderPiecesEcriture()" style="font-size:10px;border-left:4px solid ${c.couleur};${sel ? `background:${c.couleur}33;color:var(--text0);border-color:${c.couleur};` : ''}">📁 ${esc(c.nom)} <span style="color:var(--text2);">${c.liste.length}</span></button>`;
+    }).join('')}</div>`;
+  const choisi = classeurs.find(c => c.id === _pjClasseur);
+  h += `<input type="text" id="pj-q" value="${esc(_pjRecherche)}" placeholder="${choisi ? 'Rechercher dans « ' + esc(choisi.nom) + ' »' : 'Rechercher dans tout l\'espace'} (titre, n° de pièce, fichier)…" oninput="_pjRecherche=this.value;clearTimeout(window._pjT);window._pjT=setTimeout(()=>{renderPiecesEcriture();const i=document.getElementById('pj-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="margin-bottom:6px;">`;
+  let liste = null;
+  if(choisi) liste = filtreQ(choisi.liste);
+  else if(q) liste = filtreQ(_pjEspace === 'compta' ? compta : dp);
+  const corps = liste === null
+    ? `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Choisissez un classeur (ou tapez une recherche).</div>`
+    : liste.length ? tri(liste).slice(0, 100).map(p => htmlLignePieceCandidate(p, j)).join('')
+    : `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce${q ? ' pour cette recherche' : ' dans ce classeur'}.</div>`;
+  return h + `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${corps}</div>`;
+}
+
+// ── Documents des modules joints automatiquement (fiche km du mois, PV d'AGO) ──
+function pieceDuModulePourEcriture(j) {
+  if(j.module !== 'km' && j.module !== 'approbation') return null;
+  const a = justifAuto(j.lignes, j.module); if(!a) return null;
+  const cle = (a.module === 'km' ? 'km:' : 'pv:') + a.x.id;
+  return (PIECES || []).find(p => p.origine === cle) || null;
 }
 
 </script>
