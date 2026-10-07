@@ -102,8 +102,10 @@ function afficherEcranInstallation() {
       ${etape(1, 'Créer le projet Firebase', 'Sur <span style="font-family:var(--mono);">console.firebase.google.com</span>, créez un nouveau projet.')}
       ${etape(2, 'Activer la connexion', 'Menu <em>Authentication</em> › <em>Sign-in method</em> : activez « E-mail/Mot de passe ». Onglet <em>Users</em> : créez votre compte. Onglet <em>Settings</em> › <em>Authorized domains</em> : ajoutez l\'adresse où l\'outil sera publié (ex. <span style="font-family:var(--mono);">votre-nom.github.io</span>).')}
       ${etape(3, 'Créer la base de données', 'Menu <em>Firestore Database</em> : créez la base, puis dans l\'onglet <em>Règles</em>, remplacez le contenu par :' + code("rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}"))}
-      ${etape(4, 'Récupérer la configuration', '<em>Paramètres du projet</em> › <em>Vos applications</em> : ajoutez une application Web (&lt;/&gt;) et copiez les valeurs de <span style="font-family:var(--mono);">firebaseConfig</span>.')}
-      ${etape(5, 'Renseigner ce fichier', 'Ouvrez ce fichier HTML dans un éditeur de texte. Dans le bloc <strong>« ① INSTALLATION »</strong> tout en haut, remplacez chaque <span style="font-family:var(--mono);">A_RENSEIGNER</span> par vos valeurs, enregistrez, publiez le fichier puis rechargez cette page.')}
+      ${etape(4, 'Activer le stockage des documents', 'Passez le projet sur le plan <em>Blaze</em> (paiement à l\'usage — créez une alerte budgétaire, par exemple à 1 €). Menu <em>Storage</em> › <em>Commencer</em> : choisissez une région européenne (ex. <span style="font-family:var(--mono);">europe-west9</span>, Paris). Onglet <em>Règles</em>, remplacez le contenu par :' + code("rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /documents/{allPaths=**} {\n      allow read, delete: if request.auth != null;\n      allow create, update: if request.auth != null\n        &amp;&amp; request.resource.size &lt; 25 * 1024 * 1024;\n    }\n  }\n}"))}
+      ${etape(5, 'Autoriser l\'impression et le téléchargement direct', 'Dans la console Google Cloud du projet, ouvrez <em>Cloud Shell</em> (icône &gt;_ en haut à droite) et lancez ces deux commandes, en remplaçant l\'adresse et le nom du bucket (champ <span style="font-family:var(--mono);">storageBucket</span>) par les vôtres :' + code("echo '[{\"origin\":[\"https://votre-nom.github.io\"],\"method\":[\"GET\"],\"maxAgeSeconds\":3600}]' &gt; cors.json\ngsutil cors set cors.json gs://VOTRE-PROJET.firebasestorage.app"))}
+      ${etape(6, 'Récupérer la configuration', '<em>Paramètres du projet</em> › <em>Vos applications</em> : ajoutez une application Web (&lt;/&gt;) et copiez les valeurs de <span style="font-family:var(--mono);">firebaseConfig</span> (y compris <span style="font-family:var(--mono);">storageBucket</span>).')}
+      ${etape(7, 'Renseigner ce fichier', 'Ouvrez ce fichier HTML dans un éditeur de texte. Dans le bloc <strong>« ① INSTALLATION »</strong> tout en haut, remplacez chaque <span style="font-family:var(--mono);">A_RENSEIGNER</span> par vos valeurs, enregistrez, publiez le fichier puis rechargez cette page.')}
     </div>
     <div style="font-size:11px;color:var(--text2);margin-top:8px;border-top:1px solid var(--line1);padding-top:12px;">À la première connexion, un assistant vous guidera pour renseigner l'identité de votre société.</div>`;
 }
@@ -113,7 +115,8 @@ document.addEventListener('DOMContentLoaded', () => { if(ATRIUM_INSTALL_INCOMPLE
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
   import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, reauthenticateWithCredential, EmailAuthProvider, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDocFromServer, runTransaction, arrayUnion, arrayRemove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, getDocFromServer, runTransaction, arrayUnion, arrayRemove, collection, query, where, getDocsFromServer } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getStorage, ref as sRef, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
   if(window.ATRIUM_INSTALL_INCOMPLET) throw new Error('Installation à finaliser : configuration Firebase non renseignée'); // V87v2
   const firebaseConfig = window.ATRIUM_INSTALL.firebaseConfig; // V85 : voir bloc INSTALLATION en tête de fichier
@@ -219,6 +222,38 @@ document.addEventListener('DOMContentLoaded', () => { if(ATRIUM_INSTALL_INCOMPLE
   window._fbSaveLogo = async (id, data) => {
     await setDoc(doc(db, window.ATRIUM_INSTALL.collection, "_logo_" + id), { data, cree: new Date().toISOString() });
   };
+
+  // ── V98 — BASE DOCUMENTAIRE : fichiers dans Cloud Storage, index dans Firestore ──
+  // Une fiche par document (« _piece_<id> », champ _kind = 'piece'), dans la même collection que les exercices
+  // mais HORS des documents d'exercice : l'index est visible depuis tous les exercices et ne pèse pas sur la limite de 1 Mo.
+  let storage = null;
+  try { if(firebaseConfig.storageBucket && !/A_RENSEIGNER/i.test(firebaseConfig.storageBucket)) storage = getStorage(app); }
+  catch(e) { console.error('Cloud Storage indisponible', e); }
+  window._fbStorageActif = !!storage;
+  const sansStorage = () => Object.assign(new Error("Stockage des documents non configuré"), { code: 'atrium/storage-off' });
+  const pieceRef = (id) => doc(db, window.ATRIUM_INSTALL.collection, "_piece_" + id);
+  // Lève une exception en cas d'erreur (règle V79)
+  window._fbPiecesList = async () => {
+    const snap = await getDocsFromServer(query(collection(db, window.ATRIUM_INSTALL.collection), where('_kind', '==', 'piece')));
+    return snap.docs.map(d => { const x = d.data(); delete x._kind; return x; });
+  };
+  window._fbPieceSave = async (meta) => { await setDoc(pieceRef(meta.id), Object.assign({}, meta, { _kind: 'piece' })); };
+  window._fbPieceDelete = async (id) => { await deleteDoc(pieceRef(id)); };
+  window._fbFichierEnvoyer = (chemin, blob, contentType, onProgress) => new Promise((resolve, reject) => {
+    if(!storage) { reject(sansStorage()); return; }
+    const tache = uploadBytesResumable(sRef(storage, chemin), blob, { contentType: contentType || 'application/octet-stream' });
+    tache.on('state_changed', s => { if(onProgress && s.totalBytes) onProgress(s.bytesTransferred / s.totalBytes); }, reject, () => resolve());
+  });
+  window._fbFichierUrl = async (chemin) => { if(!storage) throw sansStorage(); return await getDownloadURL(sRef(storage, chemin)); };
+  // Fichier déjà absent = pas une erreur
+  window._fbFichierSupprimer = async (chemin) => {
+    if(!storage) throw sansStorage();
+    try { await deleteObject(sRef(storage, chemin)); } catch(e) { if(e && e.code === 'storage/object-not-found') return; throw e; }
+  };
+  // Réglages de la base documentaire (rubriques du dossier permanent) : communs à tous les exercices
+  const docsConfigRef = () => doc(db, window.ATRIUM_INSTALL.collection, "_documents_config");
+  window._fbDocsConfigLoad = async () => { const s = await getDocFromServer(docsConfigRef()); return s.exists() ? s.data() : null; };
+  window._fbDocsConfigSave = async (cfg) => { await setDoc(docsConfigRef(), cfg); };
 
   window._fbReady = true;
   document.dispatchEvent(new Event('firebase-ready'));
@@ -652,6 +687,11 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 #locataires-list-wrap tr.loc-mainrow > td:first-child { border-left:3px solid var(--cyan); }
 #locataires-list-wrap tr.loc-mainrow:hover > td { background:var(--bg4); }
 #locataires-list-wrap tr.loc-subrow:hover > td, #locataires-list-wrap tr.loc-spacer:hover > td { background:var(--bg0) !important; }
+/* V98 — base documentaire */
+.docs-drop { border:1.5px dashed var(--line2); border-radius:var(--radius); padding:14px; text-align:center; font-size:12px; color:var(--text1); cursor:pointer; background:var(--bg1); transition:all .15s; }
+.docs-drop:hover, .docs-drop.over { border-color:var(--cyan); background:var(--cyan-glow); color:var(--cyan); }
+.docs-drop-off { cursor:default; color:var(--text2); }
+.docs-drop-off:hover { border-color:var(--line2); background:var(--bg1); color:var(--text2); }
 </style>
 <style>
 /* ══ V77 : THÈMES (mode clair + couleur dominante) — n'affecte pas les documents édités ══ */
@@ -963,6 +1003,12 @@ applyTheme();
     <div class="nav-section">Éditions</div>
     <div class="nav-item" onclick="showTab('editions')" id="nav-editions">
       <span class="ni-icon">⎙</span> Éditions comptables
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-section">Base documentaire</div>
+    <div class="nav-item" onclick="showTab('documents')" id="nav-documents">
+      <span class="ni-icon">🗄</span> Documents
+      <span class="ni-count" id="nc-documents">–</span>
     </div>
     <div class="nav-sep"></div>
     <div class="nav-section">Rappels</div>
@@ -1630,6 +1676,20 @@ applyTheme();
       </div>
     </div>
 
+    <!-- ══════════════ V98 : DOCUMENTS ══════════════ -->
+    <div class="tab-content" id="tab-documents">
+      <div class="page-hdr">
+        <div>
+          <div class="page-title">DOCUMENTS</div>
+          <div class="page-sub">Pièces comptables de tous les exercices et dossier permanent</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-sm" onclick="renderDocuments()" title="Relire la liste dans Firebase">↻ ACTUALISER</button>
+        </div>
+      </div>
+      <div id="docs-wrap" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+
     <!-- ══════════════ PARAMÈTRES ══════════════ -->
     <!-- ══════════════ RÉVISION COMPTABLE (V75) ══════════════ -->
     <div class="tab-content" id="tab-revision">
@@ -1667,6 +1727,18 @@ applyTheme();
             <div style="font-size:10px;color:var(--text2);margin-top:2px;">Propre à ce poste et à ce navigateur. N'affecte ni les documents édités (PDF, appels, quittances…) ni les couleurs de contrôle (rouge / vert / orange).</div>
           </div>
           <div id="params-theme" style="padding:14px;"></div>
+        </div>
+
+        <!-- V98 : rubriques du dossier permanent (communes à tous les exercices) -->
+        <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line2);">
+            <div>
+              <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">🗂 DOSSIER PERMANENT — RUBRIQUES</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:2px;">Communes à tous les exercices (enregistrées dans Firebase), modifiables même sur un exercice clôturé. Une rubrique qui contient des documents ne peut pas être supprimée.</div>
+            </div>
+            <button class="btn btn-sm btn-primary" onclick="ajouterRubriqueDP()">+ Ajouter une rubrique</button>
+          </div>
+          <div id="params-dp-rubriques"></div>
         </div>
 
         <!-- Section : Types de pièces comptables -->
@@ -2807,6 +2879,61 @@ applyTheme();
       <button class="btn btn-danger" id="backup-restore-btn" onclick="confirmBackupRestore()">OUI, ÉCRASER LES DONNÉES ACTUELLES</button>
       <button class="btn ml-auto" onclick="closeBackupRestoreModal()">ANNULER</button>
     </div>
+  </div>
+</div>
+
+<!-- ══════════════ V98 : DÉPÔT DE DOCUMENTS ══════════════ -->
+<div id="doc-upload-modal" class="modal-overlay">
+  <div class="modal" style="width:620px;">
+    <div class="modal-title" id="dep-titre-modal">⬆ DÉPOSER DES DOCUMENTS</div>
+    <div id="dep-espaces" style="display:flex;gap:18px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;"><input type="radio" name="dep-espace" id="dep-espace-compta" onchange="depotMajEspace()" style="width:14px;height:14px;"> 🧾 Pièce comptable</label>
+      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;"><input type="radio" name="dep-espace" id="dep-espace-permanent" onchange="depotMajEspace()" style="width:14px;height:14px;"> 🗂 Dossier permanent</label>
+    </div>
+    <div class="docs-drop" style="margin-bottom:8px;" onclick="document.getElementById('dep-input').click()"
+      ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
+      ondrop="event.preventDefault();this.classList.remove('over');depotAjouterFichiers(event.dataTransfer.files)">⬆ Glissez des fichiers ici, ou cliquez pour les choisir</div>
+    <input type="file" id="dep-input" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.eml,.msg" style="display:none;" onchange="depotAjouterFichiers(this.files);this.value='';">
+    <div id="dep-fichiers" style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg2);max-height:160px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div id="dep-bloc-compta">
+      <div class="form-row c3 mb8">
+        <div class="form-field"><label>Exercice *</label><select id="dep-exercice"></select></div>
+        <div class="form-field"><label>Type de pièce</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
+        <div class="form-field"><label>N° de pièce</label><input type="text" id="dep-numdoc" placeholder="ex. FA/024" style="font-family:var(--mono);"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Seuls les exercices ouverts sont proposés : une pièce ne peut pas être ajoutée à un exercice clôturé.</div>
+    </div>
+    <div id="dep-bloc-permanent">
+      <div class="form-row mb8"><div class="form-field"><label>Rubrique *</label><select id="dep-rubrique"></select></div></div>
+    </div>
+    <div class="form-row c2 mb8">
+      <div class="form-field" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
+      <div class="form-field"><label>Date du document *</label><input type="date" id="dep-date"></div>
+    </div>
+    <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Plusieurs fichiers : chacun prend pour titre son nom de fichier. Les autres informations s'appliquent à tous.</div>
+    <div id="dep-progress" style="display:none;height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden;"><div id="dep-progress-barre" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
+    <div id="dep-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;line-height:1.5;"></div>
+    <div class="flex gap8">
+      <button class="btn btn-primary" id="dep-btn" onclick="enregistrerDepot()">✓ ENREGISTRER</button>
+      <button class="btn ml-auto" onclick="fermerDepot()">ANNULER</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ V98 : VISIONNEUSE ══════════════ -->
+<div id="doc-viewer-modal" class="modal-overlay">
+  <div class="modal" style="width:1000px;max-width:96vw;height:92vh;max-height:92vh;display:flex;flex-direction:column;padding:16px;">
+    <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
+      <div style="flex:1;min-width:0;">
+        <div class="modal-title" id="dv-titre" style="margin-bottom:2px;"></div>
+        <div id="dv-infos" style="font-size:10px;color:var(--text2);"></div>
+      </div>
+      <button class="btn btn-sm btn-primary" onclick="imprimerPieceVue()">⎙ IMPRIMER</button>
+      <button class="btn btn-sm" onclick="_vue && telechargerPiece(_vue.id)">⬇ TÉLÉCHARGER</button>
+      <button class="btn btn-sm btn-danger" onclick="supprimerPieceDepuisVue()" title="Supprimer définitivement (mot de passe)">🗑</button>
+      <button class="btn btn-sm" onclick="fermerVisionneuse()">FERMER</button>
+    </div>
+    <div id="dv-corps" style="flex:1;min-height:0;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;background:var(--bg2);"></div>
   </div>
 </div>
 
@@ -4177,7 +4304,7 @@ function _recevoirChangementDistant({ data, rev }) {
   histClear();
   afficherAvisChangementDistant(detail, _hadHist);
   const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,documents:()=>renderDocuments(false),parametres:renderParametres};
   if(active && renders[active]) { try { renders[active](); } catch(e) { console.error(e); } }
   renderPostItPieces();
 }
@@ -4274,7 +4401,7 @@ function showTab(name) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('tab-'+name).classList.add('active');
   document.getElementById('nav-'+name).classList.add('active');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:()=>{const cb=document.getElementById('bg-nonzero'); if(cb) cb.checked=true; renderBalance();},tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,documents:()=>renderDocuments(),parametres:renderParametres};
   if (renders[name]) renders[name]();
   updateNavCounts();
 }
@@ -4291,6 +4418,9 @@ function updateNavCounts() {
   if(ncEch) ncEch.textContent = (DB.echeanciers||[]).length;
   const ncEmp = document.getElementById('nc-emprunts');
   if(ncEmp) ncEmp.textContent = (DB.emprunts||[]).length;
+  // V98 : pièces (non archivées) de l'exercice affiché
+  const ncDoc = document.getElementById('nc-documents');
+  if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR) && !p.archived).length : '–';
 }
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
@@ -4959,7 +5089,7 @@ function _histAfterRestore(msg, type) {
   _histLastPush = 0;
   updateNavCounts(); updUndoRedo();
   const active = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
+  const renders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,documents:()=>renderDocuments(false),parametres:renderParametres};
   try { if(active && renders[active]) renders[active](); } catch(e) { console.error(e); }
   try { renderPostItPieces(); } catch(e) {}
   try { updateNextNum(); } catch(e) {}
@@ -6054,6 +6184,7 @@ function renderParametres() {
   renderSocieteSettings();
   renderThemeSettings();
   renderPiecesTypesList();
+  renderRubriquesDP(); // V98
 }
 
 // V77 : réglages d'apparence (mode clair/sombre + couleur dominante), stockés localement
@@ -6850,6 +6981,7 @@ function getExerciseStatus(y) {
   return 'open';
 }
 function requestDeleteExercise(y, rowEl) {
+  if(!suppressionExerciceAutorisee(y)) return; // V98 : un vrai exercice contenant des pièces ne se supprime pas
   const isTest = isTestExercise(y);
   const confId = 'del-confirm-' + y.replace(/[^a-zA-Z0-9]/g,'_');
   const existing = document.getElementById(confId);
@@ -6898,10 +7030,13 @@ function requestDeleteExercise(y, rowEl) {
 }
 async function doDeleteExercise(y) {
   if(!(await toutEnregistrer())) { toast('Suppression impossible : des modifications ne sont pas enregistrées', 'error', 6000); return; }
+  if(!suppressionExerciceAutorisee(y)) return; // V98 : contrôle refait juste avant la suppression
+  const etaitTest = isTestExercise(y);
   window._deletingYear = y;
   try { await window._fbDelete(y); }
   catch(e) { window._deletingYear = null; toast(`Échec de la suppression de "${y}" dans Firebase — rien n'a été supprimé`, 'error', 6000); return; }
   window._deletingYear = null;
+  if(etaitTest) supprimerPiecesExercice(y); // V98 : les pièces d'un exercice test disparaissent avec lui
   delete LOADED_REV[String(y)];
   if(window._exerciseStatuses) delete window._exerciseStatuses[String(y)];
   if(String(CURRENT_YEAR) === String(y)) {
@@ -15352,6 +15487,7 @@ async function boot() {
   fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
+  chargerPieces().then(updateNavCounts); chargerDocsConfig(); // V98 : index de la base documentaire
   checkMonthlyExport();
   checkWeeklyExport();
   // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
@@ -15363,7 +15499,7 @@ async function boot() {
   // Le chargement des données (Firebase) est asynchrone : si l'utilisateur a déjà navigué
   // vers un onglet pendant ce chargement, on force un nouveau rendu de l'onglet actif.
   const activeTabId = document.querySelector('.tab-content.active')?.id?.replace('tab-','');
-  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,parametres:renderParametres};
+  const allRenders = {journaux:renderJournaux,grandlivre:renderGL,balance:renderBalance,tbdata:renderTBData,mensuel:renderMensuel,annuel:renderAnnuel,editions:renderEditions,immos:renderImmos,locataires:renderLocataires,echeanciers:renderEcheanciers,emprunts:renderEmprunts,km:renderKmModule,inventaire:renderInventaire,approbation:renderApprobation,revision:renderRevision,documents:()=>renderDocuments(false),parametres:renderParametres};
   if(activeTabId && allRenders[activeTabId]) allRenders[activeTabId]();
 }
 // ══════════════════════════════════════════════
@@ -15920,6 +16056,667 @@ document.addEventListener('auth-changed', (ev) => { if(!ev.detail && booted) loc
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => { if(!window._fbReady && !window.ATRIUM_INSTALL_INCOMPLET) { afficherApplication(); afficherErreurConnexion(new Error('Firebase n\'a pas pu être chargé')); } }, 10000);
 });
+</script>
+<script>
+// ══════════════════════════════════════════════
+// V98 — BASE DOCUMENTAIRE (lot 1)
+// ══════════════════════════════════════════════
+// Fichiers dans Cloud Storage ; index global dans Firestore (une fiche par document, hors des documents
+// d'exercice) → tous les documents sont visibles depuis n'importe quel exercice.
+// Deux espaces :
+//  - 'compta'    : pièces comptables, rattachées à un exercice (+ type et n° de pièce)
+//  - 'permanent' : dossier permanent, par rubrique, indépendant des exercices, avec versions successives
+// Règles :
+//  - aucun ajout, archivage, restauration ni suppression dans un exercice CLÔTURÉ (consultation seule),
+//    quel que soit l'exercice affiché ;
+//  - le dossier permanent est toujours modifiable ;
+//  - les pièces d'un exercice test sont marquées TEST et supprimées avec lui ;
+//  - un vrai exercice qui contient des pièces ne peut pas être supprimé ;
+//  - archiver = masquer (rien n'est effacé) ; suppression définitive avec mot de passe.
+
+const DP_RUBRIQUES_DEFAUT = [
+  { code: 'statuts', label: 'Statuts' },
+  { code: 'kbis', label: 'Extraits Kbis' },
+  { code: 'ag', label: "PV d'AG et décisions" },
+  { code: 'acquisitions', label: "Actes d'acquisition" },
+  { code: 'baux', label: 'Baux' },
+  { code: 'prets', label: 'Prêts' },
+  { code: 'assurances', label: 'Assurances' },
+  { code: 'fiscalite', label: 'Fiscalité' },
+  { code: 'divers', label: 'Divers' }
+];
+const DOC_TAILLE_MAX = 20 * 1024 * 1024;          // 20 Mo par fichier
+const DOC_COMPRESSION_SEUIL = 400 * 1024;          // photos de plus de 400 Ko recompressées
+const DOC_COMPRESSION_COTE = 2200;                 // plus grand côté après compression (px)
+
+let PIECES = null;            // index chargé depuis Firebase (null = pas encore lu, ou illisible)
+let _piecesErreur = null;
+let DOCS_CONFIG = null;       // { rubriques: [{code, label}] } — null = rubriques par défaut
+let _docsVue = 'compta';      // 'compta' | 'permanent'
+const _docsFiltres = { exercice: 'courant', type: '', q: '', archives: false };
+const _dpVersionsOuvertes = {};
+
+// ── Chargement ──
+async function chargerPieces() {
+  if(!window._fbPiecesList) { PIECES = null; _piecesErreur = 'Firebase non chargé'; return false; }
+  try { PIECES = await window._fbPiecesList(); _piecesErreur = null; return true; }
+  catch(e) { console.error('Index des documents illisible', e); PIECES = null; _piecesErreur = (e && (e.code || e.message)) || String(e); return false; }
+}
+async function chargerDocsConfig() {
+  if(!window._fbDocsConfigLoad) return;
+  try { DOCS_CONFIG = (await window._fbDocsConfigLoad()) || null; } catch(e) { console.error(e); }
+}
+function rubriquesDP() {
+  return (DOCS_CONFIG && Array.isArray(DOCS_CONFIG.rubriques) && DOCS_CONFIG.rubriques.length) ? DOCS_CONFIG.rubriques : DP_RUBRIQUES_DEFAUT;
+}
+function libRubrique(code) { const r = rubriquesDP().find(x => x.code === code); return r ? r.label : 'Sans rubrique'; }
+function libTypePiece(code) {
+  if(!code) return '';
+  const t = (typeof getTypedocList === 'function' ? getTypedocList() : []).find(x => x.code === code);
+  return t ? t.label : code;
+}
+
+// ── Exercices ──
+function exerciceClos(y) {
+  if(String(y) === String(CURRENT_YEAR)) return EXERCISE_STATUS === 'closed';
+  return getExerciseStatus(y) === 'closed';
+}
+// Exercices connus, dans l'ordre du sélecteur d'exercice (récents d'abord, tests en bas)
+function exercicesConnus() {
+  const sel = document.getElementById('ex-year-select');
+  const liste = sel ? Array.from(sel.options).map(o => o.value).filter(Boolean) : [];
+  if(!liste.includes(String(CURRENT_YEAR))) liste.unshift(String(CURRENT_YEAR));
+  return liste;
+}
+function exercicesOuverts() { return exercicesConnus().filter(y => !exerciceClos(y)); }
+function piecesDeLExercice(y) { return (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === String(y)); }
+// Une pièce peut-elle être modifiée (archivée, restaurée, supprimée) ?
+function pieceModifiable(p) { return p.espace === 'permanent' || !exerciceClos(p.exercice); }
+
+// ── Utilitaires ──
+function tailleLisible(n) {
+  n = Number(n) || 0;
+  if(n < 1024) return n + ' o';
+  if(n < 1024 * 1024) return Math.round(n / 1024) + ' Ko';
+  return (n / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo';
+}
+function nomFichierSur(nom) {
+  const base = String(nom || 'document').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_');
+  return base.slice(-80) || 'document';
+}
+function titreDepuisNom(nom) { return String(nom || '').replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim(); }
+function genrePiece(p) {
+  const m = String(p.mime || '');
+  if(m === 'application/pdf' || /\.pdf$/i.test(p.nomFichier || '')) return 'pdf';
+  if(m.startsWith('image/') && !/hei[cf]/i.test(m)) return 'image';
+  return 'autre';
+}
+function iconePiece(p) { const g = genrePiece(p); return g === 'pdf' ? '📄' : g === 'image' ? '🖼' : '📎'; }
+function messageErreurStorage(e) {
+  const c = (e && e.code) || '';
+  if(c === 'atrium/storage-off') return "Le stockage des documents n'est pas configuré dans ce fichier (storageBucket manquant).";
+  if(c === 'storage/unauthorized') return "Accès refusé par Firebase Storage : vérifiez les règles de sécurité Storage et que vous êtes connecté.";
+  if(c === 'storage/quota-exceeded' || c === 'storage/project-not-found' || c === 'storage/bucket-not-found' || /402|billing|Spark/i.test((e && e.message) || ''))
+    return "Firebase Storage n'est pas activé sur le projet (plan Blaze + menu Storage, région Paris).";
+  if(c === 'storage/retry-limit-exceeded' || c === 'storage/canceled') return "Envoi interrompu (connexion internet ?)";
+  return 'Erreur : ' + (c || (e && e.message) || e);
+}
+
+// Compression des photos (le PDF et les autres fichiers sont envoyés tels quels)
+async function preparerFichier(f) {
+  const brut = { blob: f, type: f.type || 'application/octet-stream', nom: f.name || 'document' };
+  if(!['image/jpeg', 'image/png', 'image/webp'].includes(f.type) || f.size < DOC_COMPRESSION_SEUIL) return brut;
+  try {
+    let bmp;
+    try { bmp = await createImageBitmap(f, { imageOrientation: 'from-image' }); } catch(e) { bmp = await createImageBitmap(f); }
+    const r = Math.min(1, DOC_COMPRESSION_COTE / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * r); c.height = Math.round(bmp.height * r);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.82));
+    if(blob && blob.size < f.size) return { blob, type: 'image/jpeg', nom: f.name.replace(/\.[^.]+$/, '') + '.jpg' };
+  } catch(e) { console.warn('Compression impossible, fichier envoyé tel quel', e); }
+  return brut;
+}
+
+// ══════════════════════════════════════════════
+// AFFICHAGE DE L'ONGLET DOCUMENTS
+// ══════════════════════════════════════════════
+async function renderDocuments(recharger) {
+  const zone = document.getElementById('docs-wrap'); if(!zone) return;
+  if(recharger !== false || PIECES === null) {
+    zone.innerHTML = `<div class="card" style="font-size:12px;color:var(--text2);">Chargement des documents…</div>`;
+    await Promise.all([chargerPieces(), DOCS_CONFIG ? null : chargerDocsConfig()]);
+    updateNavCounts();
+  }
+  renderDocumentsVue();
+}
+function docsChangerVue(v) { _docsVue = v; renderDocumentsVue(); }
+function docsFiltre(cle, val) { _docsFiltres[cle] = val; renderDocumentsVue(); }
+
+function renderDocumentsVue() {
+  const zone = document.getElementById('docs-wrap'); if(!zone) return;
+  const onglet = (v, lib) => `<button class="btn btn-sm ${_docsVue === v ? 'btn-primary' : ''}" onclick="docsChangerVue('${v}')">${lib}</button>`;
+  let alerte = '';
+  if(!window._fbStorageActif) alerte = `<div class="alert alert-warn">⚠ Le stockage des documents n'est pas configuré dans ce fichier (champ storageBucket du bloc INSTALLATION). La consultation et le dépôt sont impossibles.</div>`;
+  if(PIECES === null) {
+    zone.innerHTML = `<div style="display:flex;gap:6px;">${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}</div>
+      ${alerte}<div class="alert alert-danger">L'index des documents n'a pas pu être lu dans Firebase (${esc(_piecesErreur || 'erreur inconnue')}). Aucun document n'est affiché. <button class="btn btn-sm" onclick="renderDocuments()" style="margin-left:8px;">↻ RÉESSAYER</button></div>`;
+    return;
+  }
+  const corps = _docsVue === 'permanent' ? htmlDossierPermanent() : htmlPiecesComptables();
+  zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}
+      <label style="display:flex;align-items:center;gap:6px;margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;">
+        <input type="checkbox" ${_docsFiltres.archives ? 'checked' : ''} onchange="docsFiltre('archives', this.checked)" style="width:14px;height:14px;"> Afficher les documents archivés
+      </label>
+    </div>${alerte}${corps}`;
+}
+
+// Zone de dépôt (glisser-déposer ou clic)
+function htmlZoneDepot(espace, rubrique, actif, messageInactif) {
+  if(!actif) return `<div class="docs-drop docs-drop-off">🔒 ${messageInactif}</div>`;
+  const r = rubrique ? `,'${rubrique}'` : '';
+  return `<div class="docs-drop" onclick="ouvrirDepot('${espace}'${r ? r : ',null'})"
+      ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
+      ondrop="event.preventDefault();this.classList.remove('over');ouvrirDepot('${espace}'${r ? r : ',null'},event.dataTransfer.files)">
+      ⬆ Glissez vos fichiers ici, ou cliquez pour les choisir <span style="color:var(--text2);">(PDF, photos… 20 Mo max par fichier)</span>
+    </div>`;
+}
+
+function htmlActionsPiece(p) {
+  const modif = pieceModifiable(p);
+  const b = (ic, act, tit, cls) => `<button class="btn btn-sm btn-icon ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 6px;font-size:10px;">${ic}</button>`;
+  let h = b('👁', `voirPiece('${p.id}')`, 'Voir / imprimer') + b('⬇', `telechargerPiece('${p.id}')`, 'Télécharger');
+  if(modif) {
+    h += p.archived ? b('↩', `restaurerPiece('${p.id}')`, 'Restaurer') : b('📦', `archiverPiece('${p.id}')`, 'Archiver (masquer)');
+    h += b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
+  } else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
+  return h;
+}
+
+// ── Pièces comptables ──
+function htmlPiecesComptables() {
+  const f = _docsFiltres;
+  const exercices = exercicesConnus();
+  const cible = f.exercice === 'courant' ? String(CURRENT_YEAR) : f.exercice;
+  const types = getTypedocList();
+  const q = (f.q || '').trim().toLowerCase();
+  let liste = (PIECES || []).filter(p => p.espace === 'compta');
+  if(cible !== 'tous') liste = liste.filter(p => String(p.exercice) === String(cible));
+  if(f.type) liste = liste.filter(p => p.typePiece === f.type);
+  if(!f.archives) liste = liste.filter(p => !p.archived);
+  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier, libTypePiece(p.typePiece), p.exercice].join(' ').toLowerCase().includes(q));
+  liste.sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
+
+  const optEx = `<option value="courant" ${f.exercice === 'courant' ? 'selected' : ''}>Exercice affiché (${esc(CURRENT_YEAR)})</option>
+    <option value="tous" ${f.exercice === 'tous' ? 'selected' : ''}>Tous les exercices</option>
+    ${exercices.map(y => `<option value="${esc(y)}" ${f.exercice === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}${exerciceClos(y) ? ' (clôturé)' : ''}</option>`).join('')}`;
+  const optTypes = `<option value="">Tous les types</option>` + types.map(t => `<option value="${esc(t.code)}" ${f.type === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+
+  const ouverts = exercicesOuverts();
+  const depotActif = !!window._fbStorageActif && ouverts.length > 0 && (cible === 'tous' || !exerciceClos(cible));
+  const msgInactif = !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré'
+    : !ouverts.length ? 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée'
+    : `Exercice ${esc(cible)} clôturé : aucune pièce ne peut y être ajoutée`;
+
+  const lignes = liste.map(p => `<tr style="${p.archived ? 'opacity:.5;' : ''}">
+      <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
+      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${p.archived ? ` <span style="font-size:9px;color:var(--text2);font-style:italic;">archivé${p.dateArchivage ? ' le ' + fmtDateFr(p.dateArchivage) : ''}</span>` : ''}</td>
+      <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
+      <td class="td-act">${htmlActionsPiece(p)}</td>
+    </tr>`).join('');
+
+  return `<div class="card">
+      <div class="gl-filters">
+        <div class="ff"><label>Exercice</label><select onchange="docsFiltre('exercice', this.value)">${optEx}</select></div>
+        <div class="ff"><label>Type de pièce</label><select onchange="docsFiltre('type', this.value)">${optTypes}</select></div>
+        <div class="ff" style="flex:1;min-width:180px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(f.q)}" placeholder="Titre, n° de pièce, fichier…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
+        <span class="chip" style="align-self:flex-end;">${liste.length} document${liste.length > 1 ? 's' : ''}</span>
+      </div>
+    </div>
+    ${htmlZoneDepot('compta', null, depotActif, msgInactif)}
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th style="width:80px;">Date</th><th style="width:80px;">Exercice</th><th style="width:70px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:70px;">Taille</th><th style="width:130px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Dossier permanent ──
+// Les versions d'un même document partagent un « groupe » ; une seule est « en vigueur ».
+function groupesDP() {
+  const parGroupe = {};
+  (PIECES || []).filter(p => p.espace === 'permanent').forEach(p => { (parGroupe[p.groupe || p.id] = parGroupe[p.groupe || p.id] || []).push(p); });
+  return Object.values(parGroupe).map(versions => {
+    versions.sort((a, b) => (b.version || 1) - (a.version || 1));
+    const courante = versions.find(v => v.enVigueur) || versions[0];
+    return { courante, anciennes: versions.filter(v => v !== courante), archived: versions.every(v => v.archived) };
+  });
+}
+function htmlDossierPermanent() {
+  const q = (_docsFiltres.q || '').trim().toLowerCase();
+  let groupes = groupesDP();
+  if(!_docsFiltres.archives) groupes = groupes.filter(g => !g.archived);
+  if(q) groupes = groupes.filter(g => [g.courante.titre, g.courante.nomFichier, libRubrique(g.courante.rubrique)].join(' ').toLowerCase().includes(q));
+  const rubriques = rubriquesDP();
+  const codes = new Set(rubriques.map(r => r.code));
+  const orphelins = groupes.filter(g => !codes.has(g.courante.rubrique));
+  const actif = !!window._fbStorageActif;
+  const blocs = rubriques.map(r => htmlRubriqueDP(r.code, r.label, groupes.filter(g => g.courante.rubrique === r.code), actif));
+  if(orphelins.length) blocs.push(htmlRubriqueDP('', 'Sans rubrique', orphelins, false));
+  return `<div class="card">
+      <div class="gl-filters">
+        <div class="ff" style="flex:1;min-width:220px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(_docsFiltres.q)}" placeholder="Titre, fichier, rubrique…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
+        <span style="align-self:flex-end;font-size:10px;color:var(--text2);">Commun à tous les exercices — toujours modifiable. Rubriques : Paramètres › Dossier permanent.</span>
+      </div>
+    </div>
+    ${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
+    ${blocs.join('')}`;
+}
+function htmlRubriqueDP(code, label, groupes, actif) {
+  groupes.sort((a, b) => (b.courante.dateDoc || '').localeCompare(a.courante.dateDoc || '') || (a.courante.titre || '').localeCompare(b.courante.titre || ''));
+  const btnAjout = (actif && code) ? `<button class="btn btn-sm" onclick="ouvrirDepot('permanent','${code}')" style="margin-left:auto;padding:1px 8px;font-size:9px;">+ AJOUTER</button>` : '';
+  const lignes = groupes.map(g => {
+    const p = g.courante;
+    const nbAnc = g.anciennes.length;
+    const ouvert = !!_dpVersionsOuvertes[p.groupe || p.id];
+    const btnVersion = (actif && !p.archived) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent','${p.rubrique}',null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${(maxVersion(p.groupe || p.id) + 1)}</button>` : '';
+    const anciennes = ouvert ? g.anciennes.filter(v => _docsFiltres.archives || !v.archived).map(v => `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 34px;font-size:11px;color:var(--text2);${v.archived ? 'opacity:.5;' : ''}">
+        <span style="font-family:var(--mono);">v${v.version || 1}</span>
+        <span style="flex:1;min-width:0;">${iconePiece(v)} ${esc(v.titre || v.nomFichier)} — ${v.dateDoc ? fmtDateFr(v.dateDoc) : ''}</span>
+        <button class="btn btn-sm" onclick="remettreEnVigueur('${v.id}')" style="padding:0 6px;font-size:9px;">REMETTRE EN VIGUEUR</button>
+        ${htmlActionsPiece(v)}
+      </div>`).join('') : '';
+    return `<div style="border-top:1px solid var(--line);${p.archived ? 'opacity:.5;' : ''}">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;">
+          <a href="#" onclick="voirPiece('${p.id}');return false;" style="flex:1;min-width:0;color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span>
+          <span class="npill">v${p.version || 1}</span>
+          ${nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>` : ''}
+          ${nbAnc ? `<button class="btn btn-sm" onclick="_dpVersionsOuvertes['${p.groupe || p.id}']=!_dpVersionsOuvertes['${p.groupe || p.id}'];renderDocumentsVue();" style="padding:0 6px;font-size:9px;">${ouvert ? '▾' : '▸'} ${nbAnc} version${nbAnc > 1 ? 's' : ''} antérieure${nbAnc > 1 ? 's' : ''}</button>` : ''}
+          ${btnVersion}
+          ${htmlActionsPiece(p)}
+        </div>${anciennes}
+      </div>`;
+  }).join('');
+  return `<div class="rappel-group">
+      <div class="rappel-group-hdr">${esc(label)} <span class="chip">${groupes.length}</span>${btnAjout}</div>
+      ${lignes || `<div style="padding:8px 14px;font-size:11px;color:var(--text2);font-style:italic;">Aucun document.</div>`}
+    </div>`;
+}
+function maxVersion(groupe) {
+  return Math.max(0, ...(PIECES || []).filter(p => p.espace === 'permanent' && (p.groupe || p.id) === groupe).map(p => p.version || 1));
+}
+
+// ══════════════════════════════════════════════
+// DÉPÔT
+// ══════════════════════════════════════════════
+let _depot = null; // { espace, fichiers:[File], versionDe: id | null }
+function ouvrirDepot(espace, rubrique, fichiers, versionDe) {
+  if(!window._fbStorageActif) { toast("Stockage des documents non configuré", 'error'); return; }
+  if(PIECES === null) { toast("Index des documents illisible : rechargez l'onglet Documents", 'error'); return; }
+  const source = versionDe ? (PIECES || []).find(p => p.id === versionDe) : null;
+  if(espace === 'compta' && !exercicesOuverts().length) { toast('Aucun exercice ouvert : aucune pièce ne peut être ajoutée', 'error'); return; }
+  _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null };
+  const el = id => document.getElementById(id);
+  // Exercices proposés : uniquement les exercices ouverts
+  const cibleFiltre = _docsFiltres.exercice === 'courant' ? String(CURRENT_YEAR) : _docsFiltres.exercice;
+  const ouverts = exercicesOuverts();
+  const exDefaut = ouverts.includes(cibleFiltre) ? cibleFiltre : ouverts.includes(String(CURRENT_YEAR)) ? String(CURRENT_YEAR) : ouverts[0];
+  el('dep-exercice').innerHTML = ouverts.map(y => `<option value="${esc(y)}" ${y === exDefaut ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}</option>`).join('');
+  el('dep-type').innerHTML = `<option value="">—</option>` + getTypedocList().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  el('dep-rubrique').innerHTML = rubriquesDP().map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
+  el('dep-rubrique').value = source ? source.rubrique : (rubrique || rubriquesDP()[0].code);
+  el('dep-numdoc').value = '';
+  el('dep-date').value = dateLocale(new Date());
+  el('dep-titre').value = source ? (source.titre || '') : '';
+  el('dep-err').textContent = '';
+  el('dep-progress').style.display = 'none';
+  el('dep-btn').disabled = false;
+  el('dep-espace-compta').checked = _depot.espace === 'compta';
+  el('dep-espace-permanent').checked = _depot.espace === 'permanent';
+  el('dep-espaces').style.display = source ? 'none' : 'flex';
+  el('dep-titre-modal').textContent = source ? `⊕ NOUVELLE VERSION — ${source.titre || source.nomFichier}` : '⬆ DÉPOSER DES DOCUMENTS';
+  el('dep-input').multiple = !source;
+  el('dep-input').value = '';
+  depotMajEspace();
+  if(fichiers && fichiers.length) depotAjouterFichiers(fichiers);
+  else depotRenderFichiers();
+  el('doc-upload-modal').style.display = 'flex';
+}
+function fermerDepot() { if(_depot && _depot.enCours) return; document.getElementById('doc-upload-modal').style.display = 'none'; _depot = null; }
+function depotMajEspace() {
+  if(!_depot) return;
+  if(!_depot.versionDe) _depot.espace = document.getElementById('dep-espace-permanent').checked ? 'permanent' : 'compta';
+  if(_depot.espace === 'compta' && !exercicesOuverts().length) {
+    document.getElementById('dep-espace-permanent').checked = true; _depot.espace = 'permanent';
+    toast('Aucun exercice ouvert : seul le dossier permanent est disponible', 'warn');
+  }
+  document.getElementById('dep-bloc-compta').style.display = _depot.espace === 'compta' ? '' : 'none';
+  document.getElementById('dep-bloc-permanent').style.display = _depot.espace === 'permanent' ? '' : 'none';
+  document.getElementById('dep-rubrique').disabled = !!_depot.versionDe;
+}
+function depotAjouterFichiers(liste) {
+  if(!_depot) return;
+  const nouveaux = Array.from(liste || []);
+  const refuses = nouveaux.filter(f => f.size > DOC_TAILLE_MAX && !['image/jpeg', 'image/png', 'image/webp'].includes(f.type));
+  if(refuses.length) toast(`Fichier(s) de plus de 20 Mo refusé(s) : ${refuses.map(f => f.name).join(', ')}`, 'error', 6000);
+  const ok = nouveaux.filter(f => !refuses.includes(f));
+  _depot.fichiers = _depot.versionDe ? ok.slice(0, 1) : _depot.fichiers.concat(ok);
+  if(_depot.versionDe && ok.length > 1) toast('Une nouvelle version = un seul fichier : seul le premier est retenu', 'warn');
+  const titre = document.getElementById('dep-titre');
+  if(_depot.fichiers.length === 1 && !titre.value) titre.value = titreDepuisNom(_depot.fichiers[0].name);
+  depotRenderFichiers();
+}
+function depotRetirerFichier(i) { if(!_depot || _depot.enCours) return; _depot.fichiers.splice(i, 1); depotRenderFichiers(); }
+function depotRenderFichiers() {
+  const z = document.getElementById('dep-fichiers'); if(!z || !_depot) return;
+  const multi = _depot.fichiers.length > 1;
+  document.getElementById('dep-titre-zone').style.display = multi ? 'none' : '';
+  document.getElementById('dep-multi-note').style.display = multi ? '' : 'none';
+  z.innerHTML = _depot.fichiers.length
+    ? _depot.fichiers.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:11px;border-bottom:1px solid var(--line);">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</span>
+        <span style="color:var(--text2);font-size:10px;">${tailleLisible(f.size)}</span>
+        <span id="dep-etat-${i}" style="font-size:10px;font-family:var(--mono);min-width:44px;text-align:right;"></span>
+        <button class="btn btn-sm btn-icon" onclick="depotRetirerFichier(${i})" style="padding:0 5px;font-size:9px;">✕</button>
+      </div>`).join('')
+    : `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucun fichier sélectionné.</div>`;
+}
+async function enregistrerDepot() {
+  if(!_depot || _depot.enCours) return;
+  const el = id => document.getElementById(id);
+  const err = el('dep-err'); err.textContent = '';
+  const d = _depot;
+  if(!d.fichiers.length) { err.textContent = 'Choisissez au moins un fichier.'; return; }
+  const date = el('dep-date').value;
+  if(!date) { err.textContent = 'La date du document est obligatoire.'; return; }
+  const titreSaisi = el('dep-titre').value.trim();
+  if(d.fichiers.length === 1 && !titreSaisi) { err.textContent = 'Le titre est obligatoire.'; return; }
+  const source = d.versionDe ? (PIECES || []).find(p => p.id === d.versionDe) : null;
+  let base;
+  if(d.espace === 'compta') {
+    const exercice = el('dep-exercice').value;
+    if(!exercice) { err.textContent = "Choisissez l'exercice."; return; }
+    // Contrôle au moment de l'enregistrement : l'exercice a pu être clôturé entre-temps
+    if(exerciceClos(exercice)) { err.textContent = `L'exercice ${exercice} est clôturé : aucune pièce ne peut y être ajoutée.`; return; }
+    base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: el('dep-numdoc').value.trim() };
+  } else {
+    const rubrique = source ? source.rubrique : el('dep-rubrique').value;
+    if(!rubrique) { err.textContent = 'Choisissez la rubrique.'; return; }
+    base = { espace: 'permanent', rubrique };
+  }
+  d.enCours = true; el('dep-btn').disabled = true;
+  const prog = el('dep-progress'); prog.style.display = 'block';
+  const barre = el('dep-progress-barre');
+  let nbOk = 0; const echecs = [];
+  for(let i = 0; i < d.fichiers.length; i++) {
+    const f = d.fichiers[i];
+    const etat = el('dep-etat-' + i);
+    try {
+      if(etat) etat.textContent = '…';
+      const prep = await preparerFichier(f);
+      if(prep.blob.size > DOC_TAILLE_MAX) throw Object.assign(new Error('Fichier de plus de 20 Mo'), { code: 'atrium/trop-gros' });
+      const id = crypto.randomUUID();
+      const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
+      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type, r => {
+        if(etat) etat.textContent = Math.round(r * 100) + ' %';
+        barre.style.width = Math.round(((i + r) / d.fichiers.length) * 100) + '%';
+      });
+      const meta = Object.assign({}, base, {
+        id, titre: d.fichiers.length === 1 ? titreSaisi : titreDepuisNom(f.name), dateDoc: date,
+        nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin,
+        depose: new Date().toISOString(), archived: false
+      });
+      if(d.espace === 'permanent') {
+        meta.groupe = source ? (source.groupe || source.id) : id;
+        meta.version = source ? maxVersion(meta.groupe) + 1 : 1;
+        meta.enVigueur = true;
+      }
+      try { await window._fbPieceSave(meta); }
+      catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
+      PIECES.push(meta);
+      if(source) await mettreEnVigueur(meta.id, true); // les versions antérieures ne sont plus « en vigueur »
+      nbOk++;
+      if(etat) { etat.textContent = '✓'; etat.style.color = 'var(--green)'; }
+    } catch(e) {
+      console.error(e);
+      echecs.push(f.name + ' — ' + (e.code === 'atrium/trop-gros' ? 'plus de 20 Mo' : messageErreurStorage(e)));
+      if(etat) { etat.textContent = '✗'; etat.style.color = 'var(--red)'; }
+    }
+  }
+  barre.style.width = '100%';
+  d.enCours = false;
+  updateNavCounts();
+  if(!echecs.length) {
+    fermerDepot();
+    toast(`${nbOk} document${nbOk > 1 ? 's' : ''} enregistré${nbOk > 1 ? 's' : ''}`, 'success');
+  } else {
+    el('dep-btn').disabled = false;
+    // Les fichiers déjà envoyés sont retirés de la liste : un nouvel essai ne les renverra pas
+    d.fichiers = d.fichiers.filter((f, i) => { const e = el('dep-etat-' + i); return !(e && e.textContent === '✓'); });
+    depotRenderFichiers();
+    err.innerHTML = `${nbOk ? nbOk + ' document(s) enregistré(s). ' : ''}Échec pour :<br>` + echecs.map(esc).join('<br>');
+  }
+  if(document.getElementById('tab-documents')?.classList.contains('active')) renderDocumentsVue();
+}
+
+// ══════════════════════════════════════════════
+// VISIONNEUSE (voir, imprimer, télécharger)
+// ══════════════════════════════════════════════
+let _vue = null; // { id, url, blobUrl }
+function fermerVisionneuse() {
+  document.getElementById('doc-viewer-modal').style.display = 'none';
+  document.getElementById('dv-corps').innerHTML = '';
+  if(_vue && _vue.blobUrl) URL.revokeObjectURL(_vue.blobUrl);
+  _vue = null;
+}
+// Récupère le fichier en mémoire (nécessaire pour imprimer et télécharger directement).
+// Renvoie null si le navigateur ne peut pas le lire (réglage CORS du stockage non fait).
+async function blobDePiece(url) {
+  try { const r = await fetch(url); if(!r.ok) return null; return await r.blob(); } catch(e) { return null; }
+}
+async function voirPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const modal = document.getElementById('doc-viewer-modal');
+  const corps = document.getElementById('dv-corps');
+  document.getElementById('dv-titre').textContent = p.titre || p.nomFichier;
+  const infos = p.espace === 'compta'
+    ? [`Exercice ${p.exercice}${p.test ? ' (TEST)' : ''}`, p.typePiece ? libTypePiece(p.typePiece) : '', p.numDoc ? 'Pièce ' + p.numDoc : '', p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : '']
+    : [`Dossier permanent — ${libRubrique(p.rubrique)}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
+  document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (p.archived ? ' · ARCHIVÉ' : '');
+  corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement…</div>`;
+  modal.style.display = 'flex';
+  _vue = { id, url: null, blobUrl: null };
+  let url;
+  try { url = await window._fbFichierUrl(p.chemin); }
+  catch(e) { corps.innerHTML = `<div class="alert alert-danger" style="margin:20px;">${esc(messageErreurStorage(e))}</div>`; return; }
+  if(!_vue || _vue.id !== id) return; // visionneuse fermée ou autre document ouvert entre-temps
+  _vue.url = url;
+  const genre = genrePiece(p);
+  if(genre === 'pdf') {
+    const blob = await blobDePiece(url);
+    if(!_vue || _vue.id !== id) return;
+    if(blob) _vue.blobUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    corps.innerHTML = `<iframe id="dv-frame" src="${_vue.blobUrl || url}" style="width:100%;height:100%;border:none;background:#fff;"></iframe>`;
+  } else if(genre === 'image') {
+    corps.innerHTML = `<div style="height:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:var(--bg2);"><img src="${url}" alt="" style="max-width:100%;height:auto;display:block;"></div>`;
+  } else {
+    corps.innerHTML = `<div style="padding:40px;text-align:center;font-size:12px;color:var(--text1);">Aperçu indisponible pour ce type de fichier.<br><br><button class="btn btn-primary" onclick="telechargerPiece('${id}')">⬇ TÉLÉCHARGER</button></div>`;
+  }
+}
+async function imprimerPieceVue() {
+  if(!_vue || !_vue.url) return;
+  const p = (PIECES || []).find(x => x.id === _vue.id); if(!p) return;
+  const genre = genrePiece(p);
+  if(genre === 'pdf') {
+    const fr = document.getElementById('dv-frame');
+    if(_vue.blobUrl && fr) { try { fr.contentWindow.focus(); fr.contentWindow.print(); return; } catch(e) { console.warn(e); } }
+    // Sans réglage CORS : le PDF s'ouvre dans un onglet, imprimer depuis la visionneuse du navigateur
+    window.open(_vue.url, '_blank');
+    toast("Imprimez depuis l'onglet qui vient de s'ouvrir (icône imprimante)", 'warn', 5000);
+  } else if(genre === 'image') {
+    const w = window.open('', '_blank'); if(!w) { toast('Autorisez les fenêtres pop-up pour imprimer', 'error'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${esc(p.titre || p.nomFichier)}</title>
+      <style>@page{margin:10mm;}body{margin:0;display:flex;justify-content:center;}img{max-width:100%;max-height:100vh;object-fit:contain;}</style></head>
+      <body><img src="${_vue.url}" onload="setTimeout(function(){window.print();},200)"></body></html>`);
+    w.document.close();
+  } else telechargerPiece(p.id);
+}
+async function telechargerPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  let url = (_vue && _vue.id === id && _vue.url) || null;
+  try { if(!url) url = await window._fbFichierUrl(p.chemin); }
+  catch(e) { toast(messageErreurStorage(e), 'error', 6000); return; }
+  let blobUrl = (_vue && _vue.id === id && _vue.blobUrl) || null, aRevoquer = false;
+  if(!blobUrl) { const b = await blobDePiece(url); if(b) { blobUrl = URL.createObjectURL(b); aRevoquer = true; } }
+  if(!blobUrl) { window.open(url, '_blank'); return; } // sans réglage CORS : ouverture dans un onglet
+  const a = document.createElement('a'); a.href = blobUrl; a.download = p.nomFichier || 'document';
+  document.body.appendChild(a); a.click(); a.remove();
+  if(aRevoquer) setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+}
+
+// ══════════════════════════════════════════════
+// ARCHIVAGE, VERSIONS, SUPPRESSION
+// ══════════════════════════════════════════════
+async function majPiece(p, changements, messageOk) {
+  const avant = Object.assign({}, p);
+  Object.assign(p, changements);
+  try { await window._fbPieceSave(p); }
+  catch(e) { Object.keys(p).forEach(k => delete p[k]); Object.assign(p, avant); toast("Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e), 'error', 6000); return false; }
+  if(messageOk) toast(messageOk, 'success');
+  return true;
+}
+function controleModifiable(p) {
+  if(pieceModifiable(p)) return true;
+  toast(`Exercice ${p.exercice} clôturé : ce document est en consultation uniquement`, 'error', 4000);
+  return false;
+}
+async function archiverPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
+  if(await majPiece(p, { archived: true, dateArchivage: dateLocale(new Date()) }, 'Document archivé (masqué)')) { updateNavCounts(); renderDocumentsVue(); }
+}
+async function restaurerPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
+  if(await majPiece(p, { archived: false, dateArchivage: null }, 'Document restauré')) { updateNavCounts(); renderDocumentsVue(); }
+}
+// Met une version en vigueur et retire ce statut aux autres versions du même document
+async function mettreEnVigueur(id, silencieux) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || p.espace !== 'permanent') return;
+  const groupe = p.groupe || p.id;
+  for(const v of (PIECES || []).filter(x => x.espace === 'permanent' && (x.groupe || x.id) === groupe)) {
+    const doit = v.id === id;
+    if(!!v.enVigueur !== doit) await majPiece(v, { enVigueur: doit });
+  }
+  if(!silencieux) { toast(`Version ${p.version || 1} remise en vigueur`, 'success'); renderDocumentsVue(); }
+}
+function remettreEnVigueur(id) { mettreEnVigueur(id, false); }
+function askSupprimerPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
+  const quoi = p.espace === 'compta' ? `la pièce <strong>${esc(p.titre || p.nomFichier)}</strong> de l'exercice ${esc(p.exercice)}`
+    : `la version ${p.version || 1} de <strong>${esc(p.titre || p.nomFichier)}</strong> (dossier permanent)`;
+  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> Pour simplement le masquer, utilisez plutôt 📦 Archiver.`,
+    '🗑 SUPPRIMER DÉFINITIVEMENT', () => supprimerPieceDefinitivement(id));
+}
+async function supprimerPieceDefinitivement(id, silencieux) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return false;
+  // Le fichier d'abord : si cette étape échoue, l'index reste et rien n'est perdu de vue
+  try { await window._fbFichierSupprimer(p.chemin); await window._fbPieceDelete(p.id); }
+  catch(e) { if(!silencieux) toast('Suppression impossible : ' + messageErreurStorage(e), 'error', 6000); return false; }
+  PIECES = PIECES.filter(x => x.id !== id);
+  // Dossier permanent : si la version en vigueur disparaît, la plus récente restante prend le relais
+  if(p.espace === 'permanent' && p.enVigueur) {
+    const restantes = PIECES.filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)).sort((a, b) => (b.version || 1) - (a.version || 1));
+    if(restantes.length) await mettreEnVigueur(restantes[0].id, true);
+  }
+  if(!silencieux) { toast('Document supprimé définitivement', 'success'); updateNavCounts(); if(_vue && _vue.id === id) fermerVisionneuse(); renderDocumentsVue(); }
+  return true;
+}
+function supprimerPieceDepuisVue() { if(_vue) { const id = _vue.id; askSupprimerPiece(id); } }
+
+// ── Exercices test : leurs pièces sont supprimées avec eux ──
+async function supprimerPiecesExercice(y) {
+  if(PIECES === null) await chargerPieces();
+  const liste = piecesDeLExercice(y);
+  let echecs = 0;
+  for(const p of liste) { if(!(await supprimerPieceDefinitivement(p.id, true))) echecs++; }
+  if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être supprimées : supprimez-les depuis Documents` : `${liste.length} pièce(s) de l'exercice test « ${y} » supprimée(s)`, echecs ? 'error' : 'success', 6000);
+  updateNavCounts();
+}
+// Un vrai exercice qui contient des pièces ne peut pas être supprimé
+function suppressionExerciceAutorisee(y) {
+  if(isTestExercise(y)) return true;
+  if(PIECES === null) { toast("Suppression impossible : l'index des documents n'a pas pu être lu. Ouvrez l'onglet Documents pour réessayer.", 'error', 7000); return false; }
+  const n = piecesDeLExercice(y).length;
+  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans Documents (archivées comprises).`, 'error', 7000); return false; }
+  return true;
+}
+
+// ══════════════════════════════════════════════
+// PARAMÈTRES : RUBRIQUES DU DOSSIER PERMANENT (communes à tous les exercices)
+// ══════════════════════════════════════════════
+async function renderRubriquesDP() {
+  const z = document.getElementById('params-dp-rubriques'); if(!z) return;
+  if(!DOCS_CONFIG) await chargerDocsConfig();
+  if(PIECES === null) await chargerPieces();
+  const liste = rubriquesDP();
+  z.innerHTML = `<table style="width:100%;font-size:11px;border-collapse:collapse;">
+      <tbody>${liste.map((r, i) => {
+        const n = (PIECES || []).filter(p => p.espace === 'permanent' && p.rubrique === r.code).length;
+        return `<tr>
+          <td style="padding:5px 14px;">${esc(r.label)}</td>
+          <td style="padding:5px 14px;width:110px;color:var(--text2);font-size:10px;">${n} document${n > 1 ? 's' : ''}</td>
+          <td style="padding:5px 14px;width:150px;text-align:center;white-space:nowrap;">
+            <button class="btn btn-sm btn-icon" onclick="deplacerRubriqueDP(${i},-1)" ${i === 0 ? 'disabled' : ''} title="Monter" style="padding:1px 6px;font-size:10px;">▲</button>
+            <button class="btn btn-sm btn-icon" onclick="deplacerRubriqueDP(${i},1)" ${i === liste.length - 1 ? 'disabled' : ''} title="Descendre" style="padding:1px 6px;font-size:10px;">▼</button>
+            <button class="btn btn-sm btn-icon" onclick="renommerRubriqueDP('${r.code}')" title="Renommer" style="padding:1px 6px;font-size:10px;">✎</button>
+            <button class="btn btn-sm btn-danger btn-icon" onclick="supprimerRubriqueDP('${r.code}')" title="Supprimer" style="padding:1px 6px;font-size:10px;">✕</button>
+          </td></tr>`;
+      }).join('')}</tbody></table>`;
+}
+async function enregistrerRubriquesDP(liste) {
+  const cfg = Object.assign({}, DOCS_CONFIG || {}, { rubriques: liste });
+  try { await window._fbDocsConfigSave(cfg); DOCS_CONFIG = cfg; renderRubriquesDP(); return true; }
+  catch(e) { toast("Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e), 'error', 6000); return false; }
+}
+function ajouterRubriqueDP() {
+  const lib = (prompt('Nom de la nouvelle rubrique du dossier permanent :') || '').trim(); if(!lib) return;
+  const liste = rubriquesDP().map(r => Object.assign({}, r));
+  if(liste.some(r => r.label.toLowerCase() === lib.toLowerCase())) { toast('Cette rubrique existe déjà', 'error'); return; }
+  const code = nomFichierSur(lib).toLowerCase().slice(0, 20) + '_' + Math.random().toString(36).slice(2, 6);
+  liste.push({ code, label: lib });
+  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique ajoutée', 'success'));
+}
+function renommerRubriqueDP(code) {
+  const liste = rubriquesDP().map(r => Object.assign({}, r));
+  const r = liste.find(x => x.code === code); if(!r) return;
+  const lib = (prompt('Nouveau nom de la rubrique :', r.label) || '').trim(); if(!lib || lib === r.label) return;
+  r.label = lib;
+  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique renommée', 'success'));
+}
+function deplacerRubriqueDP(i, sens) {
+  const liste = rubriquesDP().map(r => Object.assign({}, r));
+  const j = i + sens; if(j < 0 || j >= liste.length) return;
+  [liste[i], liste[j]] = [liste[j], liste[i]];
+  enregistrerRubriquesDP(liste);
+}
+function supprimerRubriqueDP(code) {
+  if(PIECES === null) { toast("Index des documents illisible : suppression impossible pour l'instant", 'error'); return; }
+  const n = PIECES.filter(p => p.espace === 'permanent' && p.rubrique === code).length;
+  if(n) { toast(`Impossible : cette rubrique contient ${n} document(s) (archivés compris)`, 'error', 5000); return; }
+  const liste = rubriquesDP().filter(r => r.code !== code);
+  if(!liste.length) { toast('Il doit rester au moins une rubrique', 'error'); return; }
+  if(!confirm(`Supprimer la rubrique « ${libRubrique(code)} » ?`)) return;
+  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique supprimée', 'success'));
+}
+
 </script>
 </body>
 </html>
