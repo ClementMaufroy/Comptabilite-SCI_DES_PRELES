@@ -1026,7 +1026,7 @@ applyTheme();
     <div class="nav-sep"></div>
     <div class="nav-section">Base documentaire</div>
     <div class="nav-item" onclick="showTab('documents')" id="nav-documents">
-      <span class="ni-icon">🗄</span> GED
+      <span class="ni-icon">🗄</span> GED <span id="nav-ged-alerte" style="display:none;color:#ffd000;font-size:13px;margin-left:4px;">⚠</span>
       <span class="ni-count" id="nc-documents">–</span>
     </div>
     <div class="nav-sep"></div>
@@ -1187,23 +1187,7 @@ applyTheme();
         <div class="page-actions"><span id="gl-count-chip" class="chip"></span></div>
       </div>
       <div class="card">
-        <div class="gl-filters">
-          <div class="ff" style="position:relative;"><label>N° Compte</label><input type="text" id="gl-f-compte" placeholder="512000..." oninput="glCompteAc();renderGL()" onkeydown="glCompteAcKey(event)" onblur="glCompteAcClose()" autocomplete="off"><div id="gl-compte-ac" class="ac-list" style="position:fixed;z-index:999;display:none;"></div></div>
-          <div class="ff"><label>Journal</label>
-            <select id="gl-f-journal" onchange="renderGL()" style="height:30px;padding:3px 8px;font-size:11px;">
-              <option value="">Tous</option>
-              <option value="VE">VE</option><option value="HA">HA</option>
-              <option value="IMMO">IMMO</option><option value="OD">OD</option><option value="TRESO">TRESO</option>
-            </select>
-          </div>
-          <div class="ff"><label>Libellé</label><input type="text" id="gl-f-libelle" placeholder="Rechercher..." oninput="renderGL()"></div>
-          <div class="ff"><label>Date début</label><input type="date" id="gl-f-date1" onchange="renderGL()"></div>
-          <div class="ff"><label>Date fin</label><input type="date" id="gl-f-date2" onchange="renderGL()"></div>
-          <div class="ff"><label>N° Écriture</label><input type="text" id="gl-f-num" placeholder="Ex: 42" oninput="renderGL()"></div>
-          <div class="ff"><label>Pièce jointe</label><select id="gl-f-pj" onchange="renderGL()" style="height:32px;"><option value="">Toutes</option><option value="sans">Sans pièce jointe</option><option value="avec">Avec pièce jointe</option></select></div>
-          <button class="btn btn-sm" onclick="resetGLFilters()" style="align-self:flex-end;">RESET</button>
-          <span id="gl-solde-chip" style="display:none;align-self:flex-end;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>
-        </div>
+        <div id="gl-outils" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"></div><!-- V109 : filtres par colonne dans l'en-tête du tableau -->
       </div>
       <div class="tbl-wrap" style="max-height:calc(100vh - 240px);overflow-y:auto;overflow-x:hidden;">
         <table id="gl-table" style="position:relative;">
@@ -4517,6 +4501,7 @@ function updateNavCounts() {
   // V98/V99 : pièces de l'exercice affiché
   const ncDoc = document.getElementById('nc-documents');
   if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR)).length.toLocaleString('fr-FR') : '–';
+  try { majAlerteNavGED(); } catch(e) {} // V109
 }
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
@@ -5389,8 +5374,8 @@ function glSort(col) {
 
 let glUncheckedIds = new Set(); // persiste le lettrage entre les changements de filtre
 
-function renderGL() {
-  preparerJustifs(); // V102 : état des justificatifs (trombone)
+function renderGLAncien() { // V109 : remplacé (filtres par colonne)
+  preparerJustifs();
   let rows=getGLF();
   const compteFilter = (document.getElementById('gl-f-compte')?.value||'').trim();
   const isCompteMode = compteFilter.length >= 6;
@@ -5535,7 +5520,7 @@ function glCompteAcClose() {
 
 let glAcIdx = -1;
 
-function resetGLFilters() {
+function resetGLFiltersAncien() {
   ['gl-f-compte','gl-f-journal','gl-f-libelle','gl-f-date1','gl-f-date2','gl-f-num','gl-f-pj'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const d=document.getElementById('gl-compte-ac'); if(d) d.style.display='none';
   glUncheckedIds.clear();
@@ -5665,7 +5650,7 @@ function moduleDeLaLigne(e) {
   if(e._io !== undefined && (DB.echeanciers||[]).some(x => x.moisIo && Object.values(x.moisIo).includes(e._io))) return 'echeancier';
   if(e._io !== undefined && (DB.emprunts||[]).some(x => x.moisIo && Object.values(x.moisIo).includes(e._io))) return 'emprunt';
   const nd = String(e.numDoc||''), lib = String(e.libelleEcriture||'');
-  if((nd.startsWith('KM_') || nd.startsWith('KM/')) && lib.startsWith('Kilomètres')) return 'km';
+  if((nd.startsWith('KM_') || nd.startsWith('KM/')) && lib.startsWith('Kilomètres') && ((DB.km || {}).fiches || []).some(f => f.mois === (e._mois || String(e.date || '').slice(0, 7)))) return 'km'; // V109 : seulement s'il existe une fiche km du mois
   if(nd === 'CLOTURE') return 'constatation';
   if(String(e.date) === `${anneeCompta()}-12-31` && /^(12|8)/.test(String(e.compte || ''))) return 'constatation'; // V85v2 : constatation saisie à la main
   if(nd === 'OD/Calcul des intérêts de c:c') return 'ccInterets';
@@ -7374,7 +7359,12 @@ function controlesAvantCloture() {
 
   // 1. Pièces à joindre (V102) : toute écriture doit avoir son justificatif ou être marquée « sans justificatif »
   const pieces = ecrituresManquantes();
-  if(pieces.length) blocages.push({ module: 'Pièces à joindre', detail: `${pieces.length} écriture(s) sans justificatif : ${liste(pieces.map(j => '#' + j.num + (j.numDoc ? ' ' + j.numDoc : '')))}`, action: { label: '📎 VOIR LA LISTE', fn: "_postItOpen=true;renderPostItPieces()" } });
+  if(pieces.length) blocages.push({ module: 'Pièces à joindre', detail: `${pieces.length} écriture(s) sans pièce, ni désignée(s) « écriture de calcul » ou « sans justificatif » : ${liste(pieces.map(j => '#' + j.num + (j.numDoc ? ' ' + j.numDoc : '')))}`, action: { label: '📎 VOIR LA LISTE', fn: "_postItOpen=true;renderPostItPieces()" } });
+  // V109 : pièces comptables de l'exercice rattachées à aucune écriture
+  if(window._fbStorageActif) {
+    if(PIECES === null) blocages.push({ module: 'GED', detail: "L'index de la GED n'a pas pu être lu : impossible de vérifier les pièces sans écriture (rouvrez l'onglet GED)" });
+    else { const orph = piecesSansEcritureExercice(); if(orph.length) blocages.push({ module: 'Pièces sans écriture', detail: `${orph.length} pièce(s) de la GED rattachée(s) à aucune écriture : ${liste(orph.map(p => p.numDoc || p.titre || p.nomFichier))}`, action: { label: '🗄 VOIR', fn: 'closeExerciseModal&&closeExerciseModal();allerPiecesSansEcriture()' } }); }
+  }
 
   // 2. Échéanciers
   ensureEcheanciersArray().forEach(ech => {
@@ -16355,7 +16345,7 @@ function renderDocumentsVueInterne(zone) {
       ${alerte}<div class="alert alert-danger">L'index des documents n'a pas pu être lu dans Firebase (${esc(_piecesErreur || 'erreur inconnue')}). Aucun document n'est affiché. <button class="btn btn-sm" onclick="renderDocuments()" style="margin-left:8px;">↻ RÉESSAYER</button></div>`;
     return;
   }
-  const corps = _docsVue === 'permanent' ? htmlDossierPermanentV107() : htmlPiecesComptablesV107(); // V107 : classeurs
+  const corps = _docsVue === 'permanent' ? htmlDossierPermanentV109() : htmlPiecesComptablesV109(); // V107 : classeurs, V109 : filtres par colonne
   zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}
       <button class="btn btn-sm" onclick="lancerSyncTousExercices()" style="margin-left:auto;" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button>
@@ -17039,17 +17029,18 @@ function signatureDoc(x) {
 function rubriquePourPV() { const r = rubriquesDP(); return (r.find(x => x.code === 'ag') || r[0]).code; }
 function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
 // Description, pour la GED, d'un document généré par un module
-function descripteurDocument(module, x, exercice, loc) {
+function descripteurDocument(module, x, exercice, loc, data) {
   const base = { exercice: String(exercice), test: isTestExercise(exercice), x, module };
   if(module === 'loc') {
     const quoi = x.type === 'quittance' ? 'Quittance' : x.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
     return Object.assign(base, { cle: 'loc:' + x.id, espace: 'compta',
       titre: `${quoi}${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''} — ${[loc && loc.prenom1, loc && loc.nom1].filter(Boolean).join(' ')}`,
-      date: x.dateEmission || dateLocale(new Date()), typePiece: x.type === 'quittance' ? typeSiConnu('QUIT') : x.type === 'appel' ? typeAppelLoyer(loc, x) : '', nom: x.docTitle || quoi, paysage: false }); // V108 : appels typés
+      date: x.dateEmission || dateLocale(new Date()), nom: x.docTitle || quoi, paysage: false },
+      (x.type === 'quittance' || x.type === 'appel') ? (r => ({ typePiece: r.type, numDoc: r.numDoc }))(refPieceLoyer(loc, x, data)) : { typePiece: '' }); // V109 : type et n° des écritures des mouvements « + » du mois
   }
   if(module === 'km') return Object.assign(base, { cle: 'km:' + x.id, espace: 'compta',
       titre: `Fiche kilométrique${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''}${x.vehiculeNom ? ' — ' + x.vehiculeNom : ''}`,
-      date: x.dateEmission || (x.mois ? x.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), nom: x.docTitle || 'Fiche_KM', paysage: true });
+      date: x.dateEmission || (x.mois ? x.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), numDoc: x.mois ? 'KM_' + x.mois.slice(5, 7) + '/' + x.mois.slice(2, 4) : '', nom: x.docTitle || 'Fiche_KM', paysage: true });
   // PV d'AGO : dossier permanent (rubrique « PV d'AG et décisions »), sauf exercice test (reste dans ses pièces)
   return Object.assign(base, { cle: 'pv:' + x.id, espace: base.test ? 'compta' : 'permanent', rubrique: rubriquePourPV(),
       titre: `PV d'AGO — Affectation du résultat ${x.anneeConcernee || ''}`.trim(),
@@ -17059,7 +17050,7 @@ function descripteurDocument(module, x, exercice, loc) {
 function documentsGeneresDe(data, exercice) {
   const out = [];
   (data.locataires || []).forEach(loc => (loc.historique || []).forEach(h => {
-    if(!h._exercicePrecedent && aUnDocument(h)) out.push(descripteurDocument('loc', h, exercice, loc));
+    if(!h._exercicePrecedent && aUnDocument(h)) out.push(descripteurDocument('loc', h, exercice, loc, data));
   }));
   ((data.km || {}).fiches || []).forEach(f => { if(aUnDocument(f)) out.push(descripteurDocument('km', f, exercice)); });
   (data.pvApprobations || []).forEach(pv => { if(aUnDocument(pv)) out.push(descripteurDocument('pv', pv, exercice)); });
@@ -17086,7 +17077,7 @@ function deposerDocumentGenere(d) {
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
       classeurs: existant ? classeursDe(existant) : [d.rubrique], typeDP: existant ? (existant.typeDP || '') : (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '' }); // V107 : classement conservé
-    else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: (existant && existant.numDoc) || '' });
+    else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: d.numDoc || (existant && existant.numDoc) || '' }); // V109 : n° de pièce des écritures
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
     catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
@@ -17125,7 +17116,7 @@ async function synchroniserGED(sources, opts) {
       const docs = documentsGeneresDe(src.data, src.exercice);
       const cles = new Set(docs.map(d => d.cle));
       // V108 : type corrigé sur les PDF déjà présents (ex. appels de loyer auparavant sans type)
-      for(const d of docs) { const p = pieceAJourPour(d); if(p && p.espace === 'compta' && d.typePiece && p.typePiece !== d.typePiece) { try { await majPiece(p, { typePiece: d.typePiece }); } catch(e) {} } }
+      for(const d of docs) { const p = pieceAJourPour(d); if(!p || p.espace !== 'compta') continue; const ch = {}; if(d.typePiece && p.typePiece !== d.typePiece) ch.typePiece = d.typePiece; if(d.numDoc && p.numDoc !== d.numDoc) ch.numDoc = d.numDoc; if(Object.keys(ch).length) { try { await majPiece(p, ch); } catch(e) {} } } // V109 : type et n° de pièce
       const aFaire = docs.filter(d => !pieceAJourPour(d));
       res.ajour += docs.length - aFaire.length;
       res.total += aFaire.length;
@@ -17265,14 +17256,15 @@ function preparerJustifs() {
   const liensParIo = new Map(), ex = String(CURRENT_YEAR);
   (PIECES || []).forEach(p => (p.liens || []).forEach(l => { if(l.ex === ex) { if(!liensParIo.has(l.io)) liensParIo.set(l.io, []); liensParIo.get(l.io).push(p); } }));
   const sans = new Set(ensureSansJustif().map(cleIo));
+  const calc = new Set((Array.isArray(DB.ecrituresCalcul) ? DB.ecrituresCalcul : []).map(cleIo)); // V109 : désignées à la main
   const res = new Map();
   groupes.forEach((lignes, io) => {
     let module = ''; for(const l of lignes) { module = moduleDeLaLigne(l); if(module) break; }
     const pieces = liensParIo.get(io) || [];
     const auto = null; // V108 : plus de justification « automatique » — la fiche km / le PV est réellement joint
-    const statut = pieces.length ? 'joint' : MODULES_SANS_PIECE.includes(module) ? 'exempt' : auto ? 'auto' : sans.has(io) ? 'sans' : 'manquant';
+    const statut = pieces.length ? 'joint' : (MODULES_SANS_PIECE.includes(module) || calc.has(io)) ? 'exempt' : auto ? 'auto' : sans.has(io) ? 'sans' : 'manquant';
     const l0 = lignes[0];
-    res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module,
+    res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module, calcManuel: calc.has(io),
       montant: Math.round(lignes.reduce((s, x) => s + (parseFloat(x.debit) || 0), 0) * 100) / 100, pieces, auto, statut });
   });
   _justifs = res;
@@ -17340,6 +17332,7 @@ function renderPiecesEcriture() {
     h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         ${b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
         ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « SANS JUSTIFICATIF »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ MARQUER SANS JUSTIFICATIF', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
+        ${!j.pieces.length && j.statut === 'manquant' ? b('⚙ ÉCRITURE DE CALCUL', `basculerCalcul(['${esc(_pjIo)}'], true)`) : ''}${j.calcManuel ? b('ANNULER « ÉCRITURE DE CALCUL »', `basculerCalcul(['${esc(_pjIo)}'], false)`) : ''}
       </div>
       ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
       ${htmlSelecteurPieces(j)}`;
@@ -17464,7 +17457,8 @@ function renderPostItPieces() {
       : `<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à joindre.</div>`}
     ${ouvert && liste.length ? `<div style="padding:6px 10px;border-top:1px solid var(--line2);display:flex;gap:6px;align-items:center;background:var(--bg2);border-radius:0 0 6px 6px;">
         <button class="btn btn-sm" onclick="_pajSel=new Set(${JSON.stringify(liste.map(j => j.io)).replace(/"/g, '&quot;')});renderPostItPieces()" style="padding:1px 8px;font-size:9px;">TOUT COCHER</button>
-        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;">∅ SANS JUSTIFICATIF (${_pajSel.size})</button>
+        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerCalcul([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;" title="Désigner comme écritures de calcul (aucune pièce demandée)">⚙ CALCUL (${_pajSel.size})</button>
+        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;">∅ SANS JUSTIFICATIF (${_pajSel.size})</button>
       </div>` : ''}`;
 }
 
@@ -17622,7 +17616,7 @@ function controlerNdLiens() {
   if(EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !_justifs) return;
   const ex = String(CURRENT_YEAR);
   (PIECES || []).forEach(p => {
-    if(!(p.liens || []).some(l => l.ex === ex && _justifs.has(l.io) && (l.nd || '') !== (_justifs.get(l.io).numDoc || ''))) return;
+    if(!(p.liens || []).some(l => l.ex === ex && _justifs.has(l.io) && normRef(l.nd) !== normRef(_justifs.get(l.io).numDoc))) return;
     _ndAMettreAJour.set(p.id, true);
   });
   if(_ndAMettreAJour.size && !_ndTimer) _ndTimer = setTimeout(async () => {
@@ -17630,8 +17624,24 @@ function controlerNdLiens() {
     const ids = [..._ndAMettreAJour.keys()]; _ndAMettreAJour = new Map();
     for(const id of ids) {
       const p = (PIECES || []).find(x => x.id === id); if(!p || String(CURRENT_YEAR) !== ex) continue;
-      const liens = p.liens.map(l => (l.ex === ex && _justifs.has(l.io)) ? Object.assign({}, l, { nd: _justifs.get(l.io).numDoc || '' }) : l);
+      // V109 : n° de pièce de l'écriture modifié depuis le rattachement → la pièce n'en est plus le justificatif,
+      // sauf si elle porte elle-même ce nouveau n° (ou si c'est le document du module de l'écriture)
+      const detachees = [];
+      const liens = p.liens.filter(l => {
+        if(!(l.ex === ex && _justifs.has(l.io))) return true;
+        const j = _justifs.get(l.io);
+        if(l.nd === undefined || normRef(l.nd) === normRef(j.numDoc)) return true;
+        const garde = (p.numDoc && normRef(p.numDoc) === normRef(j.numDoc)) || pieceDuModulePourEcriture(j) === p;
+        if(!garde) detachees.push(j);
+        return garde;
+      }).map(l => (l.ex === ex && _justifs.has(l.io)) ? Object.assign({}, l, { nd: _justifs.get(l.io).numDoc || '' }) : l);
       try { await majPiece(p, { liens }); } catch(e) { console.warn(e); }
+      if(detachees.length) {
+        // les refus mémorisés pour ces écritures ne valent plus (nouvelle référence)
+        if(Array.isArray(DB.liensRefuses)) { const ios = new Set(detachees.map(j => j.io)); const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.has(k.split('|')[0])); if(av !== DB.liensRefuses.length) saveDB(); }
+        toast(`📎 « ${p.titre || p.nomFichier} » détachée de l'écriture ${detachees.map(j => '#' + j.num).join(', ')} (n° de pièce modifié)`, 'warn', 6000);
+        apresChangementJustifs();
+      }
     }
   }, 1500);
 }
@@ -17771,10 +17781,11 @@ async function autoLierParReference() {
     const refus = new Set(ensureLiensRefuses());
     const ajouts = new Map(), iosLies = new Set();
     _justifs.forEach(j => {
-      if(j.statut !== 'manquant' || _ioEnDepot.has(j.io)) return;
+      if(_ioEnDepot.has(j.io)) return; // V109 : toute écriture, même déjà justifiée ou marquée, reçoit les pièces de même n°
       const pm = pieceDuModulePourEcriture(j); // V108 : fiche km du mois / PV d'AGO
       (pm ? [pm] : []).concat(j.numDoc ? (refs.get(normRef(j.numDoc)) || []) : []).forEach(p => {
         if(refus.has(j.io + '|' + (p.groupe || p.id))) return;
+        if((p.liens || []).some(l => l.ex === ex && l.io === j.io)) return; // déjà jointe
         if(!ajouts.has(p.id)) ajouts.set(p.id, { p, js: [] });
         ajouts.get(p.id).js.push(j);
       });
@@ -18170,7 +18181,7 @@ async function enregistrerDocsConfig(changements) {
 }
 let _docsClasseur = { compta: null, permanent: null }; // null = choix du classeur
 let _dpFiltreType = '';
-function ouvrirClasseur(espace, id) { _docsClasseur[espace] = id; _docsFiltres.type = ''; _docsFiltres.q = ''; _dpFiltreType = ''; renderDocumentsVue(); }
+function ouvrirClasseur(espace, id) { _docsClasseur[espace] = id; _docsFiltres.type = ''; _docsFiltres.q = ''; _dpFiltreType = ''; if(typeof fcReset === 'function') { if(espace === 'compta') { fcReset('gedc'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); } else fcReset('gedp'); } if(!id) _gedSansEcriture = false; renderDocumentsVue(); }
 function teinte(c, alpha) { return c + alpha; } // #rrggbb + alpha hexadécimal
 
 // ── Origine (colonne distincte) ──
@@ -18496,7 +18507,8 @@ function allerGestionClasseursDP() { showTab('documents'); _docsVue = 'permanent
 function htmlNumDocLien(e) {
   const nd = esc(e.numDoc || '');
   const j = justifDe(e._io);
-  if(!j || j.statut === 'exempt') return nd;
+  if(!j || (j.statut === 'exempt' && !j.calcManuel)) return nd;
+  if(j.statut === 'exempt') return `<a href="#" onclick="ouvrirPiecesEcriture('${esc(cleIo(e._io))}');return false;" title="Désignée « écriture de calcul » : cliquer pour modifier" style="color:var(--text2);text-decoration:underline dotted;">${nd || '⚙'}</a>`;
   const io = esc(cleIo(e._io));
   const st = j.statut;
   const couleur = st === 'joint' || st === 'auto' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
@@ -18524,6 +18536,7 @@ function reinitialiserVueGED() {
   _docsClasseur = { compta: null, permanent: null };
   _docsFiltres.type = ''; _docsFiltres.q = ''; _docsFiltres.ecr = ''; _docsFiltres.pourExercice = null;
   _dpFiltreType = '';
+  fcReset('gedc'); fcReset('gedp'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); _gedSansEcriture = false; // V109
 }
 // Type des appels de loyer : celui des mouvements « + » du mois (préfixe du n° de pièce, ex. QUIT), sinon QUIT
 function typeAppelLoyer(loc, x) {
@@ -18630,6 +18643,324 @@ function pieceDuModulePourEcriture(j) {
   const a = justifAuto(j.lignes, j.module); if(!a) return null;
   const cle = (a.module === 'km' ? 'km:' : 'pv:') + a.x.id;
   return (PIECES || []).find(p => p.origine === cle) || null;
+}
+
+
+// ══════════════════════════════════════════════
+// V109 — GED, VAGUE 3
+// ══════════════════════════════════════════════
+
+// ── 1. Filtres par colonne « à la Excel » (Grand Livre, GED) ──
+// Chaque tableau déclare : rows() (lignes avant filtres de colonnes), val(ligne, col) (clé texte),
+// lib(col, clé) (libellé affiché, facultatif), cle(col, clé) (clé de tri, facultatif), rendre().
+// La liste d'un filtre ne propose que les valeurs encore présentes compte tenu des AUTRES filtres.
+const FC = {}, FC_TABLES = {};
+function fcEtat(t) { return FC[t] || (FC[t] = { filtres: {} }); }
+function fcNb(t) { return Object.keys(fcEtat(t).filtres).length; }
+function fcReset(t) { fcEtat(t).filtres = {}; }
+function fcPasse(t, row, sauf) {
+  const f = fcEtat(t).filtres, def = FC_TABLES[t];
+  for(const c in f) { if(c === sauf) continue; if(!f[c].has(def.val(row, c))) return false; }
+  return true;
+}
+function fcFiltrer(t, rows) { return rows.filter(r => fcPasse(t, r)); }
+function htmlThFiltre(t, col, label, style, tri) {
+  const actif = !!fcEtat(t).filtres[col];
+  return `<th style="${style || ''}"><div style="display:flex;align-items:center;gap:3px;${(style || '').includes('text-align:right') ? 'justify-content:flex-end;' : ''}">
+      <span ${tri ? `class="sortable" onclick="${tri}" style="cursor:pointer;"` : ''}>${label}</span>
+      <button onclick="event.stopPropagation();fcOuvrir('${t}','${col}',this)" title="Filtrer cette colonne" style="border:1px solid ${actif ? 'var(--cyan)' : 'var(--line2)'};background:${actif ? 'rgba(var(--accent-rgb),.25)' : 'transparent'};color:${actif ? 'var(--cyan)' : 'var(--text2)'};border-radius:3px;font-size:9px;line-height:1;padding:2px 3px;cursor:pointer;">${actif ? '⏷' : '▾'}</button>
+    </div></th>`;
+}
+let _fcPop = null;
+function fcOuvrir(t, col, btn) {
+  fcFermer();
+  const def = FC_TABLES[t];
+  const rows = def.rows().filter(r => fcPasse(t, r, col));
+  const counts = new Map(); rows.forEach(r => { const v = def.val(r, col); counts.set(v, (counts.get(v) || 0) + 1); });
+  const cle = def.cle ? (k => def.cle(col, k)) : (k => k);
+  const valeurs = [...counts.keys()].sort((a, b) => { const x = cle(a), y = cle(b); return typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'fr', { numeric: true }); });
+  const cur = fcEtat(t).filtres[col];
+  _fcPop = { t, col, valeurs, counts, sel: new Set(cur ? valeurs.filter(v => cur.has(v)) : valeurs), q: '' };
+  const pop = document.createElement('div'); pop.id = 'fc-pop';
+  const r = btn.getBoundingClientRect();
+  const left = Math.max(8, Math.min(r.left - 120, window.innerWidth - 300));
+  pop.style.cssText = `position:fixed;top:${Math.min(r.bottom + 4, window.innerHeight - 380)}px;left:${left}px;width:290px;background:var(--bg1);border:1px solid var(--cyan);border-radius:var(--radius);box-shadow:0 10px 30px rgba(0,0,0,.55);z-index:10050;padding:8px;font-family:var(--sans);`;
+  pop.onclick = e => e.stopPropagation();
+  document.body.appendChild(pop);
+  fcRendre(true);
+  setTimeout(() => document.addEventListener('click', fcFermerExterieur), 0);
+}
+function fcLib(t, col, v) { const def = FC_TABLES[t]; const l = def.lib ? def.lib(col, v) : v; return l === '' || l === undefined || l === null ? '(vide)' : l; }
+function fcVisibles() {
+  const p = _fcPop, q = p.q.trim().toLowerCase();
+  return q ? p.valeurs.filter(v => String(fcLib(p.t, p.col, v)).toLowerCase().includes(q)) : p.valeurs;
+}
+function fcRendre(focus) {
+  const p = _fcPop, pop = document.getElementById('fc-pop'); if(!p || !pop) return;
+  const vis = fcVisibles(), MAX = 400;
+  const tous = vis.length > 0 && vis.every(v => p.sel.has(v));
+  const liste = vis.slice(0, MAX).map((v, i) => `<label style="display:flex;align-items:center;gap:6px;margin:0;padding:2px 4px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;white-space:nowrap;">
+      <input type="checkbox" ${p.sel.has(v) ? 'checked' : ''} onchange="fcCocher(${p.valeurs.indexOf(v)}, this.checked)" style="width:13px;height:13px;flex-shrink:0;">
+      <span style="overflow:hidden;text-overflow:ellipsis;flex:1;">${esc(fcLib(p.t, p.col, v))}</span><span style="color:var(--text2);font-size:9px;">${p.counts.get(v)}</span></label>`).join('');
+  const qEl = document.getElementById('fc-q'), pos = qEl ? qEl.selectionStart : null;
+  pop.innerHTML = `<input type="text" id="fc-q" value="${esc(p.q)}" placeholder="Rechercher…" oninput="_fcPop.q=this.value;fcRendre()" onkeydown="if(event.key==='Enter')fcAppliquer();if(event.key==='Escape')fcFermer();" style="width:100%;height:28px;margin-bottom:6px;">
+    <label style="display:flex;align-items:center;gap:6px;margin:0 0 4px;padding:2px 4px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;font-weight:600;border-bottom:1px solid var(--line2);">
+      <input type="checkbox" ${tous ? 'checked' : ''} onchange="fcToutCocher(this.checked)" style="width:13px;height:13px;">${p.q.trim() ? '(Sélectionner tous les résultats)' : '(Sélectionner tout)'}</label>
+    <div style="max-height:250px;overflow-y:auto;">${liste || '<div style="padding:6px;font-size:11px;color:var(--text2);font-style:italic;">Aucune valeur</div>'}${vis.length > MAX ? `<div style="padding:4px;font-size:10px;color:var(--text2);">… ${vis.length - MAX} autre(s) : affinez la recherche</div>` : ''}</div>
+    <div style="display:flex;gap:6px;margin-top:8px;">
+      <button class="btn btn-sm btn-primary" onclick="fcAppliquer()" style="flex:1;">OK</button>
+      <button class="btn btn-sm" onclick="fcEffacer()" title="Retirer le filtre de cette colonne">EFFACER</button>
+      <button class="btn btn-sm" onclick="fcFermer()">✕</button></div>`;
+  const nq = document.getElementById('fc-q');
+  if(nq && (focus || pos !== null)) { nq.focus(); const n = pos === null ? nq.value.length : pos; nq.setSelectionRange(n, n); }
+}
+function fcCocher(i, on) { const v = _fcPop.valeurs[i]; if(on) _fcPop.sel.add(v); else _fcPop.sel.delete(v); fcRendre(); }
+function fcToutCocher(on) { fcVisibles().forEach(v => on ? _fcPop.sel.add(v) : _fcPop.sel.delete(v)); fcRendre(); }
+function fcAppliquer() {
+  const p = _fcPop; if(!p) return;
+  // Avec une recherche : seuls les résultats cochés sont retenus (comme Excel)
+  const retenus = p.q.trim() ? fcVisibles().filter(v => p.sel.has(v)) : p.valeurs.filter(v => p.sel.has(v));
+  const f = fcEtat(p.t).filtres;
+  if(retenus.length === p.valeurs.length) delete f[p.col]; else f[p.col] = new Set(retenus);
+  const def = FC_TABLES[p.t]; fcFermer(); def.rendre();
+}
+function fcEffacer() { const p = _fcPop; if(!p) return; delete fcEtat(p.t).filtres[p.col]; const def = FC_TABLES[p.t]; fcFermer(); def.rendre(); }
+function fcFermer() { document.getElementById('fc-pop')?.remove(); _fcPop = null; document.removeEventListener('click', fcFermerExterieur); }
+function fcFermerExterieur(e) { const pop = document.getElementById('fc-pop'); if(pop && !pop.contains(e.target)) fcFermer(); }
+const montantCle = s => { const n = parseFloat(String(s).replace(/\s/g, '').replace(',', '.')); return isNaN(n) ? -Infinity : n; };
+
+// ── 2. Grand Livre : filtres par colonne + lettrage + bouton « sans pièce jointe » ──
+let _glSansPJ = false;
+FC_TABLES.gl = {
+  rows: () => { preparerJustifs(); return _glSansPJ ? DB.ecritures.filter(e => { const j = justifDe(e._io); return j && (j.statut === 'manquant' || j.statut === 'sans'); }) : DB.ecritures; },
+  val: (e, c) => c === 'num' ? String(e.num ?? '') : c === 'date' ? String(e.date || '') : c === 'jnl' ? String(e.journal || '') : c === 'compte' ? String(e.compte || '')
+    : c === 'libc' ? (e.libelleCompte || '') : c === 'libe' ? (e.libelleEcriture || '') : c === 'doc' ? (e.numDoc || '')
+    : c === 'debit' ? fmtN(e.debit) : c === 'credit' ? fmtN(e.credit) : c === 'solde' ? fmt((e.debit || 0) - (e.credit || 0)) : '',
+  lib: (c, k) => c === 'date' ? (k ? fmtDateGL(k) : '') : c === 'compte' ? (k ? `${k} — ${getLib(k) || ''}` : '') : k,
+  cle: (c, k) => c === 'num' ? (+k || 0) : (c === 'debit' || c === 'credit' || c === 'solde') ? montantCle(k) : k,
+  rendre: () => renderGL()
+};
+function renderGL() {
+  preparerJustifs();
+  fcFermer();
+  const rows = fcFiltrer('gl', FC_TABLES.gl.rows()).slice();
+  rows.sort((a, b) => {
+    let va = a[glSortCol], vb = b[glSortCol];
+    if(glSortCol === 'num') { va = +va; vb = +vb; }
+    if(glSortCol === 'date') { va = normDateSort(a.date); vb = normDateSort(b.date); }
+    if(glSortCol === 'compte') { va = String(va); vb = String(vb); }
+    return glSortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (va > vb ? -1 : va < vb ? 1 : 0);
+  });
+  const filtre = fcNb('gl') > 0 || _glSansPJ; // lettrage disponible dès qu'un filtre est actif
+  const th = (col, lib, st, tri) => htmlThFiltre('gl', col, lib, st, tri);
+  const fl = c => glSortCol === c ? (glSortAsc ? '▲' : '▼') : '↕';
+  document.querySelector('#gl-table thead').innerHTML = `<tr>
+      <th id="gl-th-check" style="width:26px;display:${filtre ? 'table-cell' : 'none'};text-align:center;padding:0 2px;" title="Tout cocher/décocher"><input type="checkbox" id="gl-check-all" ${rows.some(e => glUncheckedIds.has(e.id)) ? '' : 'checked'} onchange="glToggleAll(this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;"></th>
+      ${th('num', 'N°' + fl('num'), 'width:52px', "glSort('num')")}${th('date', 'DATE' + fl('date'), 'width:76px', "glSort('date')")}${th('jnl', 'JNL', 'width:58px')}
+      ${th('compte', 'COMPTE' + fl('compte'), 'width:84px', "glSort('compte')")}${th('libc', 'LIBELLÉ COMPTE', 'width:12%')}${th('libe', 'LIBELLÉ ÉCRITURE', '')}
+      ${th('doc', 'N° DOC', 'width:10%')}${th('debit', 'DÉBIT', 'width:7%;text-align:right;')}${th('credit', 'CRÉDIT', 'width:7%;text-align:right;')}${th('solde', 'SOLDE', 'width:7%;text-align:right;')}
+      <th style="width:168px;padding-right:6px;"></th></tr>`;
+  let totD = 0, totC = 0;
+  document.getElementById('gl-body').innerHTML = rows.map(e => {
+    totD += e.debit; totC += e.credit;
+    const s = e.debit - e.credit;
+    const checkCell = filtre
+      ? `<td style="width:28px;text-align:center;padding:0 4px;"><input type="checkbox" class="gl-row-check" data-id="${e.id}" ${glUncheckedIds.has(e.id) ? '' : 'checked'} onchange="glCheckChanged('${e.id}', this.checked)" style="width:13px;height:13px;cursor:pointer;margin:0;vertical-align:middle;"></td>`
+      : `<td style="width:28px;display:none;"></td>`;
+    return `<tr>
+      ${checkCell}
+      <td><span class="npill">${e.num ?? ''}</span></td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;">${fmtDateGL(e.date)}</td>
+      <td><span class="jbadge j-${e.journal}">${e.journal}</span></td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap;">${e.compte}</td>
+      <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.libelleCompte || '')}</td>
+      <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.libelleEcriture || '')}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${htmlNumDocLien(e)}</td>
+      <td class="td-num c-debit" data-debit="${e.debit}" data-credit="${e.credit}">${fmtN(e.debit)}</td>
+      <td class="td-num c-credit">${fmtN(e.credit)}</td>
+      <td class="td-num ${s > 0 ? 'c-pos' : s < 0 ? 'c-neg' : ''}">${fmt(s)}</td>
+      <td style="text-align:center;padding:0 4px;white-space:nowrap;">
+        ${(() => { const m = moduleDeLEcriture(e); if(m) { const info = MODULES_ECRITURES[m] || { nom: m }; return `<button class="btn btn-sm btn-icon" onclick="ouvrirModuleEcriture('${e.id}')" title="Écriture gérée par le module ${esc(info.nom)} — cliquer pour y aller" style="padding:1px 5px;font-size:9px;color:var(--text2);">🔒 ${esc(info.nom.split(' (')[0].split(' ')[0])}</button>`; }
+          return `<button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
+        <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>`; })()}
+      </td></tr>`;
+  }).join('') || `<tr><td colspan="12" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune écriture${filtre ? ' avec ces filtres' : ''}.</td></tr>`;
+  document.getElementById('gl-total-d').textContent = fmt(totD);
+  document.getElementById('gl-total-c').textContent = fmt(totC);
+  const ts = totD - totC;
+  document.getElementById('gl-total-s').innerHTML = `<span class="${ts > 0 ? 'c-pos' : ts < 0 ? 'c-neg' : ''}">${fmt(ts)}</span>`;
+  document.getElementById('gl-count-chip').textContent = rows.length + ' ligne(s)';
+  // Barre d'outils : écritures sans pièce jointe, effacer les filtres, solde des lignes cochées
+  let nbSans = 0; _justifs.forEach(j => { if(j.statut === 'manquant' || j.statut === 'sans') nbSans++; });
+  const outils = document.getElementById('gl-outils');
+  if(outils) outils.innerHTML = `
+      <button class="btn btn-sm" onclick="_glSansPJ=!_glSansPJ;renderGL()" title="Afficher uniquement les écritures sans pièce jointe (à joindre, ou marquées « sans justificatif »)"
+        style="${_glSansPJ ? 'background:rgba(255,159,64,.2);border-color:#ff9f40;color:#ff9f40;' : (nbSans ? 'color:#ff9f40;border-color:rgba(255,159,64,.5);' : '')}">📎 ÉCRITURES SANS PIÈCE JOINTE (${nbSans.toLocaleString('fr-FR')})${_glSansPJ ? ' ✓' : ''}</button>
+      ${fcNb('gl') || _glSansPJ ? `<button class="btn btn-sm" onclick="resetGLFilters()">✕ EFFACER LES FILTRES (${fcNb('gl') + (_glSansPJ ? 1 : 0)})</button>` : ''}
+      <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾ ; dès qu'un filtre est actif, cochez / décochez les lignes pour suivre le solde (lettrage).</span>
+      <span id="gl-solde-chip" style="display:${filtre ? 'inline-flex' : 'none'};margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>`;
+  const wrap = document.querySelector('#tab-grandlivre .tbl-wrap');
+  if(filtre) { glUpdateSolde(); if(wrap) wrap.scrollTop = 0; }
+  else if(glSortCol === 'num' && glSortAsc && wrap) setTimeout(() => { wrap.scrollTop = wrap.scrollHeight; }, 0);
+}
+function resetGLFilters() { fcReset('gl'); _glSansPJ = false; glUncheckedIds.clear(); renderGL(); }
+
+// ── 3. GED : filtres par colonne ──
+function texteEcrituresPiece(p) {
+  const liens = p.liens || [], ex = String(CURRENT_YEAR);
+  if(!liens.length) return '';
+  if(!_justifs) preparerJustifs();
+  const ici = liens.filter(l => l.ex === ex && _justifs.has(l.io)).map(l => '#' + _justifs.get(l.io).num);
+  const ailleurs = liens.filter(l => l.ex !== ex).length;
+  if(!ici.length && !ailleurs) return '⚠ écriture supprimée';
+  return ici.join(' ') + (ailleurs ? `${ici.length ? ' + ' : ''}${ailleurs} (autre exercice)` : '');
+}
+function libOrigine(p) { return pieceGeneree(p) ? (LIB_MODULE_ORIGINE[p.module] || 'module') : ''; }
+let _gedSansEcriture = false;
+function piecesSansEcritureExercice() {
+  if(PIECES === null) return [];
+  preparerJustifs();
+  return PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR) && !String(p.origine || '').startsWith('ed:') && pieceSansEcriture(p));
+}
+FC_TABLES.gedc = {
+  rows: () => { let l = piecesDuClasseurCompta(_docsClasseur.compta || '__tous', (PIECES || []).filter(p => p.espace === 'compta')); preparerJustifs(); if(_gedSansEcriture) l = l.filter(p => !String(p.origine || '').startsWith('ed:') && pieceSansEcriture(p)); return l; },
+  val: (p, c) => c === 'date' ? (p.dateDoc || '') : c === 'ex' ? String(p.exercice || '') + (p.test ? ' TEST' : '') : c === 'type' ? (p.typePiece || '') : c === 'doc' ? (p.numDoc || '')
+    : c === 'titre' ? (p.titre || p.nomFichier || '') : c === 'orig' ? libOrigine(p) : c === 'ecr' ? texteEcrituresPiece(p) : '',
+  lib: (c, k) => c === 'date' ? (k ? fmtDateFr(k) : '') : c === 'type' ? (k ? `${k} — ${libTypePiece(k)}` : '') : c === 'orig' ? (k || 'Déposé à la main') : c === 'ecr' ? (k || '(aucune)') : k,
+  rendre: () => renderDocumentsVue()
+};
+FC_TABLES.gedp = {
+  rows: () => groupesDuClasseurDP(_docsClasseur.permanent || '__tous', groupesDP()),
+  val: (g, c) => { const p = g.courante; return c === 'type' ? (p.typeDP || '') : c === 'doc' ? (p.numDoc || '') : c === 'titre' ? (p.titre || p.nomFichier || '') : c === 'orig' ? libOrigine(p)
+    : c === 'ecr' ? texteEcrituresPiece(p) : c === 'date' ? (p.dateDoc || '') : c === 'ver' ? 'v' + (p.version || 1) : ''; },
+  lib: (c, k) => c === 'date' ? (k ? fmtDateFr(k) : '') : c === 'type' ? (k ? `${k} — ${libTypeDP(k)}` : '') : c === 'orig' ? (k || 'Déposé à la main') : c === 'ecr' ? (k || '(aucune)') : k,
+  rendre: () => renderDocumentsVue()
+};
+function filtreExerciceParDefautGED() { fcEtat('gedc').filtres.ex = new Set([String(CURRENT_YEAR), String(CURRENT_YEAR) + ' TEST']); }
+function htmlBoutonSansEcriture() {
+  const n = piecesSansEcritureExercice().length;
+  return `<button class="btn btn-sm" onclick="_gedSansEcriture=!_gedSansEcriture;renderDocumentsVue()" title="Pièces comptables rattachées à aucune écriture (bloque la clôture)"
+      style="${_gedSansEcriture ? 'background:rgba(255,200,64,.2);border-color:var(--amber);color:var(--amber);' : n ? 'color:var(--amber);border-color:rgba(255,200,64,.5);' : ''}">⚠ PIÈCES SANS ÉCRITURE ${esc(CURRENT_YEAR)} (${n.toLocaleString('fr-FR')})${_gedSansEcriture ? ' ✓' : ''}</button>`;
+}
+function htmlPiecesComptablesV109() {
+  if(fcEtat('gedc').pourEx !== String(CURRENT_YEAR)) { fcReset('gedc'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); } // l'exercice affiché par défaut
+  const id = _docsClasseur.compta;
+  const info = id ? infoClasseurCompta(id) : null;
+  if(!info) {
+    const n = piecesSansEcritureExercice().length;
+    const alerte = n ? `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${n.toLocaleString('fr-FR')} pièce(s) de ${esc(CURRENT_YEAR)} rattachée(s) à aucune écriture</strong> — à rattacher (ou à supprimer) avant la clôture.</span><button class="btn btn-sm" onclick="allerPiecesSansEcriture()">VOIR</button></div>` : '';
+    return alerte + htmlPiecesComptablesV107();
+  }
+  const ouverts = exercicesOuverts();
+  const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
+  const th = (c, l, st) => htmlThFiltre('gedc', c, l, st);
+  const lignes = rows.map(p => `<tr>
+      <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
+      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a></td>
+      <td>${htmlOrigine(p)}</td>
+      <td style="font-size:10px;white-space:nowrap;">${htmlEcrituresDePiece(p)}</td>
+      <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
+      <td class="td-act">${htmlActionsPiece(p)}</td></tr>`).join('');
+  const typeDepot = (info.types && info.types.length === 1) ? info.types[0] : '';
+  const depotActif = !!window._fbStorageActif && ouverts.length > 0;
+  const zone = depotActif ? htmlZoneDepot('compta', null, true, '').replace(/ouvrirDepot\('compta',null(,event\.dataTransfer\.files)?\)/g, (m, f2) => `ouvrirDepot('compta',null${f2 || ',null'},null,{typePiece:'${esc(typeDepot)}'})`)
+    : htmlZoneDepot('compta', null, false, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée');
+  const nbF = fcNb('gedc') + (_gedSansEcriture ? 1 : 0);
+  return `${htmlBarreClasseur('compta', info.nom, info.couleur)}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${htmlBoutonSansEcriture()}
+      ${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedc');_gedSansEcriture=false;renderDocumentsVue()">✕ EFFACER LES FILTRES (${nbF})</button>` : ''}
+      <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾ (exercice affiché par défaut).</span>
+      <span class="chip" style="margin-left:auto;">${rows.length} document${rows.length > 1 ? 's' : ''}</span></div>
+    ${zone}
+    <div class="tbl-wrap docs-scroll">
+      <table>
+        <thead><tr>${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:86px;')}${th('type', 'Type', 'width:76px;')}${th('doc', 'N° pièce', 'width:130px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}<th style="width:64px;">Taille</th><th style="width:150px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${nbF ? ' avec ces filtres' : ' dans ce classeur'}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+function htmlDossierPermanentV109() {
+  const id = _docsClasseur.permanent;
+  const info = id ? infoClasseurDP(id) : null;
+  if(!info) return htmlDossierPermanentV107();
+  const actif = !!window._fbStorageActif;
+  preparerJustifs();
+  const liste = fcFiltrer('gedp', FC_TABLES.gedp.rows()).slice().sort((a, b) => (b.courante.dateDoc || '').localeCompare(a.courante.dateDoc || '') || (a.courante.titre || '').localeCompare(b.courante.titre || ''));
+  const th = (c, l, st) => htmlThFiltre('gedp', c, l, st);
+  const ligne = (p, ancienne, g) => {
+    const nbAnc = g ? g.anciennes.length : 0, ouvert = g ? !!_dpVersionsOuvertes[p.groupe || p.id] : false;
+    const autres = classeursDe(p).filter(c => c !== id).map(libRubrique);
+    return `<tr style="${ancienne ? 'color:var(--text2);' : ''}">
+      <td style="white-space:nowrap;">${p.typeDP ? `<span class="npill" title="${esc(libTypeDP(p.typeDP))}">${esc(p.typeDP)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.numDoc || '')}</td>
+      <td style="${ancienne ? 'padding-left:26px;' : ''}"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:${ancienne ? 'var(--text2)' : 'var(--text0)'};text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
+        ${!ancienne && autres.length ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">aussi dans : ${autres.map(esc).join(', ')}</div>` : ''}</td>
+      <td>${htmlOrigine(p)}</td>
+      <td style="font-size:10px;white-space:nowrap;">${ancienne ? '' : htmlEcrituresDePiece(p)}</td>
+      <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
+      <td style="white-space:nowrap;"><span class="npill">v${p.version || 1}</span>
+        ${!ancienne && nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>
+          <button class="btn btn-sm" onclick="_dpVersionsOuvertes['${p.groupe || p.id}']=!_dpVersionsOuvertes['${p.groupe || p.id}'];renderDocumentsVue();" style="padding:0 6px;font-size:9px;">${ouvert ? '▾' : '▸'} ${nbAnc}</button>` : ''}
+        ${ancienne ? `<button class="btn btn-sm" onclick="remettreEnVigueur('${p.id}')" style="padding:0 6px;font-size:9px;">REMETTRE EN VIGUEUR</button>` : ''}</td>
+      <td class="td-act">${!ancienne && actif && !pieceGeneree(p) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent',null,null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${maxVersion(p.groupe || p.id) + 1}</button>` : ''}
+        ${!ancienne ? `<button class="btn btn-sm btn-icon" onclick="ouvrirClassementDP('${p.id}')" title="Classeurs et type du document" style="padding:1px 6px;font-size:10px;">🗂</button>` : ''}${htmlActionsPiece(p)}</td></tr>`;
+  };
+  const lignes = liste.map(g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '')).join('');
+  const nbF = fcNb('gedp');
+  return `${htmlBarreClasseur('permanent', info.nom, info.couleur)}
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      ${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()">✕ EFFACER LES FILTRES (${nbF})</button>` : ''}
+      <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾.</span>
+      <span class="chip" style="margin-left:auto;">${liste.length} document${liste.length > 1 ? 's' : ''}</span></div>
+    ${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}
+    <div class="tbl-wrap docs-scroll">
+      <table>
+        <thead><tr>${th('type', 'Type', 'width:76px;')}${th('doc', 'Référence', 'width:140px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}${th('date', 'Date', 'width:90px;')}${th('ver', 'Version', 'width:150px;')}<th style="width:190px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucun document${nbF ? ' avec ces filtres' : ' dans ce classeur'}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+function allerPiecesSansEcriture() {
+  showTab('documents'); _docsVue = 'compta'; _docsClasseur.compta = '__tous'; _gedSansEcriture = true; fcReset('gedc'); filtreExerciceParDefautGED(); renderDocumentsVue();
+}
+
+// ── 4. Alerte jaune dans le menu, à côté de GED ──
+function majAlerteNavGED() {
+  const z = document.getElementById('nav-ged-alerte'); if(!z) return;
+  if(typeof PIECES === 'undefined' || !PIECES || !DB || !DB.ecritures) { z.style.display = 'none'; return; }
+  let orph = 0, nc = 0;
+  try { orph = piecesSansEcritureExercice().length; nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')).length; } catch(e) {}
+  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : ''].filter(Boolean).join(' · ');
+  z.style.display = msg ? '' : 'none'; z.title = msg;
+}
+
+// ── 5. Écritures « de calcul » désignées à la main ──
+function ensureEcrituresCalcul() { if(!Array.isArray(DB.ecrituresCalcul)) DB.ecrituresCalcul = []; return DB.ecrituresCalcul; }
+function basculerCalcul(ios, marquer) {
+  if(bloqueSiCloture()) return;
+  const liste = ensureEcrituresCalcul().map(cleIo), cibles = ios.map(cleIo);
+  DB.ecrituresCalcul = marquer ? [...new Set(liste.concat(cibles))] : liste.filter(x => !cibles.includes(x));
+  saveDB();
+  toast(marquer ? `${cibles.length} écriture${cibles.length > 1 ? 's' : ''} désignée${cibles.length > 1 ? 's' : ''} « écriture de calcul »` : '« Écriture de calcul » retiré', 'success');
+  apresChangementJustifs();
+}
+
+// ── 6. Référence des appels de loyer et quittances : celle des écritures des mouvements « + » du mois ──
+function refPieceLoyer(loc, x, data) {
+  const mvts = (loc && loc.mouvements || []).filter(m => m.sens === '+' && (m.affectations || []).some(a => a.mois === x.mois));
+  const ids = new Set(mvts.map(m => m.id));
+  // 1) le n° réellement porté par les écritures de ces mouvements
+  const src = data || ((DB.locataires || []).includes(loc) ? DB : null);
+  const ecr = ((src && src.ecritures) || []).find(e => (e._mvtLocataireIds || (e._mvtLocataireId ? [e._mvtLocataireId] : [])).some(id => ids.has(id)) && e.numDoc);
+  // 2) à défaut, le paramétrage du type de mouvement (préfixe + format)
+  let numDoc = ecr ? ecr.numDoc : '', prefixe = '';
+  for(const m of mvts) { const t = (loc.types || []).find(y => y.id === m.typeId); if(t && t.prefixePiece) { prefixe = String(t.prefixePiece).trim(); if(!numDoc) numDoc = genererNumeroPiece(t, x.mois); break; } }
+  const code = String(numDoc || '').split(/[\/_]/)[0];
+  const type = typeSiConnu(code) || typeSiConnu(prefixe) || typeSiConnu('QUIT');
+  return { type, numDoc };
 }
 
 </script>
