@@ -1026,7 +1026,7 @@ applyTheme();
     <div class="nav-sep"></div>
     <div class="nav-section">Base documentaire</div>
     <div class="nav-item" onclick="showTab('documents')" id="nav-documents">
-      <span class="ni-icon">🗄</span> Documents
+      <span class="ni-icon">🗄</span> GED
       <span class="ni-count" id="nc-documents">–</span>
     </div>
     <div class="nav-sep"></div>
@@ -1411,6 +1411,12 @@ applyTheme();
           </div>
         </div>
 
+        <!-- V106 : éditions de clôture dans la GED -->
+        <div class="card">
+          <div class="card-title">📄 Éditions de clôture dans la GED</div>
+          <div id="ed-cloture-ged"></div>
+        </div>
+
         <!-- Sauvegarde complète -->
         <div class="card" style="border:1px solid var(--cyan);">
           <div class="card-title">💾 Sauvegarde complète (JSON)</div>
@@ -1701,8 +1707,8 @@ applyTheme();
     <div class="tab-content" id="tab-documents">
       <div class="page-hdr">
         <div>
-          <div class="page-title">DOCUMENTS</div>
-          <div class="page-sub">Pièces comptables de tous les exercices et dossier permanent</div>
+          <div class="page-title">GED</div>
+          <div class="page-sub">Gestion électronique des documents — pièces comptables de tous les exercices et dossier permanent</div>
         </div>
       </div>
       <div id="docs-wrap" style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;"></div>
@@ -2922,7 +2928,9 @@ applyTheme();
       <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Seuls les exercices ouverts sont proposés : une pièce ne peut pas être ajoutée à un exercice clôturé.</div>
     </div>
     <div id="dep-bloc-permanent">
-      <div class="form-row mb8"><div class="form-field"><label>Rubrique *</label><select id="dep-rubrique"></select></div></div>
+      <div class="form-row c2 mb8"><div class="form-field"><label>Rubrique *</label><select id="dep-rubrique"></select></div>
+        <div class="form-field"><label title="Les écritures portant ce n° de pièce seront jointes automatiquement à ce document">Référence (n° de pièce)</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div></div>
+      <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Avec une référence, toute écriture portant ce n° de pièce (ex. un échéancier) est jointe automatiquement à ce document, quel que soit l'exercice.</div>
     </div>
     <div class="form-row c2 mb8">
       <div class="form-field" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
@@ -3284,6 +3292,7 @@ async function exportAllExercisesBackup() {
   years = [...new Set(years)].sort();
 
   const filesToSave = [], echecs = [], ignores = [];
+  const ecrParEx = {}; // V105 : écritures de chaque exercice → n° de pièce des tampons du ZIP
   for(const y of years) {
     let data;
     if(String(y) === String(CURRENT_YEAR)) data = DB;
@@ -3296,6 +3305,7 @@ async function exportAllExercisesBackup() {
         ignores.push({ y, raison: "n'existe plus dans Firebase (retiré de la liste)" }); continue;
       }
     }
+    ecrParEx[String(y)] = Array.isArray(data.ecritures) ? data.ecritures : [];
     if(!Array.isArray(data.ecritures) || !data.ecritures.length) { ignores.push({ y, raison: 'exercice sans écriture' }); continue; }
     const test = (String(y) === String(CURRENT_YEAR)) ? !!DB._isTest : !!data._isTest;
     const content = JSON.stringify({ _backupMeta: { exercice: y, dateExport: new Date().toISOString(), version: 1, test }, data }, null, 0);
@@ -3323,8 +3333,10 @@ async function exportAllExercisesBackup() {
           ok.push(f);
         } catch(e) { echecs.push({ y: f.y, raison: 'écriture du fichier impossible' }); }
       }
-      showBackupExportedModal({ ok, echecs, ignores });
-      return !echecs.length && ok.length > 0;
+      // V105 : ZIP des documents de la GED dans le même dossier
+      const zipR = await sauvegarderDocumentsZip(dirHandle, ecrParEx); afficherProgressionSauvegarde(null);
+      showBackupExportedModal({ ok, echecs, ignores, zip: zipR });
+      return !echecs.length && ok.length > 0 && zipComplet(zipR);
     }
   }
   // Téléchargement classique (navigateur sans choix de dossier)
@@ -3337,15 +3349,30 @@ async function exportAllExercisesBackup() {
     ok.push(f);
     await new Promise(r => setTimeout(r, 400));
   }
-  showBackupExportedModal({ ok, echecs, ignores });
-  return !echecs.length && ok.length > 0;
+  const zipR = await sauvegarderDocumentsZip(null, ecrParEx); afficherProgressionSauvegarde(null); // V105
+  showBackupExportedModal({ ok, echecs, ignores, zip: zipR });
+  return !echecs.length && ok.length > 0 && zipComplet(zipR);
+}
+// V105 : volet « documents de la GED » du rapport de sauvegarde
+function zipComplet(z) { return !!z && !z.erreur && !(z.echecs || []).length; }
+function htmlRapportZip(z) {
+  if(!z) return '';
+  const mo = n => (n / 1048576).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' Mo';
+  let h = '<div style="border-top:1px solid var(--line2);margin-top:8px;padding-top:8px;">';
+  if(z.erreur) h += `<div style="color:var(--red);">✗ Documents de la GED — ${esc(z.erreur)}</div>`;
+  else if(z.vide) h += `<div style="color:var(--text2);">– Documents de la GED : aucun document</div>`;
+  else h += `<div>✓ Documents de la GED : <strong>${z.nb.toLocaleString('fr-FR')}</strong> fichier(s), dont ${z.tamponnes.toLocaleString('fr-FR')} tamponné(s) — ${mo(z.taille)}<br><span style="color:var(--text2);font-size:10px;">${esc(z.nom)}</span></div>`;
+  (z.echecs || []).slice(0, 8).forEach(e => { h += `<div style="color:var(--red);">✗ ${esc(e)}</div>`; });
+  if((z.echecs || []).length > 8) h += `<div style="color:var(--red);">… et ${z.echecs.length - 8} autre(s)</div>`;
+  (z.nonTamponnes || []).slice(0, 5).forEach(e => { h += `<div style="color:var(--amber);">⚠ copié sans tampon : ${esc(e)}</div>`; });
+  return h + '</div>';
 }
 function showBackupExportedModal(rapport) {
   const existing = document.getElementById('backup-exported-modal');
   if(existing) existing.remove();
   const r = rapport || {};
   const ok = r.ok || [], echecs = r.echecs || [], ignores = r.ignores || [];
-  const complet = !r.fatal && ok.length > 0 && !echecs.length;
+  const complet = !r.fatal && ok.length > 0 && !echecs.length && (!r.zip || zipComplet(r.zip));
   const kb = n => Math.max(1, Math.round(n / 1024)).toLocaleString('fr-FR') + ' Ko';
   const lignesOk = ok.map(f => `<div>✓ Exercice <strong>${f.y}</strong>${f.test ? ' (TEST)' : ''} — ${kb(f.content.length)}</div>`).join('');
   const lignesKo = echecs.map(e => `<div style="color:var(--red);">✗ Exercice <strong>${e.y}</strong> — ${e.raison}</div>`).join('');
@@ -3359,7 +3386,7 @@ function showBackupExportedModal(rapport) {
     <div style="font-size:28px;margin-bottom:12px;text-align:center;">${complet ? '💾' : '⚠'}</div>
     <div style="font-size:14px;font-weight:700;color:${couleur};margin-bottom:14px;letter-spacing:0.04em;text-align:center;">${titre}</div>
     <div style="font-size:11px;color:var(--text1);line-height:1.8;margin-bottom:14px;">
-      ${r.fatal ? `<div style="color:var(--red);">${r.fatal}</div>` : lignesOk + lignesKo + lignesIgn}
+      ${r.fatal ? `<div style="color:var(--red);">${r.fatal}</div>` : lignesOk + lignesKo + lignesIgn + htmlRapportZip(r.zip)}
     </div>
     <div style="font-size:11px;color:var(--text1);line-height:1.7;margin-bottom:20px;text-align:center;">
       ${complet ? '<span style="color:var(--amber);">Conservez ces fichiers en lieu sûr</span> (disque externe, cloud personnel…).' : '<span style="color:var(--red);">La sauvegarde n\'est pas complète : elle vous sera reproposée.</span>'}
@@ -3909,6 +3936,7 @@ function saveDB() {
   if(window._saveSuspended) return; // DB/CURRENT_YEAR temporairement basculés sur un autre exercice (ex. bilan N-1)
   if(window._fbBloque) return;
   if(window._deletingYear && String(window._deletingYear) === String(CURRENT_YEAR)) return;
+  try { programmerAutoLiaison(); } catch(e) {} // V104 : écriture enregistrée → pièce de même référence jointe automatiquement
   window._exerciseStatuses = window._exerciseStatuses || {};
   window._exerciseStatuses[String(CURRENT_YEAR)] = { _status: EXERCISE_STATUS, _isTest: !!DB._isTest };
   try { detecterParametresAReporter(); } catch(e) { console.error(e); } // V83 (C5)
@@ -4464,6 +4492,7 @@ function updateNavCounts() {
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
   if(el) el.textContent = CURRENT_YEAR;
+  try { renderEditionsClotureGED(); } catch(e) {} // V106
 }
 
 // ══════════════════════════════════════════════
@@ -7435,6 +7464,8 @@ async function clotureGoToNext() {
   if(!(await saveDBNow(true))) { DB._status = 'open'; EXERCISE_STATUS = 'open'; applyExerciseStatus(); return; }
   figerBaseCloture(); // V79 : clôture non enregistrée → annulée ; force=true: doit sauvegarder le statut clôturé même si EXERCISE_STATUS est déjà 'closed'
   document.getElementById('cloture-confirm').style.display = 'none';
+  // V106 : éditions de clôture (bilan, CR, balance, GL, immobilisations, révision) déposées en PDF dans la GED
+  try { await deposerEditionsCloture(true); } catch(e) { console.error(e); toast("Éditions de clôture non déposées : réessayez depuis l'onglet Éditions", 'error', 8000); }
   // Build the N+1 panel
   const nextYear = isTestExercise(CURRENT_YEAR) ? CURRENT_YEAR + '_N1' : (parseInt(CURRENT_YEAR) + 1);
   const knownYears = Array.from(document.getElementById('ex-year-select').options).map(o => o.value);
@@ -8012,8 +8043,8 @@ function showBGN1Modal(fmt) {
   document.body.appendChild(overlay);
 }
 
-async function generateBG(fmt) {
-  const n1Year = document.getElementById('bg-n1-select')?.value || '';
+async function generateBG(fmt, n1Force) {
+  const n1Year = n1Force !== undefined ? n1Force : (document.getElementById('bg-n1-select')?.value || ''); // V106
   document.getElementById('bg-n1-modal')?.remove();
 
   let dbN1 = null;
@@ -8988,8 +9019,8 @@ function showBilanN1Modal() {
   document.body.appendChild(overlay);
 }
 
-async function generateBilanPDF() {
-  const n1Year = document.getElementById('bilan-n1-select')?.value || '';
+async function generateBilanPDF(n1Force) {
+  const n1Year = n1Force !== undefined ? n1Force : (document.getElementById('bilan-n1-select')?.value || ''); // V106
   document.getElementById('bilan-n1-modal')?.remove();
   // V84 (M7) : N-1 calculé sur ses propres données, sans jamais toucher DB
   let srcN1 = null;
@@ -9508,8 +9539,8 @@ function showCRN1Modal() {
   document.body.appendChild(overlay);
 }
 
-async function generateCRPDF() {
-  const n1Year = document.getElementById('cr-n1-select')?.value || '';
+async function generateCRPDF(n1Force) {
+  const n1Year = n1Force !== undefined ? n1Force : (document.getElementById('cr-n1-select')?.value || ''); // V106
   document.getElementById('cr-n1-modal')?.remove();
   // V84 (M7) : N-1 calculé sur ses propres données, sans jamais toucher DB
   let srcN1 = null;
@@ -9581,6 +9612,7 @@ function aUnDocument(x) { return !!(x && ((x.doc && ['loc','km','pv'].includes(x
 
 // ── PRINT / DOWNLOAD HELPERS ──
 function printDoc(html, title, autoprint, landscape) {
+  if(window._captureImpression) { window._captureImpression.push({ html, title, landscape: !!landscape }); return; } // V106 : éditions de clôture
   if(autoprint === undefined) autoprint = true;
   // Le logo n'est jamais stocké tel quel dans les documents (trop volumineux pour Firebase) :
   // on le réinjecte ici, au moment de l'affichage, qu'il vienne d'être généré ou relu depuis une sauvegarde.
@@ -16168,6 +16200,7 @@ function ecouterPieces() {
   _piecesUnsub = window._fbPiecesEcouter(liste => {
     PIECES = liste; _piecesErreur = null;
     updateNavCounts();
+    try { programmerAutoLiaison(); } catch(e) {} // V104 : document déposé → écritures de même référence jointes
     const ongletActif = document.getElementById('tab-documents')?.classList.contains('active');
     const saisieEnCours = document.activeElement && document.activeElement.id === 'docs-q';
     if(ongletActif && !saisieEnCours) renderDocumentsVue();
@@ -16314,7 +16347,7 @@ function htmlActionsPiece(p) {
   const b = (ic, act, tit, cls) => `<button class="btn btn-sm btn-icon ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 6px;font-size:10px;">${ic}</button>`;
   let h = b('👁', `voirPiece('${p.id}')`, 'Voir / imprimer') + b('⬇', `telechargerPiece('${p.id}')`, 'Télécharger');
   if(pieceGeneree(p)) h += `<span title="Document généré par le module ${esc(LIB_MODULE_ORIGINE[p.module] || '')} : il se gère depuis ce module" style="font-size:11px;padding:0 4px;">⚙</span>`;
-  else if(pieceModifiable(p)) h += b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
+  else if(pieceModifiable(p)) h += b('🏷', `modifierReferencePiece('${p.id}')`, 'Modifier la référence (n° de pièce)') + b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
   else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
   return h;
 }
@@ -16393,6 +16426,7 @@ function htmlDossierPermanent() {
   const codes = new Set(rubriques.map(r => r.code));
   const orphelins = groupes.filter(g => !codes.has(g.courante.rubrique));
   const actif = !!window._fbStorageActif;
+  preparerJustifs(); // V104 : écritures jointes
   const blocs = rubriques.map(r => htmlRubriqueDP(r.code, r.label, groupes.filter(g => g.courante.rubrique === r.code), actif));
   if(orphelins.length) blocs.push(htmlRubriqueDP('', 'Sans rubrique', orphelins, false));
   return `<div class="card">
@@ -16421,6 +16455,8 @@ function htmlRubriqueDP(code, label, groupes, actif) {
     return `<div style="border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;">
           <a href="#" onclick="voirPiece('${p.id}');return false;" style="flex:1;min-width:0;color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}
+          ${p.numDoc ? `<span class="npill" style="font-family:var(--mono);" title="Référence : les écritures portant ce n° de pièce y sont jointes automatiquement">${esc(p.numDoc)}</span>` : ''}
+          <span style="font-size:10px;">${htmlEcrituresDePiece(p)}</span>
           <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span>
           <span class="npill">v${p.version || 1}</span>
           ${nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>` : ''}
@@ -16430,7 +16466,7 @@ function htmlRubriqueDP(code, label, groupes, actif) {
         </div>${anciennes}
       </div>`;
   }).join('');
-  return `<div class="rappel-group">
+  return `<div class="rappel-group" style="flex-shrink:0;margin-bottom:0;">
       <div class="rappel-group-hdr">${esc(label)} <span class="chip">${groupes.length}</span>${btnAjout}</div>
       ${lignes || `<div style="padding:8px 14px;font-size:11px;color:var(--text2);font-style:italic;">Aucun document.</div>`}
     </div>`;
@@ -16446,7 +16482,7 @@ let _depot = null; // { espace, fichiers:[File], versionDe: id | null }
 // V102 : options = { lien: { ex, ios:[…] }, numDoc, date, typePiece, titre, apres } — dépôt rattaché à des écritures
 function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   if(!window._fbStorageActif) { toast("Stockage des documents non configuré", 'error'); return; }
-  if(PIECES === null) { toast("Index des documents illisible : rechargez l'onglet Documents", 'error'); return; }
+  if(PIECES === null) { toast("Index des documents illisible : rechargez l'onglet GED", 'error'); return; }
   const source = versionDe ? (PIECES || []).find(p => p.id === versionDe) : null;
   if(espace === 'compta' && !exercicesOuverts().length) { toast('Aucun exercice ouvert : aucune pièce ne peut être ajoutée', 'error'); return; }
   _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null, options: options || null };
@@ -16460,6 +16496,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-rubrique').innerHTML = rubriquesDP().map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
   el('dep-rubrique').value = source ? source.rubrique : (rubrique || rubriquesDP()[0].code);
   el('dep-numdoc').value = '';
+  el('dep-numdoc-dp').value = source ? (source.numDoc || '') : ''; // V104
   el('dep-date').value = dateLocale(new Date());
   el('dep-titre').value = source ? (source.titre || '') : '';
   el('dep-err').textContent = '';
@@ -16550,7 +16587,7 @@ async function enregistrerDepot() {
   } else {
     const rubrique = source ? source.rubrique : el('dep-rubrique').value;
     if(!rubrique) { err.textContent = 'Choisissez la rubrique.'; return; }
-    base = { espace: 'permanent', rubrique };
+    base = { espace: 'permanent', rubrique, numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
@@ -16770,15 +16807,15 @@ async function supprimerPiecesExercice(y) {
   const liste = piecesDeLExercice(y);
   let echecs = 0;
   for(const p of liste) { if(!(await supprimerPieceDefinitivement(p.id, true))) echecs++; }
-  if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être supprimées : supprimez-les depuis Documents` : `${liste.length} pièce(s) de l'exercice test « ${y} » supprimée(s)`, echecs ? 'error' : 'success', 6000);
+  if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être supprimées : supprimez-les depuis la GED` : `${liste.length} pièce(s) de l'exercice test « ${y} » supprimée(s)`, echecs ? 'error' : 'success', 6000);
   updateNavCounts();
 }
 // Un vrai exercice qui contient des pièces ne peut pas être supprimé
 function suppressionExerciceAutorisee(y) {
   if(isTestExercise(y)) return true;
-  if(PIECES === null) { toast("Suppression impossible : l'index des documents n'a pas pu être lu. Ouvrez l'onglet Documents pour réessayer.", 'error', 7000); return false; }
+  if(PIECES === null) { toast("Suppression impossible : l'index des documents n'a pas pu être lu. Ouvrez l'onglet GED pour réessayer.", 'error', 7000); return false; }
   const n = piecesDeLExercice(y).length;
-  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans Documents.`, 'error', 7000); return false; }
+  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans la GED.`, 'error', 7000); return false; }
   return true;
 }
 
@@ -16996,7 +17033,7 @@ function deposerDocumentGenere(d) {
     const dejaFait = pieceAJourPour(d); if(dejaFait) return { meta: dejaFait, etat: 'ajour' };
     const existant = (PIECES || []).find(p => p.origine === d.cle);
     const html = htmlDuDocument(d.x); if(!html) throw new Error('Document sans contenu');
-    const blob = await pdfDepuisHtml(html, d.paysage);
+    const blob = d.edition ? await pdfDepuisEdition(html, d.paysage) : await pdfDepuisHtml(html, d.paysage); // V106 : éditions sur plusieurs pages
     const id = existant ? existant.id : crypto.randomUUID();
     const nomFichier = nomFichierSur(d.nom).replace(/\.pdf$/i, '') + '.pdf';
     const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${Date.now().toString(36)}_${nomFichier}`;
@@ -17054,7 +17091,7 @@ async function synchroniserGED(sources, opts) {
         if(opts.progression) opts.progression(res);
       }
       // Documents générés de CET exercice dont la source n'existe plus (supprimée définitivement du module)
-      for(const p of PIECES.filter(p => p.origine && String(p.origineExercice) === String(src.exercice) && !cles.has(p.origine))) {
+      for(const p of PIECES.filter(p => p.origine && !String(p.origine).startsWith('ed:') && String(p.origineExercice) === String(src.exercice) && !cles.has(p.origine))) { // V106 : éditions de clôture exclues
         if(await supprimerPieceDefinitivement(p.id, true)) res.supprimes++;
       }
     }
@@ -17196,6 +17233,7 @@ function preparerJustifs() {
   });
   _justifs = res;
   try { controlerNdLiens(); } catch(e) {} // V103 : n° de pièce mémorisé dans chaque lien (tampon)
+  try { programmerAutoLiaison(); } catch(e) {} // V104 : pièce de même référence jointe automatiquement
   return res;
 }
 function justifDe(io) { if(!_justifs) preparerJustifs(); return _justifs.get(cleIo(io)) || null; }
@@ -17248,7 +17286,7 @@ function renderPiecesEcriture() {
       <div style="margin-top:4px;font-weight:600;color:${j.statut === 'manquant' ? 'var(--amber)' : 'var(--text2)'};">${esc(LIB_STATUT_JUSTIF[j.statut])}${!ouvert ? ' · exercice clôturé : consultation uniquement' : ''}</div></div>`;
   // Pièces rattachées
   if(j.pieces.length) h += `<div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:10px;">${j.pieces.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;">
-      <span style="flex:1;min-width:0;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${badgeOrigine(p)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
+      <span style="flex:1;min-width:0;">${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${badgeOrigine(p)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}${(p.liens || []).some(l => l.ex === String(CURRENT_YEAR) && l.io === _pjIo && l.auto) ? ' · <span style="color:var(--green);">jointe automatiquement (même n° de pièce)</span>' : ''}</span></span>
       ${b('👁 VOIR', `voirPiece('${p.id}')`)}${ouvert ? b('DÉTACHER', `detacherPiece('${p.id}')`) : ''}</div>`).join('')}</div>`;
   if(j.auto) h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line2);border-radius:var(--radius);font-size:11px;margin-bottom:10px;">
       <span style="flex:1;">⚙ ${esc(j.auto.libelle)} <span style="color:var(--text2);font-size:10px;">(justification automatique)</span></span>${b('👁 VOIR', `voirJustifAuto('${esc(_pjIo)}')`)}</div>`;
@@ -17269,13 +17307,15 @@ function renderPiecesEcriture() {
 function htmlPiecesCandidates(j) {
   const q = _pjRecherche.trim().toLowerCase(), ex = String(CURRENT_YEAR);
   const deja = new Set(j.pieces.map(p => p.id));
-  let liste = (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === ex && !deja.has(p.id));
+  const dpEnVigueur = new Set(groupesDP().map(g => g.courante.id)); // V104 : documents du dossier permanent (version en vigueur)
+  let liste = (PIECES || []).filter(p => !deja.has(p.id) && ((p.espace === 'compta' && String(p.exercice) === ex) || (p.espace === 'permanent' && dpEnVigueur.has(p.id))));
   if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q));
   // Même n° de pièce en premier, puis les plus récentes
-  liste.sort((a, b) => ((b.numDoc && b.numDoc === j.numDoc) - (a.numDoc && a.numDoc === j.numDoc)) || (b.dateDoc || '').localeCompare(a.dateDoc || ''));
-  if(!liste.length) return `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce de l'exercice ${esc(ex)}${q ? ' pour cette recherche' : ''}.</div>`;
+  const memeRef = p => !!(p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
+  liste.sort((a, b) => (memeRef(b) - memeRef(a)) || (b.dateDoc || '').localeCompare(a.dateDoc || ''));
+  if(!liste.length) return `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce de l'exercice ${esc(ex)} ni du dossier permanent${q ? ' pour cette recherche' : ''}.</div>`;
   return liste.slice(0, 60).map(p => `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.numDoc && p.numDoc === j.numDoc ? '★ ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${memeRef(p) ? '★ ' : ''}${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
       <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" style="padding:1px 6px;font-size:10px;">👁</button>
       <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button>
     </div>`).join('');
@@ -17296,6 +17336,7 @@ function controleRattachement() {
 }
 async function lierPiece(p, ios, ex) {
   const liens = (p.liens || []).slice();
+  if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => k === cleIo(io) + '|' + (p.groupe || p.id))); if(DB.liensRefuses.length !== av) saveDB(); }
   ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
   return majPiece(p, { liens });
 }
@@ -17309,6 +17350,9 @@ async function detacherPiece(id) {
   if(!controleRattachement()) return;
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
   const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
+  // V104 : une pièce détachée à la main n'est plus jamais rejointe automatiquement à cette écriture
+  const cleRefus = _pjIo + '|' + (p.groupe || p.id);
+  if(!ensureLiensRefuses().includes(cleRefus)) { DB.liensRefuses.push(cleRefus); saveDB(); }
   if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
 }
 function deposerPourEcriture(io) {
@@ -17440,6 +17484,7 @@ function renderSaisiePJ() {
 // Appelé par saveEcriture une fois l'écriture enregistrée
 async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
   if(!_saisiePJ.length) return;
+  _ioEnDepot.add(cleIo(io)); // V104 : le justificatif choisi prime sur la liaison automatique
   const fichiers = _saisiePJ.slice(); _saisiePJ = []; renderSaisiePJ();
   if(PIECES === null) await chargerPieces();
   const ex = String(CURRENT_YEAR);
@@ -17460,6 +17505,7 @@ async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
     } catch(e) { console.error(e); toast(`Justificatif « ${f.name} » non enregistré : ${messageErreurStorage(e)} — joignez-le depuis le 📎 du Grand Livre`, 'error', 8000); }
   }
   if(ok) toast(`${ok} justificatif${ok > 1 ? 's' : ''} joint${ok > 1 ? 's' : ''} à l'écriture`, 'success');
+  _ioEnDepot.delete(cleIo(io));
   apresChangementJustifs();
 }
 
@@ -17467,9 +17513,10 @@ document.addEventListener('DOMContentLoaded', () => { try { renderSaisiePJ(); } 
 
 // ── GED : écritures rattachées à une pièce ──
 function htmlEcrituresDePiece(p) {
-  if(p.espace !== 'compta') return '';
+  if(p.espace !== 'compta' && p.espace !== 'permanent') return '';
   const liens = p.liens || [];
-  if(String(p.exercice) !== String(CURRENT_YEAR)) return liens.length ? `<span style="color:var(--text2);">${liens.length}</span>` : '';
+  if(p.espace === 'permanent' && !liens.some(l => l.ex === String(CURRENT_YEAR))) return liens.length ? `<span style="color:var(--text2);" title="Jointe à des écritures d'autres exercices">${liens.length} écr.</span>` : '';
+  if(p.espace === 'compta' && String(p.exercice) !== String(CURRENT_YEAR)) return liens.length ? `<span style="color:var(--text2);">${liens.length}</span>` : '';
   if(!liens.length) return pieceGeneree(p) ? '' : `<span style="color:var(--text2);" title="Rattachée à aucune écriture">—</span>`;
   if(!_justifs) preparerJustifs();
   const valides = liens.filter(l => l.ex === String(CURRENT_YEAR) && _justifs.has(l.io));
@@ -17516,7 +17563,7 @@ const chargerPdfJs = () => chargerScriptUnique('pdfjs', URLS_PDFJS, () => !!wind
 
 // Texte du tampon : n° de pièce des écritures rattachées (sans doublon), sur une ligne
 function texteTampon(p) {
-  if(!p || p.espace !== 'compta' || !Array.isArray(p.liens) || !p.liens.length) return '';
+  if(!p || (p.espace !== 'compta' && p.espace !== 'permanent') || !Array.isArray(p.liens) || !p.liens.length) return '';
   preparerJustifs();
   const ex = String(CURRENT_YEAR), nums = [];
   p.liens.forEach(l => {
@@ -17634,8 +17681,8 @@ async function apposerTampon(octets, texte) {
 }
 // Version tamponnée d'une pièce (cache par pièce, fichier et texte) ; null si pas de tampon à apposer
 const _cacheTampon = new Map();
-async function blobTamponne(p, blob) {
-  const texte = texteTampon(p); if(!texte) return null;
+async function blobTamponne(p, blob, texteForce) {
+  const texte = texteForce || texteTampon(p); if(!texte) return null; // V105 : texte imposé (sauvegarde, autres exercices)
   const genre = genrePiece(p); if(genre !== 'pdf' && genre !== 'image') return null;
   const cle = p.id + '|' + p.chemin + '|' + texte;
   if(_cacheTampon.has(cle)) return _cacheTampon.get(cle);
@@ -17647,6 +17694,407 @@ async function blobTamponne(p, blob) {
   return res;
 }
 function nomFichierTamponne(p) { return genrePiece(p) === 'image' ? String(p.nomFichier || 'piece').replace(/\.[^.]+$/, '') + '.pdf' : (p.nomFichier || 'piece.pdf'); }
+
+
+// ══════════════════════════════════════════════
+// V104 — LIAISON AUTOMATIQUE PAR RÉFÉRENCE
+// ══════════════════════════════════════════════
+// Une écriture sans pièce dont le n° de pièce correspond à la référence d'un document de la GED y est jointe
+// automatiquement : pièce comptable de l'exercice affiché, ou document du dossier permanent (version en vigueur,
+// valable pour tous les exercices — ex. un contrat référencé par les écritures d'un échéancier).
+// Fonctionne dans les deux sens : écriture saisie après le dépôt du document, ou document déposé après l'écriture.
+// Une pièce détachée à la main n'est plus rejointe automatiquement (DB.liensRefuses = ['io|groupe']).
+function normRef(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+function ensureLiensRefuses() { if(!Array.isArray(DB.liensRefuses)) DB.liensRefuses = []; return DB.liensRefuses; }
+const _ioEnDepot = new Set();
+function piecesParReference() {
+  const ex = String(CURRENT_YEAR), m = new Map();
+  const ajoute = p => { const k = normRef(p.numDoc); if(!k) return; if(!m.has(k)) m.set(k, []); m.get(k).push(p); };
+  (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === ex).forEach(ajoute);
+  groupesDP().forEach(g => ajoute(g.courante));
+  return m;
+}
+let _autoTimer = null, _autoEnCours = false;
+function programmerAutoLiaison() { if(_autoTimer || _autoEnCours) return; _autoTimer = setTimeout(autoLierParReference, 1200); }
+async function autoLierParReference() {
+  _autoTimer = null;
+  if(_autoEnCours || EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !PIECES || !DB || !DB.ecritures) return;
+  _autoEnCours = true;
+  let nbEcr = 0; const exemples = [];
+  try {
+    const ex = String(CURRENT_YEAR);
+    const refs = piecesParReference(); if(!refs.size) return;
+    preparerJustifs();
+    const refus = new Set(ensureLiensRefuses());
+    const ajouts = new Map(), iosLies = new Set();
+    _justifs.forEach(j => {
+      if(j.statut !== 'manquant' || !j.numDoc || _ioEnDepot.has(j.io)) return;
+      (refs.get(normRef(j.numDoc)) || []).forEach(p => {
+        if(refus.has(j.io + '|' + (p.groupe || p.id))) return;
+        if(!ajouts.has(p.id)) ajouts.set(p.id, { p, js: [] });
+        ajouts.get(p.id).js.push(j);
+      });
+    });
+    for(const { p, js } of ajouts.values()) {
+      if(String(CURRENT_YEAR) !== ex) break; // exercice changé entre-temps
+      const liens = (p.liens || []).slice();
+      js.forEach(j => { if(!liens.some(l => l.ex === ex && l.io === j.io)) liens.push({ ex, io: j.io, nd: j.numDoc || '', auto: true }); });
+      if(await majPiece(p, { liens })) js.forEach(j => { if(!iosLies.has(j.io)) { iosLies.add(j.io); if(exemples.length < 1) exemples.push({ j, p }); } });
+    }
+    nbEcr = iosLies.size;
+  } catch(e) { console.error('Liaison automatique', e); }
+  finally { _autoEnCours = false; }
+  if(nbEcr) {
+    const e0 = exemples[0];
+    toast(nbEcr === 1 ? `📎 Écriture #${e0.j.num} jointe automatiquement à « ${e0.p.titre || e0.p.nomFichier} » (même n° de pièce ${e0.j.numDoc})`
+      : `📎 ${nbEcr} écritures jointes automatiquement aux documents de même n° de pièce`, 'success', 6000);
+    apresChangementJustifs();
+  }
+}
+// Modifier la référence (n° de pièce) d'un document déposé
+async function modifierReferencePiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
+  const v = prompt("Référence (n° de pièce) du document.\nLes écritures sans pièce portant ce n° de pièce y seront jointes automatiquement.", p.numDoc || '');
+  if(v === null) return;
+  if(await majPiece(p, { numDoc: v.trim() }, 'Référence enregistrée')) { renderDocumentsVue(); programmerAutoLiaison(); }
+}
+
+
+// ══════════════════════════════════════════════
+// V105 — SAUVEGARDE DES DOCUMENTS DE LA GED (ZIP)
+// ══════════════════════════════════════════════
+// La sauvegarde (hebdomadaire ou bouton EXPORT) écrit, à côté des fichiers JSON des exercices, un ZIP de tous
+// les documents de la GED :
+//   Pièces comptables/<exercice>/…   Dossier permanent/<rubrique>/…   index.csv (inventaire)
+// Les pièces jointes à des écritures y sont TAMPONNÉES (n° de pièce, comme à l'impression) ; les autres sont
+// copiées telles quelles. Le n° de pièce est lu dans les écritures de chaque exercice (y compris clôturés).
+// Les documents ne sont pas recompressés (PDF et photos le sont déjà) : le ZIP est rapide à produire.
+const URLS_JSZIP = ['https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js'];
+const chargerJSZip = () => chargerScriptUnique('jszip', URLS_JSZIP, () => !!window.JSZip);
+
+// io → { numDoc, num } pour chaque exercice dont on a les écritures
+function indexEcrituresParExercice(ecrParEx) {
+  const idx = {};
+  Object.entries(ecrParEx || {}).forEach(([ex, ecr]) => {
+    const m = new Map();
+    (ecr || []).forEach(e => { const k = cleIo(e._io); if(!m.has(k)) m.set(k, { numDoc: e.numDoc || '', num: e.num }); });
+    idx[String(ex)] = m;
+  });
+  return idx;
+}
+function texteTamponSauvegarde(p, idx) {
+  if(!p || (p.espace !== 'compta' && p.espace !== 'permanent') || !Array.isArray(p.liens)) return '';
+  const nums = [];
+  p.liens.forEach(l => {
+    const m = idx[l.ex];
+    let nd = l.nd;
+    if(m) { const e = m.get(l.io); if(!e) return; nd = e.numDoc; } // écriture supprimée : pas de tampon pour elle
+    nd = String(nd || '').trim();
+    if(nd && !nums.includes(nd)) nums.push(nd);
+  });
+  return nums.join(' · ');
+}
+function nomZipSur(s, max) {
+  return String(s || '').replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').replace(/\s+/g, ' ').trim().slice(0, max || 90).replace(/[ .]+$/, '') || 'document';
+}
+function extensionDe(nom, mime) {
+  const m = String(nom || '').match(/\.([A-Za-z0-9]{1,5})$/);
+  return m ? m[1].toLowerCase() : (mime === 'application/pdf' ? 'pdf' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : 'bin');
+}
+function afficherProgressionSauvegarde(texte, ratio) {
+  let el = document.getElementById('backup-progress');
+  if(texte === null) { if(el) el.remove(); return; }
+  if(!el) {
+    el = document.createElement('div'); el.id = 'backup-progress';
+    el.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    el.innerHTML = `<div style="background:var(--bg1);border:1px solid var(--line2);border-radius:var(--radius);padding:24px 30px;width:440px;font-family:var(--mono);">
+      <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:12px;letter-spacing:.05em;">💾 SAUVEGARDE EN COURS</div>
+      <div id="backup-progress-txt" style="font-size:11px;color:var(--text1);margin-bottom:10px;min-height:16px;"></div>
+      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;"><div id="backup-progress-bar" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
+      <div style="font-size:10px;color:var(--text2);margin-top:10px;">Ne fermez pas l'onglet. Les pièces jointes à des écritures sont tamponnées de leur n° de pièce.</div></div>`;
+    document.body.appendChild(el);
+  }
+  document.getElementById('backup-progress-txt').textContent = texte;
+  document.getElementById('backup-progress-bar').style.width = Math.round((ratio || 0) * 100) + '%';
+}
+// Construit le ZIP et l'écrit dans le dossier choisi (ou le télécharge). Renvoie le rapport.
+async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
+  const rapport = { nb: 0, tamponnes: 0, nonTamponnes: [], echecs: [], taille: 0, nom: '', erreur: null };
+  if(!window._fbStorageActif) { rapport.erreur = 'stockage des documents non configuré'; return rapport; }
+  if(PIECES === null) await chargerPieces();
+  if(PIECES === null) { rapport.erreur = "l'index des documents n'a pas pu être lu"; return rapport; }
+  const pieces = PIECES.slice();
+  if(!pieces.length) { rapport.vide = true; return rapport; }
+  try { await chargerJSZip(); } catch(e) { rapport.erreur = 'bibliothèque ZIP introuvable (connexion internet ?)'; return rapport; }
+  const idx = indexEcrituresParExercice(ecrParEx);
+  const zip = new window.JSZip();
+  const noms = new Set();
+  const nomUnique = chemin => { let c = chemin, i = 2; const m = chemin.match(/^(.*?)(\.[^./]+)?$/); while(noms.has(c.toLowerCase())) c = `${m[1]} (${i++})${m[2] || ''}`; noms.add(c.toLowerCase()); return c; };
+  const lignesCsv = [['Espace', 'Exercice / rubrique', 'Date', 'Type', 'N° de pièce', 'Tampon', 'Écritures jointes', 'Titre', 'Fichier dans le ZIP', "Fichier d'origine", 'Version'].join(';')];
+  const csv = v => { const s = String(v === undefined || v === null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  let fait = 0;
+  const traiter = async p => {
+    try {
+      const url = await window._fbFichierUrl(p.chemin);
+      const brut = await blobDePiece(url);
+      if(!brut) throw new Error('téléchargement impossible (réglage CORS du stockage ?)');
+      const tampon = texteTamponSauvegarde(p, idx);
+      let blob = brut, tamponne = false;
+      if(tampon && (genrePiece(p) === 'pdf' || genrePiece(p) === 'image')) {
+        try { blob = await blobTamponne(p, brut, tampon); tamponne = !!blob; if(!blob) blob = brut; }
+        catch(e) { blob = brut; rapport.nonTamponnes.push(`${p.titre || p.nomFichier} (${e.message || e})`); }
+      }
+      const ext = tamponne ? 'pdf' : extensionDe(p.nomFichier, p.mime);
+      let dossier, base;
+      if(p.espace === 'permanent') {
+        dossier = `Dossier permanent/${nomZipSur(libRubrique(p.rubrique) || 'Sans rubrique', 60)}`;
+        base = `${p.titre || titreDepuisNom(p.nomFichier)} - v${p.version || 1}${p.enVigueur ? ' (en vigueur)' : ''}`;
+      } else {
+        dossier = `Pièces comptables/${nomZipSur(String(p.exercice || 'sans exercice') + (p.test ? ' TEST' : ''), 30)}`;
+        base = [p.dateDoc || '', tampon || p.numDoc || '', p.titre || titreDepuisNom(p.nomFichier)].filter(Boolean).join(' - ');
+      }
+      base = String(base).replace(new RegExp('\\.' + extensionDe(p.nomFichier, p.mime) + '$', 'i'), ''); // pas de double extension
+      const chemin = nomUnique(`${dossier}/${nomZipSur(base)}.${ext}`);
+      zip.file(chemin, blob, { binary: true, date: p.depose ? new Date(p.depose) : new Date() });
+      const ecrs = (p.liens || []).map(l => { const e = idx[l.ex] && idx[l.ex].get(l.io); return e ? `${l.ex} #${e.num}` : ''; }).filter(Boolean).join(', ');
+      lignesCsv.push([p.espace === 'permanent' ? 'Dossier permanent' : 'Pièce comptable', p.espace === 'permanent' ? libRubrique(p.rubrique) : p.exercice + (p.test ? ' TEST' : ''),
+        p.dateDoc ? fmtDateFr(p.dateDoc) : '', p.typePiece || '', p.numDoc || '', tamponne ? tampon : '', ecrs, p.titre || '', chemin, p.nomFichier || '', p.espace === 'permanent' ? (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : '') : ''].map(csv).join(';'));
+      rapport.nb++; if(tamponne) rapport.tamponnes++;
+      rapport.taille += blob.size;
+    } catch(e) { console.error(e); rapport.echecs.push(`${p.titre || p.nomFichier} — ${e.message || messageErreurStorage(e)}`); }
+    fait++;
+    afficherProgressionSauvegarde(`Documents de la GED : ${fait.toLocaleString('fr-FR')} / ${pieces.length.toLocaleString('fr-FR')}`, fait / pieces.length * 0.9);
+  };
+  // 3 documents à la fois : téléchargement et tampon en parallèle, mémoire maîtrisée
+  let i = 0;
+  await Promise.all([0, 1, 2].map(async () => { while(i < pieces.length) await traiter(pieces[i++]); }));
+  zip.file('index.csv', '﻿' + lignesCsv.join('\r\n'));
+  rapport.nom = `Documents GED - ${todayTime()}.zip`;
+  afficherProgressionSauvegarde('Écriture du fichier ZIP…', 0.92);
+  const opts = { type: 'blob', compression: 'STORE', streamFiles: true };
+  try {
+    if(dirHandle) {
+      const fh = await dirHandle.getFileHandle(rapport.nom, { create: true });
+      const w = await fh.createWritable();
+      await w.write(await zip.generateAsync(opts, m => afficherProgressionSauvegarde('Écriture du fichier ZIP…', 0.92 + m.percent / 100 * 0.08)));
+      await w.close();
+    } else {
+      const blob = await zip.generateAsync(opts);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = rapport.nom;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+  } catch(e) { console.error(e); rapport.erreur = "écriture du fichier ZIP impossible (" + (e.message || e) + ')'; }
+  return rapport;
+}
+
+
+// ══════════════════════════════════════════════
+// V106 — ÉDITIONS DE CLÔTURE DÉPOSÉES DANS LA GED
+// ══════════════════════════════════════════════
+// À la clôture d'un exercice, ses éditions sont produites en PDF et rangées dans la GED (pièces comptables de
+// l'exercice) : Bilan et Compte de résultat (comparatif N-1 si l'exercice précédent existe), Balance générale,
+// Grand Livre, Registre des immobilisations (s'il y en a), Révision comptable (s'il y a des cycles).
+// Documents « générés » (⚙ Clôture) : ni supprimables ni remplaçables à la main ; une nouvelle clôture après
+// réouverture les remplace. Sur un exercice déjà clôturé, bouton « Déposer les éditions de clôture dans la GED ».
+// Les éditions longues (Grand Livre…) sont mises en pages ici : jamais de ligne coupée, en-têtes de colonnes
+// répétés sur chaque page, numéro de page en bas à droite.
+LIB_MODULE_ORIGINE.ed = 'Clôture de l\'exercice';
+
+// Mise en pages : découpe le HTML en pages A4 (tableaux coupés entre deux lignes, en-tête de tableau répété)
+function paginerHtml(html, largeur, hauteurPage) {
+  const mk = () => { const p = document.createElement('div'); p.className = 'pdf-iso'; p.style.cssText = `position:absolute;left:-30000px;top:0;width:${largeur}px;background:#fff;color:#111;display:flow-root;`; document.body.appendChild(p); return p; };
+  const src = mk(); src.innerHTML = CSS_PDF_ISOLE + html;
+  const styles = Array.from(src.querySelectorAll('style')).map(s => { const h = s.outerHTML; s.remove(); return h; }).join('');
+  const pages = [];
+  let p = null, cible = null, nbPlaces = 0;
+  const limite = hauteurPage - 8; // marge de sécurité : une page ne déborde jamais au rendu
+  const tient = () => p.scrollHeight <= limite;
+  const ouvrirPage = chaine => {
+    p = mk(); p.innerHTML = styles; nbPlaces = 0;
+    let parent = p; chaine.forEach(anc => { const c = anc.cloneNode(false); parent.appendChild(c); parent = c; });
+    cible = parent;
+  };
+  const nouvellePage = chaine => { pages.push(p.innerHTML); p.remove(); ouvrirPage(chaine); };
+  const decouperTable = (table, chaine) => {
+    const thead = table.tHead, tfoot = table.tFoot;
+    const lignes = Array.from(table.tBodies).flatMap(tb => Array.from(tb.rows));
+    const nouvelle = () => {
+      const t = table.cloneNode(false);
+      Array.from(table.children).filter(c => c.tagName === 'COLGROUP' || c.tagName === 'CAPTION').forEach(c => t.appendChild(c.cloneNode(true)));
+      if(thead) t.appendChild(thead.cloneNode(true));
+      const tb = document.createElement('tbody'); t.appendChild(tb); return { t, tb };
+    };
+    let { t, tb } = nouvelle(); cible.appendChild(t);
+    if(!tient() && nbPlaces) { t.remove(); nouvellePage(chaine); ({ t, tb } = nouvelle()); cible.appendChild(t); }
+    let n = 0;
+    for(const r of lignes) {
+      tb.appendChild(r);
+      if(tient() || n === 0) { n++; nbPlaces++; continue; }
+      r.remove(); nouvellePage(chaine); ({ t, tb } = nouvelle()); cible.appendChild(t); tb.appendChild(r); n = 1; nbPlaces++;
+    }
+    if(tfoot) {
+      const f = tfoot.cloneNode(true); t.appendChild(f);
+      if(!tient()) { f.remove(); nouvellePage(chaine); ({ t, tb } = nouvelle()); cible.appendChild(t); t.appendChild(f); }
+    }
+  };
+  const placer = (node, chaine) => {
+    cible.appendChild(node);
+    if(tient()) { if(node.nodeType === 1 || String(node.textContent || '').trim()) nbPlaces++; return; }
+    node.remove();
+    if(node.nodeType === 1 && node.tagName === 'TABLE') return decouperTable(node, chaine);
+    if(node.nodeType === 1 && node.childNodes.length && !['TR', 'IMG', 'svg', 'CANVAS'].includes(node.tagName)) {
+      // Conteneur trop grand : on le répartit, ses enfants un par un (il est recréé sur la page suivante)
+      const clone = node.cloneNode(false); cible.appendChild(clone); cible = clone;
+      const chaineEnfants = chaine.concat([node]);
+      Array.from(node.childNodes).forEach(ch => placer(ch, chaineEnfants));
+      cible = cible.parentNode;
+      return;
+    }
+    if(nbPlaces) nouvellePage(chaine);
+    cible.appendChild(node); nbPlaces++;
+  };
+  ouvrirPage([]);
+  Array.from(src.childNodes).forEach(n => placer(n, []));
+  pages.push(p.innerHTML); p.remove(); src.remove();
+  return pages.filter((h, i) => i === 0 || /<(td|th|div|p|span|img|h\d)[\s>]/i.test(h.replace(/<style[\s\S]*?<\/style>/gi, '')));
+}
+// PDF d'une édition (plusieurs pages possibles) : pages rendues par lots puis assemblées, numérotées
+async function pdfEdition(html, paysage) {
+  await Promise.all([chargerHtml2pdf(), chargerPdfLib()]);
+  if(html && html.includes(LOGO_PLACEHOLDER)) html = html.split(LOGO_PLACEHOLDER).join(socLogo());
+  const largeur = paysage ? 1060 : 730;
+  const hauteurPage = Math.floor(largeur * (paysage ? 194 / 281 : 281 / 194)) - 4;
+  document.body.classList.add('pdf-en-cours');
+  try {
+    const pages = paginerHtml(html, largeur, hauteurPage);
+    const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+    const final = await PDFDocument.create();
+    const PAR_LOT = 6; // taille d'image raisonnable pour le navigateur
+    for(let i = 0; i < pages.length; i += PAR_LOT) {
+      const lot = pages.slice(i, i + PAR_LOT);
+      const hote = document.createElement('div');
+      hote.className = 'pdf-iso';
+      hote.style.cssText = `width:${largeur}px;background:#fff;color:#111;`;
+      hote.innerHTML = lot.map((h, k) => `<div style="height:${hauteurPage}px;overflow:hidden;${k < lot.length - 1 ? 'break-after:page;page-break-after:always;' : ''}">${h}</div>`).join('');
+      const blob = await window.html2pdf().set({
+        margin: [8, 8, 8, 8],
+        image: { type: 'jpeg', quality: 0.92 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: paysage ? 'landscape' : 'portrait' },
+        pagebreak: { mode: ['css'] }
+      }).from(hote).outputPdf('blob');
+      const doc = await PDFDocument.load(await blob.arrayBuffer());
+      const copies = await final.copyPages(doc, doc.getPageIndices().slice(0, lot.length));
+      copies.forEach(pg => final.addPage(pg));
+    }
+    const font = await final.embedFont(StandardFonts.Helvetica);
+    const n = final.getPageCount();
+    if(n > 1) final.getPages().forEach((pg, k) => {
+      const t = `Page ${k + 1} / ${n}`, { width } = pg.getSize();
+      pg.drawText(t, { x: width - 22 - font.widthOfTextAtSize(t, 7), y: 10, size: 7, font, color: rgb(0.45, 0.45, 0.45) });
+    });
+    return new Blob([await final.save()], { type: 'application/pdf' });
+  } finally { document.body.classList.remove('pdf-en-cours'); }
+}
+
+// Capture du HTML d'une édition : la fonction d'impression est appelée, printDoc remet le HTML au lieu d'ouvrir une fenêtre
+async function capturerImpression(fn) {
+  const cap = [];
+  window._captureImpression = cap;
+  try { await fn(); } finally { window._captureImpression = null; }
+  return cap;
+}
+function exerciceN1PourEditions() {
+  const prec = String(parseInt(CURRENT_YEAR, 10) - 1);
+  return (!isTestExercise(CURRENT_YEAR) && exercicesConnus().map(String).includes(prec)) ? prec : '';
+}
+// Éditions de l'exercice affiché → [{ code, titre, nom, html[], paysage }]
+async function capturerEditionsCloture() {
+  const y = String(CURRENT_YEAR), n1 = exerciceN1PourEditions();
+  const res = [];
+  // Options des éditions remises à leur valeur standard le temps de la capture
+  const champs = { 'ed-bg-scope': 'all', 'ed-bg-nonzero': '1', 'ed-gl-journal': '', 'ed-gl-period': 'all' };
+  const avant = {};
+  Object.entries(champs).forEach(([id, v]) => { const el = document.getElementById(id); if(el) { avant[id] = el.value; el.value = v; } });
+  const ajoute = async (code, titre, nom, fn) => {
+    try {
+      const cap = await capturerImpression(fn);
+      if(cap.length) res.push({ code, titre, nom, html: cap.map(c => c.html), paysage: !!cap[0].landscape });
+      else res.push({ code, titre, nom, erreur: 'édition non produite (contrôle bloquant ?)' });
+    } catch(e) { console.error(e); res.push({ code, titre, nom, erreur: e.message || String(e) }); }
+  };
+  try {
+    await ajoute('bilan', `Bilan ${y}`, `Bilan_${y}`, () => generateBilanPDF(n1));
+    await ajoute('cr', `Compte de résultat ${y}`, `Compte_de_resultat_${y}`, () => generateCRPDF(n1));
+    await ajoute('balance', `Balance générale ${y}`, `Balance_generale_${y}`, () => generateBG('pdf', n1));
+    await ajoute('gl', `Grand Livre ${y}`, `Grand_Livre_${y}`, () => exportGLPdf());
+    if((DB.immobilisations || []).length) await ajoute('immos', `Registre des immobilisations ${y}`, `Registre_immobilisations_${y}`, () => exportRegistreImmo('pdf'));
+    const R = DB.revision;
+    if(R && Array.isArray(R.cycles) && R.cycles.length) await ajoute('revision', `Révision comptable ${y}`, `Revision_comptable_${y}`, () => { rvPrintBalance(); R.cycles.forEach(c => rvPrintCycle(c.id)); });
+  } finally {
+    Object.entries(avant).forEach(([id, v]) => { const el = document.getElementById(id); if(el) el.value = v; });
+    document.querySelectorAll('#edition-bloquee-modal').forEach(m => m.style.display = 'none');
+  }
+  return res;
+}
+// Dépose (ou remplace) les éditions de clôture de l'exercice affiché dans la GED
+let _editionsEnCours = false;
+async function deposerEditionsCloture(silencieux) {
+  if(!window._fbStorageActif) { if(!silencieux) toast('Stockage des documents non configuré', 'error'); return null; }
+  if(_editionsEnCours) return null;
+  if(PIECES === null && !(await chargerPieces())) { toast("Éditions non déposées : l'index de la GED est illisible", 'error', 6000); return null; }
+  _editionsEnCours = true;
+  const y = String(CURRENT_YEAR), rapport = { ok: [], echecs: [] };
+  try {
+    afficherProgressionSauvegarde('Éditions de clôture : préparation…', 0.02);
+    const eds = await capturerEditionsCloture();
+    for(let i = 0; i < eds.length; i++) {
+      const e = eds[i];
+      afficherProgressionSauvegarde(`Éditions de clôture : ${e.titre} (${i + 1} / ${eds.length})`, (i + 0.5) / eds.length);
+      if(e.erreur) { rapport.echecs.push(`${e.titre} — ${e.erreur}`); continue; }
+      try {
+        const d = { cle: `ed:${y}:${e.code}`, espace: 'compta', exercice: y, test: isTestExercise(y), module: 'ed', edition: true,
+          x: { docHtml: e.html.join('\n<!--atrium-page-->\n') }, titre: e.titre, date: dateFinExercice(), typePiece: '', nom: e.nom, paysage: e.paysage };
+        await deposerDocumentGenere(d);
+        rapport.ok.push(e.titre);
+      } catch(err) { console.error(err); rapport.echecs.push(`${e.titre} — ${err.message || err}`); }
+    }
+  } finally { _editionsEnCours = false; afficherProgressionSauvegarde(null); }
+  updateNavCounts();
+  if(document.getElementById('tab-documents')?.classList.contains('active')) renderDocumentsVue();
+  if(rapport.echecs.length) toast(`Éditions de clôture : ${rapport.ok.length} déposée(s) dans la GED, ${rapport.echecs.length} en échec (${rapport.echecs.join(' ; ')}). Réessayez depuis l'onglet Éditions.`, 'error', 12000);
+  else if(!silencieux || rapport.ok.length) toast(`📄 Éditions de clôture ${y} déposées dans la GED : ${rapport.ok.join(', ')}`, 'success', 8000);
+  renderEditionsClotureGED();
+  return rapport;
+}
+// Le PDF d'une édition (plusieurs impressions possibles, ex. révision) : chaque impression commence une page
+async function pdfDepuisEdition(html, paysage) {
+  const parties = String(html).split('\n<!--atrium-page-->\n');
+  if(parties.length === 1) return pdfEdition(html, paysage);
+  await chargerPdfLib();
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const final = await PDFDocument.create();
+  for(const h of parties) {
+    const doc = await PDFDocument.load(await (await pdfEdition(h, paysage)).arrayBuffer());
+    (await final.copyPages(doc, doc.getPageIndices())).forEach(pg => final.addPage(pg));
+  }
+  return new Blob([await final.save()], { type: 'application/pdf' });
+}
+// Onglet Éditions : état des éditions déposées + bouton (exercice clôturé)
+function renderEditionsClotureGED() {
+  const zone = document.getElementById('ed-cloture-ged'); if(!zone) return;
+  const y = String(CURRENT_YEAR);
+  const deposees = (PIECES || []).filter(p => String(p.origine || '').startsWith(`ed:${y}:`));
+  if(EXERCISE_STATUS !== 'closed') {
+    zone.innerHTML = `<div style="font-size:12px;color:var(--text2);line-height:1.6;">À la clôture de l'exercice, ses éditions (bilan, compte de résultat, balance, Grand Livre, registre des immobilisations, révision) sont déposées automatiquement en PDF dans la GED.</div>`;
+    return;
+  }
+  zone.innerHTML = `<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:10px;">${deposees.length
+      ? `${deposees.length} édition(s) de clôture ${esc(y)} dans la GED : ${deposees.map(p => `<a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--cyan);">${esc(p.titre)}</a>`).join(', ')}.`
+      : `Aucune édition de clôture ${esc(y)} dans la GED (exercice clôturé avant la V106, ou dépôt en échec).`}</div>
+    <button class="btn btn-primary" onclick="deposerEditionsCloture()" ${window._fbStorageActif ? '' : 'disabled'}>${deposees.length ? '⟳ REFAIRE LES ÉDITIONS DE CLÔTURE' : '⬆ DÉPOSER LES ÉDITIONS DE CLÔTURE DANS LA GED'}</button>`;
+}
 
 </script>
 </body>
