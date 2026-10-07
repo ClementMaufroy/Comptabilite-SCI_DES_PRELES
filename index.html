@@ -980,8 +980,8 @@ applyTheme();
       <span id="btn-areporter-label">📮 À REPORTER EN N+1</span>
       <span id="btn-areporter-badge" style="background:var(--amber);color:#332200;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
     </button>
-    <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" style="letter-spacing:0.05em;">
-      <span>📌 PIÈCES À FORMALISER</span>
+    <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" title="Écritures de l'exercice auxquelles il manque un justificatif" style="letter-spacing:0.05em;">
+      <span>📎 PIÈCES À JOINDRE</span>
       <span id="btn-postit-badge" style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
     </button>
     <button class="btn btn-sm btn-gold btn-readonly-ok" onclick="exportData()">EXPORT</button>
@@ -1155,6 +1155,8 @@ applyTheme();
         </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:12px;">
+        <span id="saisie-pj" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-right:auto;"></span>
+        <input type="file" id="saisie-pj-input" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.eml,.msg" style="display:none;" onchange="saisieAjouterPJ(this.files);this.value='';">
         <span id="bal-indicator-2"></span>
         <button class="btn" onclick="resetSaisieForm()" style="padding:9px 20px;font-size:12px;">✕ ANNULER</button>
         <button class="btn btn-primary" id="save-ecriture-btn" onclick="saveEcriture()" style="padding:9px 24px;font-size:12px;letter-spacing:0.08em;">▶ ENREGISTRER L'ÉCRITURE</button>
@@ -2899,7 +2901,7 @@ applyTheme();
 </div>
 
 <!-- ══════════════ V98 : DÉPÔT DE DOCUMENTS ══════════════ -->
-<div id="doc-upload-modal" class="modal-overlay">
+<div id="doc-upload-modal" class="modal-overlay" style="z-index:1060;">
   <div class="modal" style="width:620px;">
     <div class="modal-title" id="dep-titre-modal">⬆ DÉPOSER DES DOCUMENTS</div>
     <div id="dep-espaces" style="display:flex;gap:18px;margin-bottom:12px;">
@@ -2937,7 +2939,28 @@ applyTheme();
 </div>
 
 <!-- ══════════════ V98 : VISIONNEUSE ══════════════ -->
-<div id="doc-viewer-modal" class="modal-overlay">
+<!-- V102 : pièces d'une écriture -->
+<div id="pj-modal" class="modal-overlay" style="z-index:1050;">
+  <div class="modal" style="max-width:640px;width:94vw;">
+    <div class="modal-title" id="pj-titre">📎 PIÈCES</div>
+    <div id="pj-corps" style="max-height:70vh;overflow-y:auto;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn" onclick="fermerPiecesEcriture()">FERMER</button></div>
+  </div>
+</div>
+<!-- V102 : appel de loyer → écritures du mois -->
+<div id="pj-appel-modal" class="modal-overlay" style="z-index:1050;">
+  <div class="modal" style="max-width:600px;width:94vw;">
+    <div class="modal-title">📎 JOINDRE L'APPEL DE LOYER</div>
+    <div id="pja-texte" style="font-size:12px;line-height:1.6;margin-bottom:10px;"></div>
+    <div id="pja-liste" style="max-height:300px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);"></div>
+    <div style="font-size:10px;color:var(--text2);margin-top:8px;">L'appel (PDF de la GED) devient le justificatif des écritures cochées : elles sortent de « Pièces à joindre ».</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+      <button class="btn" onclick="refuserLiaisonAppel()">NON MERCI</button>
+      <button class="btn btn-primary" id="pja-ok" onclick="accepterLiaisonAppel()">✓ JOINDRE L'APPEL</button>
+    </div>
+  </div>
+</div>
+<div id="doc-viewer-modal" class="modal-overlay" style="z-index:1070;">
   <div class="modal" style="width:1000px;max-width:96vw;height:92vh;max-height:92vh;display:flex;flex-direction:column;padding:16px;">
     <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
       <div style="flex:1;min-width:0;">
@@ -3680,9 +3703,8 @@ function montantPiecePostIt(p) {
   return Math.round(lignes.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0) * 100) / 100;
 }
 
-// Rendu du post-it : (a) met à jour le badge du bouton en haut à droite,
-// (b) affiche/masque le panneau ancré sous ce bouton selon _postItOpen.
-function renderPostItPieces() {
+// V102 : ancien post-it « Pièces à formaliser », remplacé par « Pièces à joindre » (renderPostItPieces du module documents)
+function renderPostItPiecesV101() {
   purgerPostItPieces();
   const list = ensurePiecesAFormaliser();
   const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
@@ -4923,6 +4945,7 @@ function resetSaisieForm() {
   document.getElementById('lines-body').innerHTML='';
   addLine(); addLine();
   updateNextNum(); upTotals();
+  _saisiePJ = []; renderSaisiePJ(); // V102
   toast('Saisie annulée', 'info');
 }
 
@@ -4939,6 +4962,7 @@ function cancelEditEcriture() {
   document.getElementById('s-journal').value='';
   document.getElementById('lines-body').innerHTML='';
   addLine(); updateNextNum(); upTotals();
+  _saisiePJ = []; renderSaisiePJ(); // V102
 }
 
 function saveEcriture() {
@@ -5027,6 +5051,7 @@ function saveEcriture() {
   }
 
   renum(); saveDB(); updateNavCounts();
+  deposerPJSaisie(io, journal, date, newNumDoc, lines[0]?.libelleEcriture || ''); // V102 : justificatif joint à la saisie
 
   if(isEditing) {
     toast('Écriture #'+editingNum+' mise à jour','success');
@@ -5200,6 +5225,7 @@ function showJnlDetail(j,year) {
   const lines=DB.ecritures.filter(e=>e.journal===j&&(!year||e.date.startsWith(year))).sort((a,b)=>a.num-b.num);
   const totD=lines.reduce((s,e)=>s+e.debit,0);
   const totC=lines.reduce((s,e)=>s+e.credit,0);
+  preparerJustifs(); // V102
   document.getElementById('journal-detail').innerHTML=`
     <div class="card mt12">
       <div class="card-title">Journal ${JNL_LABELS[j]} <span class="jbadge j-${j}" style="font-size:9px;">${j}</span> <span class="chip chip-cyan ml-auto">${lines.length} lignes</span></div>
@@ -5209,7 +5235,7 @@ function showJnlDetail(j,year) {
             <th style="width:55px">N° GL</th><th style="width:80px">N° JNL</th><th style="width:90px">DATE</th>
             <th style="width:80px">COMPTE</th><th style="min-width:160px">LIBELLÉ COMPTE</th>
             <th style="min-width:180px">LIBELLÉ ÉCRITURE</th><th style="width:100px">N° DOC</th>
-            <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th>
+            <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th style="width:44px;text-align:center;" title="Justificatif">📎</th>
           </tr></thead>
           <tbody>${lines.map(e=>`<tr>
             <td><span class="npill">${e.num??""}</span></td>
@@ -5220,10 +5246,11 @@ function showJnlDetail(j,year) {
             <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${esc(e.numDoc||'')}</td>
             <td class="td-num c-debit">${fmtN(e.debit)}</td>
             <td class="td-num c-credit">${fmtN(e.credit)}</td>
+            <td style="text-align:center;padding:0 4px;">${htmlTromboneEcriture(e)}</td>
           </tr>`).join('')}</tbody>
           <tfoot><tr class="tfoot-row">
             <td colspan="7" style="text-align:right;padding:7px 12px;font-size:9px;letter-spacing:0.1em;color:var(--text2);">TOTAUX</td>
-            <td class="td-num c-debit">${fmt(totD)}</td><td class="td-num c-credit">${fmt(totC)}</td>
+            <td class="td-num c-debit">${fmt(totD)}</td><td class="td-num c-credit">${fmt(totC)}</td><td></td>
           </tr></tfoot>
         </table>
       </div>
@@ -5303,6 +5330,7 @@ function glSort(col) {
 let glUncheckedIds = new Set(); // persiste le lettrage entre les changements de filtre
 
 function renderGL() {
+  preparerJustifs(); // V102 : état des justificatifs (trombone)
   let rows=getGLF();
   const compteFilter = (document.getElementById('gl-f-compte')?.value||'').trim();
   const isCompteMode = compteFilter.length >= 6;
@@ -5345,6 +5373,7 @@ function renderGL() {
       <td class="td-num c-credit">${fmtN(e.credit)}</td>
       <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
       <td style="text-align:center;padding:0 4px;white-space:nowrap;">
+        ${htmlTromboneEcriture(e)}
         ${(() => { const m = moduleDeLEcriture(e); if(m) { const info = MODULES_ECRITURES[m] || {nom:m}; return `<button class="btn btn-sm btn-icon" onclick="ouvrirModuleEcriture('${e.id}')" title="Écriture gérée par le module ${esc(info.nom)} — cliquer pour y aller" style="padding:1px 5px;font-size:9px;color:var(--text2);">🔒 ${esc(info.nom.split(' (')[0].split(' ')[0])}</button>`; }
           return `<button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>`; })()}
@@ -7284,9 +7313,9 @@ function controlesAvantCloture() {
   const ecartR = ecartConstatation();
   if(Math.abs(ecartR) > 0.005) blocages.push({ module: "Écritures d'inventaire", detail: `Résultat constaté ${fmt(montantConstate())} € ≠ résultat actuel ${fmt(computeResultatExercice().resultat)} € (écart ${fmt(ecartR)} €)`, action: { label: '↻ RECALCULER', fn: 'recalculerConstatation()' } });
 
-  // 1. Pièces à formaliser
-  const pieces = grouperPostItParPiece(ensurePiecesAFormaliser()).filter(g => !g.coche);
-  if(pieces.length) blocages.push({ module: 'Pièces à formaliser', detail: `${pieces.length} pièce(s) non cochée(s) dans le post-it : ${liste(pieces.map(g => g.ref.numDoc))}` });
+  // 1. Pièces à joindre (V102) : toute écriture doit avoir son justificatif ou être marquée « sans justificatif »
+  const pieces = ecrituresManquantes();
+  if(pieces.length) blocages.push({ module: 'Pièces à joindre', detail: `${pieces.length} écriture(s) sans justificatif : ${liste(pieces.map(j => '#' + j.num + (j.numDoc ? ' ' + j.numDoc : '')))}`, action: { label: '📎 VOIR LA LISTE', fn: "_postItOpen=true;renderPostItPieces()" } });
 
   // 2. Échéanciers
   ensureEcheanciersArray().forEach(ech => {
@@ -11708,7 +11737,9 @@ function generateAppelLoyerV2() {
   });
   saveDB(); updateNavCounts();
   closeAppelModal();
-  ouvrirDocumentModule('loc', loc.historique[loc.historique.length - 1], loc); // V101 : PDF de la GED
+  // V102 : proposer de joindre l'appel aux écritures de loyer/provision du mois, puis l'afficher
+  const entreeAppel = loc.historique[loc.historique.length - 1];
+  proposerLiaisonAppel(loc, entreeAppel, () => ouvrirDocumentModule('loc', entreeAppel, loc));
   toast('Appel de loyer généré','success');
   if(_locDetailId) renderLocataireDetail(); else renderLocataires();
 }
@@ -16314,12 +16345,14 @@ function htmlPiecesComptables() {
     : !ouverts.length ? 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée'
     : `Exercice ${esc(cible)} clôturé : aucune pièce ne peut y être ajoutée`;
 
+  preparerJustifs(); // V102 : écritures rattachées
   const lignes = liste.map(p => `<tr>
       <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
       <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
       <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
       <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}</td>
+      <td style="font-size:10px;white-space:nowrap;">${htmlEcrituresDePiece(p)}</td>
       <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
       <td class="td-act">${htmlActionsPiece(p)}</td>
     </tr>`).join('');
@@ -16335,8 +16368,8 @@ function htmlPiecesComptables() {
     ${htmlZoneDepot('compta', null, depotActif, msgInactif)}
     <div class="tbl-wrap docs-scroll">
       <table>
-        <thead><tr><th style="width:80px;">Date</th><th style="width:80px;">Exercice</th><th style="width:70px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:70px;">Taille</th><th style="width:130px;"></th></tr></thead>
-        <tbody>${lignes || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
+        <thead><tr><th style="width:80px;">Date</th><th style="width:80px;">Exercice</th><th style="width:70px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:110px;" title="Écritures auxquelles la pièce est jointe">Écritures</th><th style="width:70px;">Taille</th><th style="width:130px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
       </table>
     </div>`;
 }
@@ -16410,12 +16443,13 @@ function maxVersion(groupe) {
 // DÉPÔT
 // ══════════════════════════════════════════════
 let _depot = null; // { espace, fichiers:[File], versionDe: id | null }
-function ouvrirDepot(espace, rubrique, fichiers, versionDe) {
+// V102 : options = { lien: { ex, ios:[…] }, numDoc, date, typePiece, titre, apres } — dépôt rattaché à des écritures
+function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   if(!window._fbStorageActif) { toast("Stockage des documents non configuré", 'error'); return; }
   if(PIECES === null) { toast("Index des documents illisible : rechargez l'onglet Documents", 'error'); return; }
   const source = versionDe ? (PIECES || []).find(p => p.id === versionDe) : null;
   if(espace === 'compta' && !exercicesOuverts().length) { toast('Aucun exercice ouvert : aucune pièce ne peut être ajoutée', 'error'); return; }
-  _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null };
+  _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null, options: options || null };
   const el = id => document.getElementById(id);
   // Exercices proposés : uniquement les exercices ouverts
   const cibleFiltre = filtreExerciceDocs();
@@ -16437,6 +16471,19 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe) {
   el('dep-titre-modal').textContent = source ? `⊕ NOUVELLE VERSION — ${source.titre || source.nomFichier}` : '⬆ DÉPOSER DES DOCUMENTS';
   el('dep-input').multiple = !source;
   el('dep-input').value = '';
+  // V102 : dépôt depuis une écriture — exercice, n° de pièce, type et date repris de l'écriture
+  const o = _depot.options;
+  if(o && o.lien) {
+    el('dep-espace-compta').checked = true; el('dep-espace-permanent').checked = false; _depot.espace = 'compta';
+    el('dep-espaces').style.display = 'none';
+    el('dep-exercice').value = o.lien.ex;
+    if(o.numDoc) el('dep-numdoc').value = o.numDoc;
+    if(o.date) el('dep-date').value = o.date;
+    if(o.typePiece) el('dep-type').value = o.typePiece;
+    if(o.titre) el('dep-titre').value = o.titre;
+    el('dep-titre-modal').textContent = `⬆ JOINDRE UN JUSTIFICATIF — écriture${o.lien.ios.length > 1 ? 's' : ''} ${o.libelleEcritures || ''}`;
+  }
+  el('dep-exercice').disabled = !!(o && o.lien);
   depotMajEspace();
   if(fichiers && fichiers.length) depotAjouterFichiers(fichiers);
   else depotRenderFichiers();
@@ -16499,6 +16546,7 @@ async function enregistrerDepot() {
     // Contrôle au moment de l'enregistrement : l'exercice a pu être clôturé entre-temps
     if(exerciceClos(exercice)) { err.textContent = `L'exercice ${exercice} est clôturé : aucune pièce ne peut y être ajoutée.`; return; }
     base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: el('dep-numdoc').value.trim() };
+    if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
     const rubrique = source ? source.rubrique : el('dep-rubrique').value;
     if(!rubrique) { err.textContent = 'Choisissez la rubrique.'; return; }
@@ -16547,7 +16595,9 @@ async function enregistrerDepot() {
   d.enCours = false;
   updateNavCounts();
   if(!echecs.length) {
+    const apres = d.options && d.options.apres;
     fermerDepot();
+    if(apres) apres();
     toast(`${nbOk} document${nbOk > 1 ? 's' : ''} enregistré${nbOk > 1 ? 's' : ''}`, 'success');
   } else {
     el('dep-btn').disabled = false;
@@ -16593,6 +16643,21 @@ async function voirPiece(id) {
   if(!_vue || _vue.id !== id) return; // visionneuse fermée ou autre document ouvert entre-temps
   _vue.url = url;
   const genre = genrePiece(p);
+  // V103 : pièce jointe à une écriture → copie tamponnée du n° de pièce
+  const tampon = texteTampon(p);
+  if(tampon && (genre === 'pdf' || genre === 'image')) {
+    document.getElementById('dv-infos').textContent += ` · tampon « ${tampon} »`;
+    corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Apposition du tampon ${esc(tampon)}…</div>`;
+    let tb = null;
+    try { const brut = await blobDePiece(url); if(brut) tb = await blobTamponne(p, brut); }
+    catch(e) { console.warn(e); toast('Tampon non apposé (' + (e.message || e) + ') : document affiché sans tampon', 'warn', 5000); }
+    if(!_vue || _vue.id !== id) return;
+    if(tb) {
+      _vue.blobUrl = URL.createObjectURL(tb); _vue.tamponne = true;
+      corps.innerHTML = `<iframe id="dv-frame" src="${_vue.blobUrl}" style="width:100%;height:100%;border:none;background:#fff;"></iframe>`;
+      return;
+    }
+  }
   if(genre === 'pdf') {
     const blob = await blobDePiece(url);
     if(!_vue || _vue.id !== id) return;
@@ -16607,7 +16672,7 @@ async function voirPiece(id) {
 async function imprimerPieceVue() {
   if(!_vue || !_vue.url) return;
   const p = (PIECES || []).find(x => x.id === _vue.id); if(!p) return;
-  const genre = genrePiece(p);
+  const genre = _vue.tamponne ? 'pdf' : genrePiece(p); // V103 : la copie tamponnée est toujours un PDF
   if(genre === 'pdf') {
     const fr = document.getElementById('dv-frame');
     if(_vue.blobUrl && fr) { try { fr.contentWindow.focus(); fr.contentWindow.print(); return; } catch(e) { console.warn(e); } }
@@ -16628,9 +16693,17 @@ async function telechargerPiece(id) {
   try { if(!url) url = await window._fbFichierUrl(p.chemin); }
   catch(e) { toast(messageErreurStorage(e), 'error', 6000); return; }
   let blobUrl = (_vue && _vue.id === id && _vue.blobUrl) || null, aRevoquer = false;
-  if(!blobUrl) { const b = await blobDePiece(url); if(b) { blobUrl = URL.createObjectURL(b); aRevoquer = true; } }
+  let tamponne = !!(blobUrl && _vue.tamponne);
+  if(!blobUrl) {
+    const b = await blobDePiece(url);
+    if(b) {
+      let tb = null; // V103 : téléchargement de la copie tamponnée
+      if(texteTampon(p)) { try { tb = await blobTamponne(p, b); } catch(e) { console.warn(e); toast('Tampon non apposé : fichier d\'origine téléchargé', 'warn', 4000); } }
+      blobUrl = URL.createObjectURL(tb || b); aRevoquer = true; tamponne = !!tb;
+    }
+  }
   if(!blobUrl) { window.open(url, '_blank'); return; } // sans réglage CORS : ouverture dans un onglet
-  const a = document.createElement('a'); a.href = blobUrl; a.download = p.nomFichier || 'document';
+  const a = document.createElement('a'); a.href = blobUrl; a.download = tamponne ? nomFichierTamponne(p) : (p.nomFichier || 'document');
   document.body.appendChild(a); a.click(); a.remove();
   if(aRevoquer) setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
 }
@@ -16667,7 +16740,12 @@ function askSupprimerPiece(id) {
   const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
   const quoi = p.espace === 'compta' ? `la pièce <strong>${esc(p.titre || p.nomFichier)}</strong> de l'exercice ${esc(p.exercice)}`
     : `la version ${p.version || 1} de <strong>${esc(p.titre || p.nomFichier)}</strong> (dossier permanent)`;
-  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> `,
+  // V102 : la pièce justifie des écritures → elles repasseront dans « Pièces à joindre »
+  preparerJustifs();
+  const liees = (p.liens || []).filter(l => l.ex === String(CURRENT_YEAR) && _justifs.has(l.io)).map(l => '#' + _justifs.get(l.io).num);
+  const autres = (p.liens || []).filter(l => l.ex !== String(CURRENT_YEAR)).length;
+  const avert = liees.length || autres ? `<br><span style="color:var(--amber);">Cette pièce justifie ${liees.length ? `l'écriture${liees.length > 1 ? 's' : ''} ${liees.join(', ')}` : ''}${liees.length && autres ? ' et ' : ''}${autres ? `${autres} écriture(s) d'un autre exercice` : ''} : ${liees.length + autres > 1 ? 'elles repasseront' : 'elle repassera'} dans « Pièces à joindre » (les écritures ne sont pas supprimées).</span>` : '';
+  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?${avert}<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> `,
     '🗑 SUPPRIMER DÉFINITIVEMENT', () => supprimerPieceDefinitivement(id));
 }
 async function supprimerPieceDefinitivement(id, silencieux) {
@@ -16681,7 +16759,7 @@ async function supprimerPieceDefinitivement(id, silencieux) {
     const restantes = PIECES.filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)).sort((a, b) => (b.version || 1) - (a.version || 1));
     if(restantes.length) await mettreEnVigueur(restantes[0].id, true);
   }
-  if(!silencieux) { toast('Document supprimé définitivement', 'success'); updateNavCounts(); if(_vue && _vue.id === id) fermerVisionneuse(); renderDocumentsVue(); }
+  if(!silencieux) { toast('Document supprimé définitivement', 'success'); updateNavCounts(); if(_vue && _vue.id === id) fermerVisionneuse(); renderDocumentsVue(); apresChangementJustifs(); }
   return true;
 }
 function supprimerPieceDepuisVue() { if(_vue) { const id = _vue.id; askSupprimerPiece(id); } }
@@ -16930,6 +17008,7 @@ function deposerDocumentGenere(d) {
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true });
     else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
+    if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
     catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
     if(existant) { try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {} }
@@ -17078,6 +17157,496 @@ function allegerAnciensDocuments() {
   if(n) saveDB();
   return n;
 }
+
+// ══════════════════════════════════════════════
+// V102 — RATTACHEMENT DES PIÈCES AUX ÉCRITURES
+// ══════════════════════════════════════════════
+// Une écriture = un groupe de lignes de même _io. Une pièce de la GED porte ses rattachements :
+// piece.liens = [{ ex: '2026', io: '…' }] — une pièce peut justifier plusieurs écritures, une écriture avoir plusieurs pièces.
+// Règles :
+//  - supprimer une écriture ne supprime jamais la pièce (le lien reste, l'écriture peut revenir par « Annuler ») ;
+//    la GED signale une pièce dont toutes les écritures ont disparu ;
+//  - supprimer une pièce rattachée demande confirmation ; ses écritures repassent dans « Pièces à joindre » ;
+//  - écritures de calcul (balance d'ouverture, constatation du résultat, intérêts de comptes courants, dotations) :
+//    pas de justificatif nécessaire ;
+//  - frais km et affectation du résultat : justifiés automatiquement par la fiche km / le PV du module ;
+//  - toute autre écriture doit avoir une pièce, ou être marquée « sans justificatif » (DB.sansJustificatif) ;
+//  - « Pièces à joindre » non vide = clôture impossible ; exercice clôturé = consultation seule.
+const MODULES_SANS_PIECE = ['bao', 'constatation', 'ccInterets', 'dotation'];
+const LIB_STATUT_JUSTIF = { joint: 'Justifiée', auto: 'Justifiée par le document du module', exempt: 'Écriture de calcul : pas de justificatif nécessaire', sans: 'Marquée « sans justificatif »', manquant: 'Pièce à joindre' };
+function cleIo(io) { return String(io === undefined || io === null ? '' : io); }
+function ensureSansJustif() { if(!Array.isArray(DB.sansJustificatif)) DB.sansJustificatif = []; return DB.sansJustificatif; }
+// Index des écritures de l'exercice affiché : io → { lignes, num, date, libelle, montant, numDoc, module }
+let _justifs = null;
+function preparerJustifs() {
+  const groupes = new Map();
+  (DB.ecritures || []).forEach(e => { const k = cleIo(e._io); if(!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(e); });
+  const liensParIo = new Map(), ex = String(CURRENT_YEAR);
+  (PIECES || []).forEach(p => (p.liens || []).forEach(l => { if(l.ex === ex) { if(!liensParIo.has(l.io)) liensParIo.set(l.io, []); liensParIo.get(l.io).push(p); } }));
+  const sans = new Set(ensureSansJustif().map(cleIo));
+  const res = new Map();
+  groupes.forEach((lignes, io) => {
+    let module = ''; for(const l of lignes) { module = moduleDeLaLigne(l); if(module) break; }
+    const pieces = liensParIo.get(io) || [];
+    const auto = pieces.length ? null : justifAuto(lignes, module);
+    const statut = pieces.length ? 'joint' : MODULES_SANS_PIECE.includes(module) ? 'exempt' : auto ? 'auto' : sans.has(io) ? 'sans' : 'manquant';
+    const l0 = lignes[0];
+    res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module,
+      montant: Math.round(lignes.reduce((s, x) => s + (parseFloat(x.debit) || 0), 0) * 100) / 100, pieces, auto, statut });
+  });
+  _justifs = res;
+  try { controlerNdLiens(); } catch(e) {} // V103 : n° de pièce mémorisé dans chaque lien (tampon)
+  return res;
+}
+function justifDe(io) { if(!_justifs) preparerJustifs(); return _justifs.get(cleIo(io)) || null; }
+// Document de module qui justifie automatiquement une écriture
+function justifAuto(lignes, module) {
+  if(module === 'km') {
+    const mois = lignes[0]._mois || String(lignes[0].date || '').slice(0, 7);
+    const f = ((DB.km || {}).fiches || []).find(x => x.mois === mois && !x.vehiculeId && aUnDocument(x)) || ((DB.km || {}).fiches || []).find(x => x.mois === mois && aUnDocument(x));
+    return f ? { module: 'km', x: f, libelle: `Fiche kilométrique ${moisLabelFromYYYYMM(mois)}` } : null;
+  }
+  if(module === 'approbation') {
+    const id = (lignes.find(l => l._pvId) || {})._pvId;
+    const pv = (DB.pvApprobations || []).find(p => id ? p.id === id : p.dateAG === lignes[0].date);
+    return pv && aUnDocument(pv) ? { module: 'pv', x: pv, libelle: `PV d'AGO — affectation du résultat ${pv.anneeConcernee || ''}` } : null;
+  }
+  return null;
+}
+function ecrituresManquantes() { preparerJustifs(); return [..._justifs.values()].filter(j => j.statut === 'manquant').sort((a, b) => (a.num || 0) - (b.num || 0)); }
+
+// ── Trombone (Grand Livre, journaux) ──
+function htmlTromboneEcriture(e) {
+  const j = justifDe(e._io); if(!j) return '';
+  const st = j.statut;
+  const style = { joint: 'color:var(--cyan);border-color:rgba(var(--accent-rgb),.45);', auto: 'color:var(--green);', exempt: 'opacity:.35;', sans: 'color:var(--text2);', manquant: 'color:var(--amber);border-color:rgba(255,200,64,.5);' }[st];
+  const txt = st === 'joint' ? `📎${j.pieces.length > 1 ? j.pieces.length : ''}` : st === 'sans' ? '∅' : st === 'exempt' ? '—' : '📎';
+  return `<button class="btn btn-sm btn-icon" onclick="ouvrirPiecesEcriture('${esc(cleIo(e._io))}')" title="${esc(LIB_STATUT_JUSTIF[st])}" style="padding:1px 5px;font-size:10px;${style}">${txt}</button>`;
+}
+let _pjIo = null, _pjRecherche = '', _pjTout = false, _pjRetourPostIt = false;
+function ouvrirPiecesEcriture(io, depuisPostIt) {
+  _pjIo = cleIo(io); _pjRecherche = ''; _pjTout = false; _pjRetourPostIt = !!depuisPostIt;
+  if(depuisPostIt) closePostItPieces(); // le panneau reviendra à la fermeture
+  renderPiecesEcriture(); document.getElementById('pj-modal').style.display = 'flex';
+}
+function fermerPiecesEcriture() {
+  document.getElementById('pj-modal').style.display = 'none'; _pjIo = null;
+  if(_pjRetourPostIt) { _pjRetourPostIt = false; setTimeout(() => { _postItOpen = true; renderPostItPieces(); }, 0); }
+}
+function renderPiecesEcriture() {
+  if(_pjIo === null) return;
+  preparerJustifs();
+  const j = justifDe(_pjIo);
+  const corps = document.getElementById('pj-corps');
+  if(!j) { corps.innerHTML = `<div style="padding:12px;color:var(--text2);">Écriture introuvable (supprimée ?).</div>`; return; }
+  const ouvert = EXERCISE_STATUS !== 'closed';
+  const actif = ouvert && !!window._fbStorageActif && PIECES !== null;
+  document.getElementById('pj-titre').textContent = `📎 PIÈCES — ÉCRITURE #${j.num}`;
+  const b = (lib, act, cls) => `<button class="btn btn-sm ${cls || ''}" onclick="${act}" style="padding:1px 8px;font-size:9px;">${lib}</button>`;
+  let h = `<div style="font-size:11px;color:var(--text1);margin-bottom:10px;line-height:1.6;">
+      <span class="jbadge j-${esc(j.journal)}">${esc(j.journal)}</span> ${j.date ? fmtDateFr(j.date) : ''} — ${esc(j.libelle)} — <strong>${fmt(j.montant)} €</strong>${j.numDoc ? ` — pièce <span style="font-family:var(--mono);">${esc(j.numDoc)}</span>` : ''}
+      <div style="margin-top:4px;font-weight:600;color:${j.statut === 'manquant' ? 'var(--amber)' : 'var(--text2)'};">${esc(LIB_STATUT_JUSTIF[j.statut])}${!ouvert ? ' · exercice clôturé : consultation uniquement' : ''}</div></div>`;
+  // Pièces rattachées
+  if(j.pieces.length) h += `<div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:10px;">${j.pieces.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${badgeOrigine(p)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
+      ${b('👁 VOIR', `voirPiece('${p.id}')`)}${ouvert ? b('DÉTACHER', `detacherPiece('${p.id}')`) : ''}</div>`).join('')}</div>`;
+  if(j.auto) h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line2);border-radius:var(--radius);font-size:11px;margin-bottom:10px;">
+      <span style="flex:1;">⚙ ${esc(j.auto.libelle)} <span style="color:var(--text2);font-size:10px;">(justification automatique)</span></span>${b('👁 VOIR', `voirJustifAuto('${esc(_pjIo)}')`)}</div>`;
+  if(j.statut === 'exempt') h += `<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Écriture calculée par Atrium : aucune pièce n'est demandée (vous pouvez tout de même en joindre une).</div>`;
+  if(actif) {
+    const lie = (j.module === 'echeancier' || j.module === 'emprunt');
+    h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        ${b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
+        ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « SANS JUSTIFICATIF »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ MARQUER SANS JUSTIFICATIF', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
+      </div>
+      ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:6px 0;">JOINDRE UNE PIÈCE DÉJÀ DANS LA GED</div>
+      <input type="text" id="pj-q" value="${esc(_pjRecherche)}" placeholder="Rechercher (titre, n° de pièce, fichier)…" oninput="_pjRecherche=this.value;clearTimeout(window._pjT);window._pjT=setTimeout(()=>{renderPiecesEcriture();const i=document.getElementById('pj-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="margin-bottom:6px;">
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${htmlPiecesCandidates(j)}</div>`;
+  }
+  corps.innerHTML = h;
+}
+function htmlPiecesCandidates(j) {
+  const q = _pjRecherche.trim().toLowerCase(), ex = String(CURRENT_YEAR);
+  const deja = new Set(j.pieces.map(p => p.id));
+  let liste = (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === ex && !deja.has(p.id));
+  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q));
+  // Même n° de pièce en premier, puis les plus récentes
+  liste.sort((a, b) => ((b.numDoc && b.numDoc === j.numDoc) - (a.numDoc && a.numDoc === j.numDoc)) || (b.dateDoc || '').localeCompare(a.dateDoc || ''));
+  if(!liste.length) return `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce de l'exercice ${esc(ex)}${q ? ' pour cette recherche' : ''}.</div>`;
+  return liste.slice(0, 60).map(p => `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.numDoc && p.numDoc === j.numDoc ? '★ ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
+      <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" style="padding:1px 6px;font-size:10px;">👁</button>
+      <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button>
+    </div>`).join('');
+}
+// Écritures visées : celle ouverte, et si demandé toutes celles du même échéancier / emprunt
+function iosCibles(io) {
+  const j = justifDe(io); if(!j) return [];
+  if(!_pjTout || !(j.module === 'echeancier' || j.module === 'emprunt')) return [cleIo(io)];
+  const cle = j.module === 'echeancier' ? '_echId' : '_empId';
+  const ref = (j.lignes.find(l => l[cle]) || {})[cle];
+  if(!ref) return [cleIo(io)];
+  return [...new Set((DB.ecritures || []).filter(e => e[cle] === ref).map(e => cleIo(e._io)))];
+}
+function controleRattachement() {
+  if(EXERCISE_STATUS === 'closed') { bloqueSiCloture(); return false; }
+  if(!window._fbStorageActif || PIECES === null) { toast('GED indisponible', 'error'); return false; }
+  return true;
+}
+async function lierPiece(p, ios, ex) {
+  const liens = (p.liens || []).slice();
+  ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
+  return majPiece(p, { liens });
+}
+async function joindrePieceExistante(id) {
+  if(!controleRattachement()) return;
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const ios = iosCibles(_pjIo);
+  if(await lierPiece(p, ios, CURRENT_YEAR)) { toast(`Pièce jointe à ${ios.length} écriture${ios.length > 1 ? 's' : ''}`, 'success'); apresChangementJustifs(); }
+}
+async function detacherPiece(id) {
+  if(!controleRattachement()) return;
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
+  if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
+}
+function deposerPourEcriture(io) {
+  if(!controleRattachement()) return;
+  const j = justifDe(io); if(!j) return;
+  const ios = iosCibles(io);
+  const code = String(j.numDoc || '').split(/[\/_]/)[0];
+  ouvrirDepot('compta', null, null, null, {
+    lien: { ex: String(CURRENT_YEAR), ios }, numDoc: j.numDoc, date: j.date, typePiece: typeSiConnu(code), titre: j.libelle,
+    libelleEcritures: ios.length > 1 ? `(${ios.length})` : '#' + j.num, apres: apresChangementJustifs
+  });
+}
+function voirJustifAuto(io) { const j = justifDe(io); if(j && j.auto) ouvrirDocumentModule(j.auto.module, j.auto.x); }
+function basculerSansJustif(ios, marquer) {
+  if(bloqueSiCloture()) return;
+  const liste = ensureSansJustif().map(cleIo);
+  DB.sansJustificatif = marquer ? [...new Set(liste.concat(ios.map(cleIo)))] : liste.filter(x => !ios.map(cleIo).includes(x));
+  saveDB();
+  toast(marquer ? `${ios.length} écriture${ios.length > 1 ? 's' : ''} marquée${ios.length > 1 ? 's' : ''} « sans justificatif »` : '« Sans justificatif » retiré', 'success');
+  apresChangementJustifs();
+}
+function apresChangementJustifs() {
+  preparerJustifs();
+  if(document.getElementById('pj-modal')?.style.display === 'flex') renderPiecesEcriture();
+  renderPostItPieces();
+  const actif = document.querySelector('.tab-content.active')?.id;
+  if(actif === 'tab-grandlivre') renderGL();
+  if(actif === 'tab-journaux') { const c = document.querySelector('.jcard.active'); if(c) c.click(); }
+  if(actif === 'tab-documents') renderDocumentsVue();
+}
+
+// ── Post-it « Pièces à joindre » (remplace « Pièces à formaliser ») ──
+let _pajSel = new Set(), _pajFiltre = 'all';
+const PAJ_MODULES = { '': 'Saisie manuelle', locative: 'Gestion locative', echeancier: 'Échéanciers', emprunt: 'Emprunts', km: 'Frais kilométriques', approbation: 'Approbation du résultat' };
+function renderPostItPieces() {
+  let manq = [];
+  try { manq = ecrituresManquantes(); } catch(e) { console.error(e); }
+  const badge = document.getElementById('btn-postit-badge');
+  if(badge) { if(manq.length) { badge.textContent = manq.length.toLocaleString('fr-FR'); badge.style.display = ''; } else badge.style.display = 'none'; }
+  let el = document.getElementById('postit-pieces');
+  if(!_postItOpen) { if(el) el.style.display = 'none'; return; }
+  if(!el) { el = document.createElement('div'); el.id = 'postit-pieces'; document.body.appendChild(el); }
+  const btn = document.getElementById('btn-postit-toggle');
+  const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
+  el.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${Math.max(10, window.innerWidth - rect.right)}px;width:420px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);border:1px solid var(--line2);display:block;`;
+  const ouvert = EXERCISE_STATUS !== 'closed';
+  const modulesPresents = [...new Set(manq.map(j => j.module))];
+  const liste = manq.filter(j => _pajFiltre === 'all' || j.module === _pajFiltre);
+  _pajSel = new Set([..._pajSel].filter(io => liste.some(j => j.io === io)));
+  const opts = `<option value="all">Tous (${manq.length})</option>` + modulesPresents.map(m => `<option value="${m}" ${_pajFiltre === m ? 'selected' : ''}>${esc(PAJ_MODULES[m] || m)} (${manq.filter(j => j.module === m).length})</option>`).join('');
+  el.innerHTML = `<div style="padding:8px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
+      <span style="font-size:14px;">📎</span>
+      <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">Pièces à joindre — ${esc(CURRENT_YEAR)}</strong>
+      <span style="cursor:pointer;font-size:16px;padding:0 4px;color:var(--text2);" onclick="closePostItPieces()" title="Fermer">✕</span>
+    </div>
+    <div style="padding:6px 10px;border-bottom:1px solid var(--line2);background:var(--bg2);font-size:10px;color:var(--text2);line-height:1.4;">
+      Écritures sans justificatif. Cliquez une écriture pour joindre sa pièce. La clôture est impossible tant que la liste n'est pas vide.
+      <select onchange="_pajFiltre=this.value;renderPostItPieces()" style="width:100%;font-size:10px;padding:4px;margin-top:6px;height:26px;">${opts}</select>
+    </div>
+    ${liste.length ? `<div style="max-height:380px;overflow-y:auto;padding:4px 6px;">${liste.map(j => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;margin-bottom:2px;">
+        ${ouvert ? `<input type="checkbox" ${_pajSel.has(j.io) ? 'checked' : ''} onchange="this.checked?_pajSel.add('${esc(j.io)}'):_pajSel.delete('${esc(j.io)}');renderPostItPieces()" style="width:14px;height:14px;margin-top:2px;flex-shrink:0;">` : ''}
+        <div style="flex:1;min-width:0;font-size:11px;line-height:1.35;cursor:pointer;" onclick="event.stopPropagation();ouvrirPiecesEcriture('${esc(j.io)}', true)">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-weight:600;color:var(--amber);"><span>#${j.num} ${esc(j.numDoc)}</span><span style="white-space:nowrap;">${fmt(j.montant)} €</span></div>
+          <div style="color:var(--text1);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(j.libelle)}</div>
+          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${esc(PAJ_MODULES[j.module] || j.module)} • ${j.date ? fmtDateFr(j.date) : ''}</div>
+        </div></div>`).join('')}</div>`
+      : `<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à joindre.</div>`}
+    ${ouvert && liste.length ? `<div style="padding:6px 10px;border-top:1px solid var(--line2);display:flex;gap:6px;align-items:center;background:var(--bg2);border-radius:0 0 6px 6px;">
+        <button class="btn btn-sm" onclick="_pajSel=new Set(${JSON.stringify(liste.map(j => j.io)).replace(/"/g, '&quot;')});renderPostItPieces()" style="padding:1px 8px;font-size:9px;">TOUT COCHER</button>
+        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;">∅ SANS JUSTIFICATIF (${_pajSel.size})</button>
+      </div>` : ''}`;
+}
+
+// ── Appel de loyer : proposition de rattachement aux écritures des mouvements « + » du mois ──
+let _pjAppel = null;
+function ecrituresAppelDuMois(loc, mois) {
+  const mvts = new Set((loc.mouvements || []).filter(m => m.sens === '+' && (m.affectations || []).some(a => a.mois === mois)).map(m => m.id));
+  if(!mvts.size) return [];
+  const ios = new Set((DB.ecritures || []).filter(e => (e._mvtLocataireIds || (e._mvtLocataireId ? [e._mvtLocataireId] : [])).some(id => mvts.has(id))).map(e => cleIo(e._io)));
+  preparerJustifs();
+  return [...ios].map(io => justifDe(io)).filter(Boolean).sort((a, b) => (a.num || 0) - (b.num || 0));
+}
+function proposerLiaisonAppel(loc, entree, ensuite) {
+  const fin = () => { if(ensuite) ensuite(); };
+  if(EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !entree || !entree.mois) return fin();
+  const ecr = ecrituresAppelDuMois(loc, entree.mois);
+  if(!ecr.length) return fin();
+  if(_postItOpen) closePostItPieces();
+  _pjAppel = { loc, entree, ensuite: fin, ios: new Set(ecr.map(j => j.io)) };
+  document.getElementById('pja-texte').innerHTML = `Joindre l'<strong>appel de loyer de ${esc(moisLabelFromYYYYMM(entree.mois))}</strong> (${esc([loc.prenom1, loc.nom1].filter(Boolean).join(' '))}) aux écritures de loyer et de provision de ce mois ?`;
+  document.getElementById('pja-liste').innerHTML = ecr.map(j => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;">
+      <input type="checkbox" checked onchange="this.checked?_pjAppel.ios.add('${esc(j.io)}'):_pjAppel.ios.delete('${esc(j.io)}')" style="width:14px;height:14px;">
+      <span style="font-family:var(--mono);color:var(--cyan);">#${j.num}</span>
+      <span style="flex:1;min-width:0;">${esc(j.libelle)} <span style="color:var(--text2);font-size:10px;">${j.date ? fmtDateFr(j.date) : ''}${j.pieces.length ? ' · déjà ' + j.pieces.length + ' pièce(s)' : ''}</span></span>
+      <span style="font-family:var(--mono);">${fmt(j.montant)} €</span></label>`).join('');
+  document.getElementById('pj-appel-modal').style.display = 'flex';
+}
+function refuserLiaisonAppel() { const s = _pjAppel && _pjAppel.ensuite; _pjAppel = null; document.getElementById('pj-appel-modal').style.display = 'none'; if(s) s(); }
+async function accepterLiaisonAppel() {
+  if(!_pjAppel) return;
+  const { loc, entree, ios, ensuite } = _pjAppel;
+  const btn = document.getElementById('pja-ok'); btn.disabled = true; btn.textContent = 'PRÉPARATION DU PDF…';
+  try {
+    const p = await pdfGedDocument('loc', entree, loc);
+    if(!p) throw new Error('PDF indisponible');
+    if(ios.size && await lierPiece(p, [...ios], CURRENT_YEAR)) toast(`Appel joint à ${ios.size} écriture${ios.size > 1 ? 's' : ''}`, 'success');
+  } catch(e) { console.error(e); toast("Rattachement impossible : " + (e.message || e), 'error', 6000); }
+  btn.disabled = false; btn.textContent = '✓ JOINDRE L\'APPEL';
+  _pjAppel = null; document.getElementById('pj-appel-modal').style.display = 'none';
+  apresChangementJustifs();
+  ensuite();
+}
+
+// ── Dépôt d'un justificatif depuis la saisie comptable ──
+let _saisiePJ = [];
+function saisieAjouterPJ(fichiers) {
+  if(EXERCISE_STATUS === 'closed') return;
+  if(!window._fbStorageActif) { toast('Stockage des documents non configuré', 'error'); return; }
+  const ok = Array.from(fichiers || []).filter(f => { if(f.size > DOC_TAILLE_MAX && !['image/jpeg', 'image/png', 'image/webp'].includes(f.type)) { toast(`${f.name} : plus de 20 Mo, refusé`, 'error'); return false; } return true; });
+  _saisiePJ = _saisiePJ.concat(ok); renderSaisiePJ();
+}
+function saisieRetirerPJ(i) { _saisiePJ.splice(i, 1); renderSaisiePJ(); }
+function renderSaisiePJ() {
+  const z = document.getElementById('saisie-pj'); if(!z) return;
+  z.innerHTML = `<button class="btn btn-sm" onclick="document.getElementById('saisie-pj-input').click()" title="Le justificatif sera déposé dans la GED et rattaché à l'écriture à l'enregistrement" style="padding:6px 12px;"
+      ondragover="event.preventDefault()" ondrop="event.preventDefault();saisieAjouterPJ(event.dataTransfer.files)">📎 JUSTIFICATIF${_saisiePJ.length ? ' (' + _saisiePJ.length + ')' : ''}</button>
+    ${_saisiePJ.map((f, i) => `<span class="chip" style="display:inline-flex;align-items:center;gap:4px;max-width:180px;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</span><span style="cursor:pointer;" onclick="saisieRetirerPJ(${i})">✕</span></span>`).join('')}`;
+}
+// Appelé par saveEcriture une fois l'écriture enregistrée
+async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
+  if(!_saisiePJ.length) return;
+  const fichiers = _saisiePJ.slice(); _saisiePJ = []; renderSaisiePJ();
+  if(PIECES === null) await chargerPieces();
+  const ex = String(CURRENT_YEAR);
+  const code = String(numDoc || '').split(/[\/_]/)[0];
+  let ok = 0;
+  for(const f of fichiers) {
+    try {
+      const prep = await preparerFichier(f);
+      if(prep.blob.size > DOC_TAILLE_MAX) throw new Error('plus de 20 Mo');
+      const id = crypto.randomUUID();
+      const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
+      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type);
+      const meta = { id, espace: 'compta', exercice: ex, test: isTestExercise(ex), typePiece: typeSiConnu(code), numDoc: numDoc || '',
+        titre: fichiers.length === 1 && libelle ? libelle : titreDepuisNom(f.name), dateDoc: date || dateLocale(new Date()),
+        nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin, depose: new Date().toISOString(), liens: [{ ex, io: cleIo(io), nd: numDoc || '' }] };
+      try { await window._fbPieceSave(meta); } catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
+      indexerPiece(meta); ok++;
+    } catch(e) { console.error(e); toast(`Justificatif « ${f.name} » non enregistré : ${messageErreurStorage(e)} — joignez-le depuis le 📎 du Grand Livre`, 'error', 8000); }
+  }
+  if(ok) toast(`${ok} justificatif${ok > 1 ? 's' : ''} joint${ok > 1 ? 's' : ''} à l'écriture`, 'success');
+  apresChangementJustifs();
+}
+
+document.addEventListener('DOMContentLoaded', () => { try { renderSaisiePJ(); } catch(e) {} });
+
+// ── GED : écritures rattachées à une pièce ──
+function htmlEcrituresDePiece(p) {
+  if(p.espace !== 'compta') return '';
+  const liens = p.liens || [];
+  if(String(p.exercice) !== String(CURRENT_YEAR)) return liens.length ? `<span style="color:var(--text2);">${liens.length}</span>` : '';
+  if(!liens.length) return pieceGeneree(p) ? '' : `<span style="color:var(--text2);" title="Rattachée à aucune écriture">—</span>`;
+  if(!_justifs) preparerJustifs();
+  const valides = liens.filter(l => l.ex === String(CURRENT_YEAR) && _justifs.has(l.io));
+  if(!valides.length) return `<span style="color:var(--amber);" title="Toutes les écritures rattachées ont été supprimées">⚠ écriture supprimée</span>`;
+  return valides.slice(0, 4).map(l => `<a href="#" onclick="ouvrirPiecesEcriture('${esc(l.io)}');return false;" style="color:var(--cyan);text-decoration:none;font-family:var(--mono);">#${_justifs.get(l.io).num}</a>`).join(' ') + (valides.length > 4 ? ` +${valides.length - 4}` : '');
+}
+
+
+// ══════════════════════════════════════════════
+// V103 — TAMPON « N° DE PIÈCE » SUR LES PIÈCES JOINTES AUX ÉCRITURES
+// ══════════════════════════════════════════════
+// Toute pièce PDF ou image rattachée à au moins une écriture s'affiche, s'imprime et se télécharge depuis la GED
+// avec un tampon vert foncé en haut à droite de la 1re page, portant le n° de pièce de l'écriture (ou des écritures).
+// Le fichier d'origine n'est jamais modifié dans le stockage : le tampon est apposé à la volée sur une copie,
+// il suit donc toujours l'écriture (n° de pièce modifié, pièce détachée…).
+// Placement : la 1re page est rendue en image, on y cherche la zone vide la plus proche du coin supérieur droit
+// pour ne recouvrir aucune inscription. Le tampon tient toujours sur une ligne : un n° long s'étend vers la gauche.
+// Chaque lien mémorise le n° de pièce (nd) : utile pour les pièces d'un autre exercice que celui affiché.
+const URLS_PDFLIB = ['https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js', 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'];
+const URLS_PDFJS = [
+  ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'],
+  ['https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js']
+];
+const TAMPON_VERT = [0x0B / 255, 0x5D / 255, 0x1E / 255]; // vert foncé #0B5D1E
+const _libsPromesses = {};
+function chargerScriptUnique(cle, candidats, pret) {
+  if(pret()) return Promise.resolve();
+  if(_libsPromesses[cle]) return _libsPromesses[cle];
+  _libsPromesses[cle] = (async () => {
+    for(const c of candidats) {
+      const url = Array.isArray(c) ? c[0] : c;
+      try {
+        await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = url; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+        if(pret()) { if(Array.isArray(c) && window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = c[1]; return; }
+      } catch(e) { console.warn('Chargement impossible : ' + url); }
+    }
+    _libsPromesses[cle] = null;
+    throw new Error('Bibliothèque introuvable (connexion internet ?)');
+  })();
+  return _libsPromesses[cle];
+}
+const chargerPdfLib = () => chargerScriptUnique('pdflib', URLS_PDFLIB, () => !!window.PDFLib);
+const chargerPdfJs = () => chargerScriptUnique('pdfjs', URLS_PDFJS, () => !!window.pdfjsLib);
+
+// Texte du tampon : n° de pièce des écritures rattachées (sans doublon), sur une ligne
+function texteTampon(p) {
+  if(!p || p.espace !== 'compta' || !Array.isArray(p.liens) || !p.liens.length) return '';
+  preparerJustifs();
+  const ex = String(CURRENT_YEAR), nums = [];
+  p.liens.forEach(l => {
+    let nd = l.nd;
+    if(l.ex === ex) { const j = justifDe(l.io); if(!j) return; nd = j.numDoc; } // écriture supprimée : pas de tampon pour elle
+    nd = String(nd || '').trim();
+    if(nd && !nums.includes(nd)) nums.push(nd);
+  });
+  return nums.join(' · ');
+}
+// Les liens de l'exercice affiché gardent en mémoire le n° de pièce de leur écriture (pour les autres exercices)
+let _ndAMettreAJour = new Map(), _ndTimer = null;
+function controlerNdLiens() {
+  if(EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !_justifs) return;
+  const ex = String(CURRENT_YEAR);
+  (PIECES || []).forEach(p => {
+    if(!(p.liens || []).some(l => l.ex === ex && _justifs.has(l.io) && (l.nd || '') !== (_justifs.get(l.io).numDoc || ''))) return;
+    _ndAMettreAJour.set(p.id, true);
+  });
+  if(_ndAMettreAJour.size && !_ndTimer) _ndTimer = setTimeout(async () => {
+    _ndTimer = null;
+    const ids = [..._ndAMettreAJour.keys()]; _ndAMettreAJour = new Map();
+    for(const id of ids) {
+      const p = (PIECES || []).find(x => x.id === id); if(!p || String(CURRENT_YEAR) !== ex) continue;
+      const liens = p.liens.map(l => (l.ex === ex && _justifs.has(l.io)) ? Object.assign({}, l, { nd: _justifs.get(l.io).numDoc || '' }) : l);
+      try { await majPiece(p, { liens }); } catch(e) { console.warn(e); }
+    }
+  }, 1500);
+}
+
+// Retire les caractères que la police standard du PDF ne sait pas écrire
+function texteEncodable(font, t) {
+  return [...t].map(ch => { try { font.encodeText(ch); return ch; } catch(e) { return ch === ' ' || ch === ' ' ? ' ' : '?'; } }).join('');
+}
+// Image (JPEG/PNG/…) → PDF d'une page A4 (orientée comme l'image)
+async function pdfDepuisImage(blob) {
+  const { PDFDocument } = window.PDFLib;
+  const bmp = await createImageBitmap(blob);
+  const c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+  const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height); cx.drawImage(bmp, 0, 0);
+  const jpg = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+  const doc = await PDFDocument.create();
+  const img = await doc.embedJpg(new Uint8Array(await jpg.arrayBuffer()));
+  const paysage = bmp.width > bmp.height;
+  const [W, H] = paysage ? [842, 595] : [595, 842], m = 20;
+  const k = Math.min((W - 2 * m) / bmp.width, (H - 2 * m) / bmp.height);
+  const w = bmp.width * k, h = bmp.height * k;
+  doc.addPage([W, H]).drawImage(img, { x: (W - w) / 2, y: H - m - h, width: w, height: h });
+  return doc.save();
+}
+// Cherche la zone vide la plus proche du coin supérieur droit (coordonnées de l'image rendue, origine en haut à gauche)
+function zoneLibreTampon(data, W, H, w, h, marge) {
+  const I = new Uint32Array((W + 1) * (H + 1)); // image intégrale des pixels « encrés »
+  for(let y = 0; y < H; y++) {
+    let ligne = 0;
+    for(let x = 0; x < W; x++) {
+      const i = (y * W + x) * 4;
+      if(data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114 < 235) ligne++;
+      I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + ligne;
+    }
+  }
+  const encre = (x, y, ww, hh) => I[(y + hh) * (W + 1) + x + ww] - I[y * (W + 1) + x + ww] - I[(y + hh) * (W + 1) + x] + I[y * (W + 1) + x];
+  const xMax = W - marge - w, yMax = Math.round(H * 0.4) - h;
+  const xMin = Math.max(marge, Math.min(xMax, Math.round(W * 0.45)));
+  if(xMax < marge || yMax < marge) return null;
+  let best = null;
+  for(let y = marge; y <= yMax; y += 2) {
+    for(let x = xMax; x >= xMin; x -= 2) {
+      const d = (y - marge) + (xMax - x) * 0.6; // le haut prime légèrement sur la droite
+      if(best && d >= best.d) break;
+      if(encre(x, y, w, h) === 0) { best = { x, y, d }; break; }
+    }
+  }
+  return best;
+}
+// Appose le tampon sur la 1re page ; renvoie un Blob PDF
+async function apposerTampon(octets, texte) {
+  await Promise.all([chargerPdfLib(), chargerPdfJs()]);
+  const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
+  const doc = await PDFDocument.load(octets, { ignoreEncryption: true });
+  if(doc.isEncrypted) throw new Error('PDF protégé');
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  texte = texteEncodable(font, texte);
+  const page = doc.getPage(0);
+  // Rendu de la 1re page pour repérer les inscriptions
+  const pdf = await window.pdfjsLib.getDocument({ data: octets.slice(0), isEvalSupported: false }).promise;
+  const pg = await pdf.getPage(1);
+  const v1 = pg.getViewport({ scale: 1 });
+  const s = 700 / Math.max(v1.width, v1.height);
+  const vp = pg.getViewport({ scale: s });
+  const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const cx = c.getContext('2d', { willReadFrequently: true }); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+  await pg.render({ canvasContext: cx, viewport: vp }).promise;
+  // Dimensions du tampon (points PDF) : une seule ligne, police réduite si le n° est très long
+  const largeurPage = v1.width, margePt = 14, padX = 7, padY = 4;
+  let taille = 13;
+  while(taille > 7 && font.widthOfTextAtSize(texte, taille) + 2 * padX > largeurPage - 2 * margePt) taille -= 0.5;
+  const hTexte = font.heightAtSize(taille), descente = hTexte - font.heightAtSize(taille, { descender: false });
+  const wPt = font.widthOfTextAtSize(texte, taille) + 2 * padX, hPt = hTexte + 2 * padY;
+  const air = 4; // pixels d'air autour du tampon
+  const z = zoneLibreTampon(cx.getImageData(0, 0, c.width, c.height).data, c.width, c.height,
+    Math.ceil(wPt * s) + 2 * air, Math.ceil(hPt * s) + 2 * air, Math.round(margePt * s * 0.6));
+  const xPx = z ? z.x + air : c.width - Math.round(margePt * s) - Math.ceil(wPt * s);
+  const yPx = z ? z.y + air : Math.round(margePt * s);
+  pdf.destroy();
+  // Coin visuel bas-gauche du tampon → coordonnées PDF (gère rotation et cadrage de la page)
+  const [ax, ay] = vp.convertToPdfPoint(xPx, yPx + hPt * s);
+  const rot = ((page.getRotation().angle % 360) + 360) % 360;
+  const rotP = (dx, dy) => { const a = rot * Math.PI / 180; return [ax + dx * Math.cos(a) - dy * Math.sin(a), ay + dx * Math.sin(a) + dy * Math.cos(a)]; };
+  const vert = rgb(...TAMPON_VERT);
+  page.drawRectangle({ x: ax, y: ay, width: wPt, height: hPt, rotate: degrees(rot), color: rgb(1, 1, 1), opacity: 0.92, borderColor: vert, borderWidth: 1.6 });
+  const [tx, ty] = rotP(padX, padY + descente);
+  page.drawText(texte, { x: tx, y: ty, size: taille, font, color: vert, rotate: degrees(rot) });
+  return new Blob([await doc.save()], { type: 'application/pdf' });
+}
+// Version tamponnée d'une pièce (cache par pièce, fichier et texte) ; null si pas de tampon à apposer
+const _cacheTampon = new Map();
+async function blobTamponne(p, blob) {
+  const texte = texteTampon(p); if(!texte) return null;
+  const genre = genrePiece(p); if(genre !== 'pdf' && genre !== 'image') return null;
+  const cle = p.id + '|' + p.chemin + '|' + texte;
+  if(_cacheTampon.has(cle)) return _cacheTampon.get(cle);
+  await chargerPdfLib();
+  const octets = genre === 'pdf' ? new Uint8Array(await blob.arrayBuffer()) : await pdfDepuisImage(blob);
+  const res = await apposerTampon(octets, texte);
+  if(_cacheTampon.size > 30) _cacheTampon.delete(_cacheTampon.keys().next().value);
+  _cacheTampon.set(cle, res);
+  return res;
+}
+function nomFichierTamponne(p) { return genrePiece(p) === 'image' ? String(p.nomFichier || 'piece').replace(/\.[^.]+$/, '') + '.pdf' : (p.nomFichier || 'piece.pdf'); }
 
 </script>
 </body>
