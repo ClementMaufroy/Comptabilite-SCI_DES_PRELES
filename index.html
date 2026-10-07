@@ -1757,10 +1757,10 @@ applyTheme();
         <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line2);">
             <div>
-              <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">🗂 DOSSIER PERMANENT — RUBRIQUES</div>
-              <div style="font-size:10px;color:var(--text2);margin-top:2px;">Communes à tous les exercices (enregistrées dans Firebase), modifiables même sur un exercice clôturé. Une rubrique qui contient des documents ne peut pas être supprimée.</div>
+              <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">🗂 GED — CLASSEURS DU DOSSIER PERMANENT</div>
+              <div style="font-size:10px;color:var(--text2);margin-top:2px;">Communs à tous les exercices. Classeurs, couleurs et types de documents se gèrent dans la GED (et les classeurs des pièces comptables aussi).</div>
             </div>
-            <button class="btn btn-sm btn-primary" onclick="ajouterRubriqueDP()">+ Ajouter une rubrique</button>
+            <button class="btn btn-sm btn-primary" onclick="allerGestionClasseursDP()">⚙ Gérer dans la GED</button>
           </div>
           <div id="params-dp-rubriques"></div>
         </div>
@@ -2928,7 +2928,10 @@ applyTheme();
       <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Seuls les exercices ouverts sont proposés : une pièce ne peut pas être ajoutée à un exercice clôturé.</div>
     </div>
     <div id="dep-bloc-permanent">
-      <div class="form-row c2 mb8"><div class="form-field"><label>Rubrique *</label><select id="dep-rubrique"></select></div>
+      <select id="dep-rubrique" style="display:none;"></select>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:4px;">CLASSEURS * (un ou plusieurs)</div>
+      <div id="dep-classeurs" style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:10px;max-height:110px;overflow-y:auto;"></div>
+      <div class="form-row c2 mb8"><div class="form-field"><label>Type de document</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
         <div class="form-field"><label title="Les écritures portant ce n° de pièce seront jointes automatiquement à ce document">Référence (n° de pièce)</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div></div>
       <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Avec une référence, toute écriture portant ce n° de pièce (ex. un échéancier) est jointe automatiquement à ce document, quel que soit l'exercice.</div>
     </div>
@@ -2968,6 +2971,28 @@ applyTheme();
     </div>
   </div>
 </div>
+<!-- V107 : classement d'un document du DP -->
+<div id="cls-doc-modal" class="modal-overlay" style="z-index:1060;">
+  <div class="modal" style="width:460px;max-width:94vw;">
+    <div class="modal-title">🗂 CLASSEMENT DU DOCUMENT</div>
+    <div id="cls-doc-titre" style="font-size:12px;color:var(--text1);margin-bottom:12px;"></div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:6px;">CLASSEURS (un ou plusieurs)</div>
+    <div id="cls-doc-classeurs" style="max-height:240px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div class="form-field" style="margin-bottom:10px;"><label>Type de document</label><select id="cls-doc-type" style="font-family:var(--mono);"></select></div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">S'applique à toutes les versions du document.</div>
+    <div id="cls-doc-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;"></div>
+    <div class="flex gap8"><button class="btn btn-primary" onclick="enregistrerClassementDP()">✓ ENREGISTRER</button><button class="btn ml-auto" onclick="fermerClassementDP()">ANNULER</button></div>
+  </div>
+</div>
+<!-- V107 : gestion des classeurs -->
+<div id="gc-modal" class="modal-overlay" style="z-index:1060;">
+  <div class="modal" style="width:640px;max-width:95vw;">
+    <div class="modal-title" id="gc-titre">⚙ CLASSEURS</div>
+    <div id="gc-liste" style="max-height:62vh;overflow-y:auto;margin-bottom:10px;"></div>
+    <div id="gc-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;"></div>
+    <div class="flex gap8"><button class="btn btn-primary" onclick="enregistrerGestionClasseurs()">✓ ENREGISTRER</button><button class="btn ml-auto" onclick="fermerGestionClasseurs()">ANNULER</button></div>
+  </div>
+</div>
 <div id="doc-viewer-modal" class="modal-overlay" style="z-index:1070;">
   <div class="modal" style="width:1000px;max-width:96vw;height:92vh;max-height:92vh;display:flex;flex-direction:column;padding:16px;">
     <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;">
@@ -2975,6 +3000,7 @@ applyTheme();
         <div class="modal-title" id="dv-titre" style="margin-bottom:2px;"></div>
         <div id="dv-infos" style="font-size:10px;color:var(--text2);"></div>
       </div>
+      <button class="btn btn-sm" id="dv-ecriture" style="display:none;" onclick="const io=_vue&&_vue.io;fermerVisionneuse();if(io)ouvrirPiecesEcriture(io);">📎 PIÈCES DE L'ÉCRITURE</button>
       <button class="btn btn-sm btn-primary" onclick="imprimerPieceVue()">⎙ IMPRIMER</button>
       <button class="btn btn-sm" onclick="_vue && telechargerPiece(_vue.id)">⬇ TÉLÉCHARGER</button>
       <button class="btn btn-sm btn-danger" id="dv-suppr" onclick="supprimerPieceDepuisVue()" title="Supprimer définitivement (mot de passe)">🗑</button>
@@ -5264,7 +5290,7 @@ function showJnlDetail(j,year) {
             <th style="width:55px">N° GL</th><th style="width:80px">N° JNL</th><th style="width:90px">DATE</th>
             <th style="width:80px">COMPTE</th><th style="min-width:160px">LIBELLÉ COMPTE</th>
             <th style="min-width:180px">LIBELLÉ ÉCRITURE</th><th style="width:100px">N° DOC</th>
-            <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th><th style="width:44px;text-align:center;" title="Justificatif">📎</th>
+            <th class="td-num">DÉBIT</th><th class="td-num">CRÉDIT</th>
           </tr></thead>
           <tbody>${lines.map(e=>`<tr>
             <td><span class="npill">${e.num??""}</span></td>
@@ -5272,14 +5298,13 @@ function showJnlDetail(j,year) {
             <td style="font-family:var(--mono);font-size:11px;">${e.date}</td>
             <td style="font-family:var(--mono);font-size:12px;color:var(--cyan);">${e.compte}</td>
             <td>${esc(e.libelleCompte||'')}</td><td>${esc(e.libelleEcriture||'')}</td>
-            <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${esc(e.numDoc||'')}</td>
+            <td style="font-family:var(--mono);font-size:10px;color:var(--text2);">${htmlNumDocLien(e)}</td>
             <td class="td-num c-debit">${fmtN(e.debit)}</td>
             <td class="td-num c-credit">${fmtN(e.credit)}</td>
-            <td style="text-align:center;padding:0 4px;">${htmlTromboneEcriture(e)}</td>
           </tr>`).join('')}</tbody>
           <tfoot><tr class="tfoot-row">
             <td colspan="7" style="text-align:right;padding:7px 12px;font-size:9px;letter-spacing:0.1em;color:var(--text2);">TOTAUX</td>
-            <td class="td-num c-debit">${fmt(totD)}</td><td class="td-num c-credit">${fmt(totC)}</td><td></td>
+            <td class="td-num c-debit">${fmt(totD)}</td><td class="td-num c-credit">${fmt(totC)}</td>
           </tr></tfoot>
         </table>
       </div>
@@ -5397,12 +5422,11 @@ function renderGL() {
       <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);white-space:nowrap;">${e.compte}</td>
       <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.libelleCompte||'')}</td>
       <td style="font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(e.libelleEcriture||'')}</td>
-      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(e.numDoc||'')}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${htmlNumDocLien(e)}</td>
       <td class="td-num c-debit" data-debit="${e.debit}" data-credit="${e.credit}">${fmtN(e.debit)}</td>
       <td class="td-num c-credit">${fmtN(e.credit)}</td>
       <td class="td-num ${s>0?'c-pos':s<0?'c-neg':''}">${fmt(s)}</td>
       <td style="text-align:center;padding:0 4px;white-space:nowrap;">
-        ${htmlTromboneEcriture(e)}
         ${(() => { const m = moduleDeLEcriture(e); if(m) { const info = MODULES_ECRITURES[m] || {nom:m}; return `<button class="btn btn-sm btn-icon" onclick="ouvrirModuleEcriture('${e.id}')" title="Écriture gérée par le module ${esc(info.nom)} — cliquer pour y aller" style="padding:1px 5px;font-size:9px;color:var(--text2);">🔒 ${esc(info.nom.split(' (')[0].split(' ')[0])}</button>`; }
           return `<button class="btn btn-sm btn-icon" onclick="editEcriture('${e.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
         <button class="btn btn-sm btn-danger btn-icon" onclick="askDelete('${e.id}')" title="Supprimer" style="padding:1px 5px;font-size:10px;">✕</button>`; })()}
@@ -6259,7 +6283,7 @@ function renderParametres() {
   renderSocieteSettings();
   renderThemeSettings();
   renderPiecesTypesList();
-  renderRubriquesDP(); // V98
+  renderRubriquesDPV107(); // V98 → V107 : classeurs (gérés dans la GED)
 }
 
 // V77 : réglages d'apparence (mode clair/sombre + couleur dominante), stockés localement
@@ -16306,7 +16330,7 @@ async function renderDocuments(recharger) {
   }
   renderDocumentsVue();
 }
-function docsChangerVue(v) { _docsVue = v; renderDocumentsVue(); }
+function docsChangerVue(v) { if(v === _docsVue && typeof _docsClasseur !== 'undefined') _docsClasseur[v] = null; _docsVue = v; renderDocumentsVue(); } // V107 : re-clic = retour aux classeurs
 function docsFiltre(cle, val) { _docsFiltres[cle] = val; renderDocumentsVue(); }
 
 function renderDocumentsVue() {
@@ -16325,7 +16349,7 @@ function renderDocumentsVueInterne(zone) {
       ${alerte}<div class="alert alert-danger">L'index des documents n'a pas pu être lu dans Firebase (${esc(_piecesErreur || 'erreur inconnue')}). Aucun document n'est affiché. <button class="btn btn-sm" onclick="renderDocuments()" style="margin-left:8px;">↻ RÉESSAYER</button></div>`;
     return;
   }
-  const corps = _docsVue === 'permanent' ? htmlDossierPermanent() : htmlPiecesComptables();
+  const corps = _docsVue === 'permanent' ? htmlDossierPermanentV107() : htmlPiecesComptablesV107(); // V107 : classeurs
   zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}
       <button class="btn btn-sm" onclick="lancerSyncTousExercices()" style="margin-left:auto;" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button>
@@ -16497,6 +16521,12 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-rubrique').value = source ? source.rubrique : (rubrique || rubriquesDP()[0].code);
   el('dep-numdoc').value = '';
   el('dep-numdoc-dp').value = source ? (source.numDoc || '') : ''; // V104
+  // V107 : classeurs (plusieurs possibles) et type du dossier permanent
+  const clsCoches = new Set(source ? classeursDe(source) : (rubrique ? [rubrique] : []));
+  el('dep-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:6px;margin:0;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+      <input type="checkbox" value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+  el('dep-type-dp').innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  el('dep-type-dp').value = source ? (source.typeDP || '') : '';
   el('dep-date').value = dateLocale(new Date());
   el('dep-titre').value = source ? (source.titre || '') : '';
   el('dep-err').textContent = '';
@@ -16521,6 +16551,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
     el('dep-titre-modal').textContent = `⬆ JOINDRE UN JUSTIFICATIF — écriture${o.lien.ios.length > 1 ? 's' : ''} ${o.libelleEcritures || ''}`;
   }
   el('dep-exercice').disabled = !!(o && o.lien);
+  if(o && !o.lien && o.typePiece) el('dep-type').value = o.typePiece; // V107 : type du classeur ouvert
   depotMajEspace();
   if(fichiers && fichiers.length) depotAjouterFichiers(fichiers);
   else depotRenderFichiers();
@@ -16536,7 +16567,7 @@ function depotMajEspace() {
   }
   document.getElementById('dep-bloc-compta').style.display = _depot.espace === 'compta' ? '' : 'none';
   document.getElementById('dep-bloc-permanent').style.display = _depot.espace === 'permanent' ? '' : 'none';
-  document.getElementById('dep-rubrique').disabled = !!_depot.versionDe;
+  document.getElementById('dep-rubrique').disabled = !!_depot.versionDe; // (V107 : remplacé par les classeurs)
 }
 function depotAjouterFichiers(liste) {
   if(!_depot) return;
@@ -16585,9 +16616,9 @@ async function enregistrerDepot() {
     base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: el('dep-numdoc').value.trim() };
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
-    const rubrique = source ? source.rubrique : el('dep-rubrique').value;
-    if(!rubrique) { err.textContent = 'Choisissez la rubrique.'; return; }
-    base = { espace: 'permanent', rubrique, numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
+    const classeurs = Array.from(document.querySelectorAll('#dep-classeurs input:checked')).map(i => i.value); // V107
+    if(!classeurs.length) { err.textContent = 'Choisissez au moins un classeur.'; return; }
+    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
@@ -16661,19 +16692,21 @@ function fermerVisionneuse() {
 async function blobDePiece(url) {
   try { const r = await fetch(url); if(!r.ok) return null; return await r.blob(); } catch(e) { return null; }
 }
-async function voirPiece(id) {
+async function voirPiece(id, ctx) {
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const btnEcr = document.getElementById('dv-ecriture'); // V107 : ouverte depuis le n° de pièce d'une écriture
+  if(btnEcr) btnEcr.style.display = (ctx && ctx.io) ? '' : 'none';
   const modal = document.getElementById('doc-viewer-modal');
   const corps = document.getElementById('dv-corps');
   document.getElementById('dv-titre').textContent = p.titre || p.nomFichier;
   const infos = p.espace === 'compta'
     ? [`Exercice ${p.exercice}${p.test ? ' (TEST)' : ''}`, p.typePiece ? libTypePiece(p.typePiece) : '', p.numDoc ? 'Pièce ' + p.numDoc : '', p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : '']
-    : [`Dossier permanent — ${libRubrique(p.rubrique)}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
+    : [`Dossier permanent — ${classeursDe(p).map(libRubrique).join(', ') || 'sans classeur'}${p.typeDP ? ' — ' + libTypeDP(p.typeDP) : ''}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
   document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (pieceGeneree(p) ? ` · généré par ${LIB_MODULE_ORIGINE[p.module] || 'un module'}` : '');
   document.getElementById('dv-suppr').style.display = (pieceGeneree(p) || !pieceModifiable(p)) ? 'none' : '';
   corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement…</div>`;
   modal.style.display = 'flex';
-  _vue = { id, url: null, blobUrl: null };
+  _vue = { id, url: null, blobUrl: null, io: ctx && ctx.io ? ctx.io : null };
   let url;
   try { url = await window._fbFichierUrl(p.chemin); }
   catch(e) { corps.innerHTML = `<div class="alert alert-danger" style="margin:20px;">${esc(messageErreurStorage(e))}</div>`; return; }
@@ -17043,7 +17076,8 @@ function deposerDocumentGenere(d) {
       depose: existant ? existant.depose : new Date().toISOString(), modifie: existant ? new Date().toISOString() : null,
       origine: d.cle, origineSig: signatureDoc(d.x), origineExercice: d.exercice, module: d.module
     };
-    if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true });
+    if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
+      classeurs: existant ? classeursDe(existant) : [d.rubrique], typeDP: existant ? (existant.typeDP || '') : (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '' }); // V107 : classement conservé
     else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
@@ -17830,7 +17864,7 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
   const zip = new window.JSZip();
   const noms = new Set();
   const nomUnique = chemin => { let c = chemin, i = 2; const m = chemin.match(/^(.*?)(\.[^./]+)?$/); while(noms.has(c.toLowerCase())) c = `${m[1]} (${i++})${m[2] || ''}`; noms.add(c.toLowerCase()); return c; };
-  const lignesCsv = [['Espace', 'Exercice / rubrique', 'Date', 'Type', 'N° de pièce', 'Tampon', 'Écritures jointes', 'Titre', 'Fichier dans le ZIP', "Fichier d'origine", 'Version'].join(';')];
+  const lignesCsv = [['Espace', 'Exercice / classeurs', 'Date', 'Type', 'N° de pièce', 'Tampon', 'Écritures jointes', 'Titre', 'Fichier dans le ZIP', "Fichier d'origine", 'Version'].join(';')];
   const csv = v => { const s = String(v === undefined || v === null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   let fait = 0;
   const traiter = async p => {
@@ -17847,7 +17881,7 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
       const ext = tamponne ? 'pdf' : extensionDe(p.nomFichier, p.mime);
       let dossier, base;
       if(p.espace === 'permanent') {
-        dossier = `Dossier permanent/${nomZipSur(libRubrique(p.rubrique) || 'Sans rubrique', 60)}`;
+        dossier = `Dossier permanent/${nomZipSur(classeursDe(p).length ? libRubrique(classeursDe(p)[0]) : 'Sans classeur', 60)}`; // V107 : 1er classeur
         base = `${p.titre || titreDepuisNom(p.nomFichier)} - v${p.version || 1}${p.enVigueur ? ' (en vigueur)' : ''}`;
       } else {
         dossier = `Pièces comptables/${nomZipSur(String(p.exercice || 'sans exercice') + (p.test ? ' TEST' : ''), 30)}`;
@@ -17857,8 +17891,8 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
       const chemin = nomUnique(`${dossier}/${nomZipSur(base)}.${ext}`);
       zip.file(chemin, blob, { binary: true, date: p.depose ? new Date(p.depose) : new Date() });
       const ecrs = (p.liens || []).map(l => { const e = idx[l.ex] && idx[l.ex].get(l.io); return e ? `${l.ex} #${e.num}` : ''; }).filter(Boolean).join(', ');
-      lignesCsv.push([p.espace === 'permanent' ? 'Dossier permanent' : 'Pièce comptable', p.espace === 'permanent' ? libRubrique(p.rubrique) : p.exercice + (p.test ? ' TEST' : ''),
-        p.dateDoc ? fmtDateFr(p.dateDoc) : '', p.typePiece || '', p.numDoc || '', tamponne ? tampon : '', ecrs, p.titre || '', chemin, p.nomFichier || '', p.espace === 'permanent' ? (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : '') : ''].map(csv).join(';'));
+      lignesCsv.push([p.espace === 'permanent' ? 'Dossier permanent' : 'Pièce comptable', p.espace === 'permanent' ? classeursDe(p).map(libRubrique).join(' | ') : p.exercice + (p.test ? ' TEST' : ''),
+        p.dateDoc ? fmtDateFr(p.dateDoc) : '', (p.espace === 'permanent' ? p.typeDP : p.typePiece) || '', p.numDoc || '', tamponne ? tampon : '', ecrs, p.titre || '', chemin, p.nomFichier || '', p.espace === 'permanent' ? (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : '') : ''].map(csv).join(';'));
       rapport.nb++; if(tamponne) rapport.tamponnes++;
       rapport.taille += blob.size;
     } catch(e) { console.error(e); rapport.echecs.push(`${p.titre || p.nomFichier} — ${e.message || messageErreurStorage(e)}`); }
@@ -18094,6 +18128,373 @@ function renderEditionsClotureGED() {
       ? `${deposees.length} édition(s) de clôture ${esc(y)} dans la GED : ${deposees.map(p => `<a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--cyan);">${esc(p.titre)}</a>`).join(', ')}.`
       : `Aucune édition de clôture ${esc(y)} dans la GED (exercice clôturé avant la V106, ou dépôt en échec).`}</div>
     <button class="btn btn-primary" onclick="deposerEditionsCloture()" ${window._fbStorageActif ? '' : 'disabled'}>${deposees.length ? '⟳ REFAIRE LES ÉDITIONS DE CLÔTURE' : '⬆ DÉPOSER LES ÉDITIONS DE CLÔTURE DANS LA GED'}</button>`;
+}
+
+
+// ══════════════════════════════════════════════
+// V107 — CLASSEURS DE LA GED
+// ══════════════════════════════════════════════
+// Pièces comptables : classeurs libres (nom, couleur), chacun réunit les pièces de un ou plusieurs types
+// (un type peut être rangé dans plusieurs classeurs). Les pièces sans type, ou d'un type rangé nulle part,
+// vont dans « Non classés ». On choisit d'abord le classeur, puis on filtre à l'intérieur (exercice, type, recherche).
+// Dossier permanent : les anciennes rubriques deviennent des classeurs (avec couleur) ; un document peut être
+// rangé dans plusieurs classeurs (p.classeurs, p.rubrique = le premier, pour compatibilité). Le DP a sa propre
+// liste de types (DOCS_CONFIG.typesDP), modifiable ; dans un classeur, filtre par type et recherche.
+// Configuration commune à tous les exercices : DOCS_CONFIG.classeursCompta, .rubriques (+ couleur), .typesDP.
+const COULEURS_CLASSEUR = ['#3aa0ff', '#44e87a', '#ffb020', '#ff5c7a', '#a78bfa', '#2dd4bf', '#f472b6', '#facc15', '#fb923c', '#94a3b8'];
+const TYPES_DP_DEFAUT = [
+  { code: 'STAT', label: 'Statuts' }, { code: 'KBIS', label: 'Extrait Kbis' }, { code: 'PV', label: "Procès-verbal d'assemblée" },
+  { code: 'ACTE', label: 'Acte notarié' }, { code: 'BAIL', label: 'Bail' }, { code: 'PRET', label: 'Contrat de prêt' },
+  { code: 'ASSU', label: "Contrat d'assurance" }, { code: 'ECH', label: 'Contrat à échéances' }, { code: 'FISC', label: 'Document fiscal' },
+  { code: 'DIV', label: 'Divers' }
+];
+function classeursCompta() { return (DOCS_CONFIG && Array.isArray(DOCS_CONFIG.classeursCompta)) ? DOCS_CONFIG.classeursCompta : []; }
+function couleurRubrique(r, i) { return (r && r.couleur) || COULEURS_CLASSEUR[(i || 0) % COULEURS_CLASSEUR.length]; }
+function typesDP() { return (DOCS_CONFIG && Array.isArray(DOCS_CONFIG.typesDP)) ? DOCS_CONFIG.typesDP : TYPES_DP_DEFAUT; }
+function libTypeDP(code) { const t = typesDP().find(x => x.code === code); return t ? t.label : (code || ''); }
+function classeursDe(p) { return (Array.isArray(p.classeurs) && p.classeurs.length) ? p.classeurs : (p.rubrique ? [p.rubrique] : []); }
+async function enregistrerDocsConfig(changements) {
+  const cfg = Object.assign({}, DOCS_CONFIG || {}, changements);
+  await window._fbDocsConfigSave(cfg);
+  DOCS_CONFIG = cfg;
+}
+let _docsClasseur = { compta: null, permanent: null }; // null = choix du classeur
+let _dpFiltreType = '';
+function ouvrirClasseur(espace, id) { _docsClasseur[espace] = id; _docsFiltres.type = ''; _docsFiltres.q = ''; _dpFiltreType = ''; renderDocumentsVue(); }
+function teinte(c, alpha) { return c + alpha; } // #rrggbb + alpha hexadécimal
+
+// ── Origine (colonne distincte) ──
+function htmlOrigine(p) { return pieceGeneree(p) ? `<span class="npill" style="font-size:9px;white-space:nowrap;" title="Généré automatiquement">⚙ ${esc(LIB_MODULE_ORIGINE[p.module] || 'module')}</span>` : ''; }
+
+// ── Tuiles ──
+function htmlTuileClasseur(espace, id, nom, couleur, nb, detail) {
+  return `<div onclick="ouvrirClasseur('${espace}','${esc(id)}')" style="cursor:pointer;border:1px solid ${teinte(couleur, '66')};border-left:6px solid ${couleur};background:${teinte(couleur, '14')};border-radius:var(--radius);padding:12px 14px;min-height:74px;display:flex;flex-direction:column;gap:4px;"
+      onmouseover="this.style.background='${teinte(couleur, '26')}'" onmouseout="this.style.background='${teinte(couleur, '14')}'">
+      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">📁</span><strong style="flex:1;font-size:12px;color:var(--text0);">${esc(nom)}</strong>
+        <span class="chip" style="border-color:${couleur};color:${couleur};">${nb.toLocaleString('fr-FR')}</span></div>
+      ${detail ? `<div style="font-size:10px;color:var(--text2);line-height:1.4;">${detail}</div>` : ''}
+    </div>`;
+}
+const GRILLE_CLASSEURS = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;';
+function htmlBarreClasseur(espace, nom, couleur) {
+  return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <button class="btn btn-sm" onclick="ouvrirClasseur('${espace}', null)">← CLASSEURS</button>
+      <span style="display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-left:6px solid ${couleur};background:${teinte(couleur, '1f')};border-radius:var(--radius);font-weight:700;font-size:12px;">📂 ${esc(nom)}</span>
+    </div>`;
+}
+
+// ── Pièces comptables ──
+function piecesDuClasseurCompta(id, liste) {
+  if(id === '__tous') return liste;
+  const cls = classeursCompta();
+  if(id === '__nc') { const ranges = new Set(cls.flatMap(c => c.types || [])); return liste.filter(p => !p.typePiece || !ranges.has(p.typePiece)); }
+  const c = cls.find(x => x.id === id); if(!c) return [];
+  const t = new Set(c.types || []); return liste.filter(p => p.typePiece && t.has(p.typePiece));
+}
+function infoClasseurCompta(id) {
+  if(id === '__tous') return { nom: 'Tous les documents', couleur: '#94a3b8', types: null };
+  if(id === '__nc') return { nom: 'Non classés', couleur: '#64748b', types: null };
+  const c = classeursCompta().find(x => x.id === id);
+  return c ? { nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], types: c.types || [] } : null;
+}
+function htmlPiecesComptablesV107() {
+  const cible = filtreExerciceDocs();
+  const toutes = (PIECES || []).filter(p => p.espace === 'compta');
+  const ouverts = exercicesOuverts();
+  const id = _docsClasseur.compta;
+  const info = id ? infoClasseurCompta(id) : null;
+  if(!info) {
+    // Choix du classeur (comptes de l'exercice affiché)
+    const duEx = toutes.filter(p => String(p.exercice) === String(cible));
+    const tuiles = classeursCompta().map(c => htmlTuileClasseur('compta', c.id, c.nom, c.couleur || COULEURS_CLASSEUR[0], piecesDuClasseurCompta(c.id, duEx).length,
+      (c.types || []).length ? (c.types || []).map(t => `<span class="npill" style="font-size:9px;" title="${esc(libTypePiece(t))}">${esc(t)}</span>`).join(' ') : '<em>Aucun type rangé</em>'));
+    const nc = piecesDuClasseurCompta('__nc', duEx).length;
+    if(nc || !classeursCompta().length) tuiles.push(htmlTuileClasseur('compta', '__nc', 'Non classés', '#64748b', nc, 'Pièces sans type, ou dont le type n\'est rangé dans aucun classeur'));
+    tuiles.push(htmlTuileClasseur('compta', '__tous', 'Tous les documents', '#94a3b8', duEx.length, 'Toutes les pièces, avec les filtres'));
+    const depotActif = !!window._fbStorageActif && ouverts.length > 0;
+    return `<div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;color:var(--text2);">Classeurs des pièces comptables — nombre de pièces de l'exercice <strong style="color:var(--cyan);">${esc(cible === 'tous' ? 'tous exercices' : cible)}</strong></span>
+        <button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')" style="margin-left:auto;">⚙ GÉRER LES CLASSEURS</button>
+      </div>
+      ${htmlZoneDepot('compta', null, depotActif, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée')}
+      <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
+  }
+  // Intérieur d'un classeur : les filtres
+  const f = _docsFiltres;
+  const exercices = exercicesConnus();
+  const typesProposes = info.types ? info.types.map(code => getTypedocList().find(t => t.code === code) || { code, label: code }) : getTypedocList();
+  const q = (f.q || '').trim().toLowerCase();
+  let liste = piecesDuClasseurCompta(id, toutes);
+  if(cible !== 'tous') liste = liste.filter(p => String(p.exercice) === String(cible));
+  if(f.type) liste = liste.filter(p => p.typePiece === f.type);
+  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier, libTypePiece(p.typePiece), p.exercice, LIB_MODULE_ORIGINE[p.module] || ''].join(' ').toLowerCase().includes(q));
+  liste.sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
+  const optEx = `<option value="tous" ${cible === 'tous' ? 'selected' : ''}>Tous les exercices</option>
+    ${exercices.map(y => `<option value="${esc(y)}" ${cible === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}${exerciceClos(y) ? ' (clôturé)' : ''}</option>`).join('')}`;
+  const optTypes = `<option value="">Tous les types${info.types ? ' du classeur' : ''}</option>` + typesProposes.map(t => `<option value="${esc(t.code)}" ${f.type === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  const depotActif = !!window._fbStorageActif && ouverts.length > 0 && (cible === 'tous' || !exerciceClos(cible));
+  const msgInactif = !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré'
+    : !ouverts.length ? 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée' : `Exercice ${esc(cible)} clôturé : aucune pièce ne peut y être ajoutée`;
+  preparerJustifs();
+  const lignes = liste.map(p => `<tr>
+      <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
+      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a></td>
+      <td>${htmlOrigine(p)}</td>
+      <td style="font-size:10px;white-space:nowrap;">${htmlEcrituresDePiece(p)}</td>
+      <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
+      <td class="td-act">${htmlActionsPiece(p)}</td>
+    </tr>`).join('');
+  const typeDepot = (info.types && info.types.length === 1) ? info.types[0] : '';
+  return `${htmlBarreClasseur('compta', info.nom, info.couleur)}
+    <div class="card">
+      <div class="gl-filters">
+        <div class="ff"><label>Exercice</label><select onchange="docsFiltre('exercice', this.value)">${optEx}</select></div>
+        <div class="ff"><label>Type de pièce</label><select onchange="docsFiltre('type', this.value)">${optTypes}</select></div>
+        <div class="ff" style="flex:1;min-width:180px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(f.q)}" placeholder="Titre, n° de pièce, fichier…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
+        <span class="chip" style="align-self:flex-end;">${liste.length} document${liste.length > 1 ? 's' : ''}</span>
+      </div>
+    </div>
+    ${depotActif ? htmlZoneDepot('compta', null, true, '').replace(/ouvrirDepot\('compta',null(,event\.dataTransfer\.files)?\)/g, (m, f2) => `ouvrirDepot('compta',null${f2 || ',null'},null,{typePiece:'${esc(typeDepot)}'})`) : htmlZoneDepot('compta', null, false, msgInactif)}
+    <div class="tbl-wrap docs-scroll">
+      <table>
+        <thead><tr><th style="width:80px;">Date</th><th style="width:76px;">Exercice</th><th style="width:66px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:150px;">Origine</th><th style="width:100px;" title="Écritures auxquelles la pièce est jointe">Écritures</th><th style="width:64px;">Taille</th><th style="width:150px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce dans ce classeur${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Dossier permanent ──
+function infoClasseurDP(id) {
+  if(id === '__tous') return { nom: 'Tous les documents', couleur: '#94a3b8' };
+  if(id === '__sans') return { nom: 'Sans classeur', couleur: '#64748b' };
+  const liste = rubriquesDP(); const i = liste.findIndex(r => r.code === id);
+  return i >= 0 ? { nom: liste[i].label, couleur: couleurRubrique(liste[i], i) } : null;
+}
+function groupesDuClasseurDP(id, groupes) {
+  if(id === '__tous') return groupes;
+  const codes = new Set(rubriquesDP().map(r => r.code));
+  if(id === '__sans') return groupes.filter(g => !classeursDe(g.courante).some(c => codes.has(c)));
+  return groupes.filter(g => classeursDe(g.courante).includes(id));
+}
+function htmlDossierPermanentV107() {
+  const actif = !!window._fbStorageActif;
+  const groupes = groupesDP();
+  const id = _docsClasseur.permanent;
+  const info = id ? infoClasseurDP(id) : null;
+  if(!info) {
+    const tuiles = rubriquesDP().map((r, i) => {
+      const gs = groupesDuClasseurDP(r.code, groupes);
+      return htmlTuileClasseur('permanent', r.code, r.label, couleurRubrique(r, i), gs.length, '');
+    });
+    const sans = groupesDuClasseurDP('__sans', groupes).length;
+    if(sans) tuiles.push(htmlTuileClasseur('permanent', '__sans', 'Sans classeur', '#64748b', sans, 'Documents rangés dans aucun classeur'));
+    tuiles.push(htmlTuileClasseur('permanent', '__tous', 'Tous les documents', '#94a3b8', groupes.length, 'Tout le dossier permanent, avec les filtres'));
+    return `<div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:11px;color:var(--text2);">Classeurs du dossier permanent — communs à tous les exercices, toujours modifiables. Un document peut être rangé dans plusieurs classeurs.</span>
+        <button class="btn btn-sm" onclick="ouvrirGestionClasseurs('permanent')" style="margin-left:auto;">⚙ GÉRER LES CLASSEURS ET LES TYPES</button>
+      </div>
+      ${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
+      <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
+  }
+  const q = (_docsFiltres.q || '').trim().toLowerCase();
+  let liste = groupesDuClasseurDP(id, groupes);
+  if(_dpFiltreType) liste = liste.filter(g => g.courante.typeDP === _dpFiltreType);
+  if(q) liste = liste.filter(g => [g.courante.titre, g.courante.nomFichier, g.courante.numDoc, libTypeDP(g.courante.typeDP), classeursDe(g.courante).map(libRubrique).join(' ')].join(' ').toLowerCase().includes(q));
+  liste.sort((a, b) => (b.courante.dateDoc || '').localeCompare(a.courante.dateDoc || '') || (a.courante.titre || '').localeCompare(b.courante.titre || ''));
+  const optTypes = `<option value="">Tous les types</option>` + typesDP().map(t => `<option value="${esc(t.code)}" ${_dpFiltreType === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  preparerJustifs();
+  const ligne = (p, ancienne, g) => {
+    const nbAnc = g ? g.anciennes.length : 0, ouvert = g ? !!_dpVersionsOuvertes[p.groupe || p.id] : false;
+    const autres = classeursDe(p).filter(c => c !== id).map(libRubrique);
+    return `<tr style="${ancienne ? 'color:var(--text2);' : ''}">
+      <td style="white-space:nowrap;">${p.typeDP ? `<span class="npill" title="${esc(libTypeDP(p.typeDP))}">${esc(p.typeDP)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.numDoc || '')}</td>
+      <td style="${ancienne ? 'padding-left:26px;' : ''}"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:${ancienne ? 'var(--text2)' : 'var(--text0)'};text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
+        ${!ancienne && autres.length ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">aussi dans : ${autres.map(esc).join(', ')}</div>` : ''}</td>
+      <td>${htmlOrigine(p)}</td>
+      <td style="font-size:10px;white-space:nowrap;">${ancienne ? '' : htmlEcrituresDePiece(p)}</td>
+      <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
+      <td style="white-space:nowrap;"><span class="npill">v${p.version || 1}</span>
+        ${!ancienne && nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>
+          <button class="btn btn-sm" onclick="_dpVersionsOuvertes['${p.groupe || p.id}']=!_dpVersionsOuvertes['${p.groupe || p.id}'];renderDocumentsVue();" style="padding:0 6px;font-size:9px;">${ouvert ? '▾' : '▸'} ${nbAnc}</button>` : ''}
+        ${ancienne ? `<button class="btn btn-sm" onclick="remettreEnVigueur('${p.id}')" style="padding:0 6px;font-size:9px;">REMETTRE EN VIGUEUR</button>` : ''}</td>
+      <td class="td-act">${!ancienne && actif && !pieceGeneree(p) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent',null,null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${maxVersion(p.groupe || p.id) + 1}</button>` : ''}
+        ${!ancienne ? `<button class="btn btn-sm btn-icon" onclick="ouvrirClassementDP('${p.id}')" title="Classeurs et type du document" style="padding:1px 6px;font-size:10px;">🗂</button>` : ''}${htmlActionsPiece(p)}</td>
+    </tr>`;
+  };
+  const lignes = liste.map(g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '')).join('');
+  return `${htmlBarreClasseur('permanent', info.nom, info.couleur)}
+    <div class="card">
+      <div class="gl-filters">
+        <div class="ff"><label>Type de document</label><select onchange="_dpFiltreType=this.value;renderDocumentsVue()">${optTypes}</select></div>
+        <div class="ff" style="flex:1;min-width:220px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(_docsFiltres.q)}" placeholder="Titre, référence, fichier…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
+        <span class="chip" style="align-self:flex-end;">${liste.length} document${liste.length > 1 ? 's' : ''}</span>
+      </div>
+    </div>
+    ${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}
+    <div class="tbl-wrap docs-scroll">
+      <table>
+        <thead><tr><th style="width:66px;">Type</th><th style="width:130px;" title="Référence (n° de pièce) : les écritures de même n° y sont jointes">Référence</th><th>Titre</th><th style="width:150px;">Origine</th><th style="width:100px;">Écritures</th><th style="width:80px;">Date</th><th style="width:150px;">Version</th><th style="width:190px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucun document dans ce classeur${_dpFiltreType || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Classement d'un document du DP (classeurs + type), appliqué à toutes ses versions ──
+let _clsDoc = null;
+function ouvrirClassementDP(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  _clsDoc = id;
+  const actuels = new Set(classeursDe(p));
+  document.getElementById('cls-doc-titre').textContent = p.titre || p.nomFichier;
+  document.getElementById('cls-doc-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:8px;margin:0 0 4px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+      <input type="checkbox" value="${esc(r.code)}" ${actuels.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+  document.getElementById('cls-doc-type').innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}" ${p.typeDP === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  document.getElementById('cls-doc-err').textContent = '';
+  document.getElementById('cls-doc-modal').style.display = 'flex';
+}
+function fermerClassementDP() { document.getElementById('cls-doc-modal').style.display = 'none'; _clsDoc = null; }
+async function enregistrerClassementDP() {
+  const p = (PIECES || []).find(x => x.id === _clsDoc); if(!p) return fermerClassementDP();
+  const classeurs = Array.from(document.querySelectorAll('#cls-doc-classeurs input:checked')).map(i => i.value);
+  if(!classeurs.length) { document.getElementById('cls-doc-err').textContent = 'Choisissez au moins un classeur.'; return; }
+  const typeDP = document.getElementById('cls-doc-type').value;
+  const versions = (PIECES || []).filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id));
+  let ok = true;
+  for(const v of versions) ok = (await majPiece(v, { classeurs, rubrique: classeurs[0], typeDP })) && ok;
+  if(ok) toast('Classement enregistré', 'success');
+  fermerClassementDP(); renderDocumentsVue();
+}
+
+// ── Gestion des classeurs (et des types du DP) ──
+let _gc = null;
+function ouvrirGestionClasseurs(espace) {
+  _gc = espace === 'permanent'
+    ? { espace, classeurs: rubriquesDP().map((r, i) => ({ code: r.code, label: r.label, couleur: couleurRubrique(r, i) })), types: typesDP().map(t => Object.assign({}, t)) }
+    : { espace, classeurs: classeursCompta().map(c => ({ id: c.id, nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], types: (c.types || []).slice() })) };
+  document.getElementById('gc-titre').textContent = espace === 'permanent' ? '⚙ CLASSEURS ET TYPES DU DOSSIER PERMANENT' : '⚙ CLASSEURS DES PIÈCES COMPTABLES';
+  document.getElementById('gc-err').textContent = '';
+  renderGestionClasseurs();
+  document.getElementById('gc-modal').style.display = 'flex';
+}
+function fermerGestionClasseurs() { document.getElementById('gc-modal').style.display = 'none'; _gc = null; }
+function gcMaj(i, champ, val) { if(_gc) _gc.classeurs[i][champ] = val; }
+function gcType(i, code, on) { const t = _gc.classeurs[i].types; const k = t.indexOf(code); if(on && k < 0) t.push(code); if(!on && k >= 0) t.splice(k, 1); }
+function gcDeplacer(i, s) { const l = _gc.classeurs, j = i + s; if(j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; renderGestionClasseurs(); }
+function gcSupprimer(i) {
+  const c = _gc.classeurs[i];
+  if(_gc.espace === 'permanent') {
+    const n = (PIECES || []).filter(p => p.espace === 'permanent' && classeursDe(p).includes(c.code)).length;
+    if(n && !confirm(`Le classeur « ${c.label} » contient ${n} document(s). Le supprimer ? Les documents restent dans leurs autres classeurs (ou passent dans « Sans classeur »).`)) return;
+  }
+  _gc.classeurs.splice(i, 1); renderGestionClasseurs();
+}
+function gcAjouter() {
+  const couleur = COULEURS_CLASSEUR[_gc.classeurs.length % COULEURS_CLASSEUR.length];
+  if(_gc.espace === 'permanent') _gc.classeurs.push({ code: 'cl_' + Math.random().toString(36).slice(2, 8), label: '', couleur, nouveau: true });
+  else _gc.classeurs.push({ id: crypto.randomUUID(), nom: '', couleur, types: [] });
+  renderGestionClasseurs();
+  setTimeout(() => { const ins = document.querySelectorAll('#gc-liste input[type=text]'); if(ins.length) ins[ins.length - 1].focus(); }, 30);
+}
+function gcTypeMaj(i, champ, val) { _gc.types[i][champ] = champ === 'code' ? val.toUpperCase().replace(/[^A-Z0-9_]/g, '') : val; }
+function gcTypeAjouter() { _gc.types.push({ code: '', label: '', nouveau: true }); renderGestionClasseurs(); }
+function gcTypeSupprimer(i) {
+  const t = _gc.types[i];
+  const n = (PIECES || []).filter(p => p.espace === 'permanent' && p.typeDP && p.typeDP === t.code).length;
+  if(n) { toast(`Type utilisé par ${n} document(s) : changez d'abord leur type`, 'error', 5000); return; }
+  _gc.types.splice(i, 1); renderGestionClasseurs();
+}
+function renderGestionClasseurs() {
+  if(!_gc) return;
+  const dp = _gc.espace === 'permanent';
+  const types = getTypedocList();
+  const b = (lib, act, tit, cls) => `<button class="btn btn-sm btn-icon ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 6px;font-size:10px;">${lib}</button>`;
+  const lignes = _gc.classeurs.map((c, i) => `<div style="border:1px solid var(--line2);border-left:6px solid ${c.couleur};border-radius:var(--radius);padding:8px 10px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="color" value="${esc(c.couleur)}" onchange="gcMaj(${i},'couleur',this.value);renderGestionClasseurs()" style="width:34px;height:26px;padding:0;border:none;background:none;cursor:pointer;" title="Couleur">
+        <input type="text" value="${esc(dp ? c.label : c.nom)}" oninput="gcMaj(${i},'${dp ? 'label' : 'nom'}',this.value)" placeholder="Nom du classeur" style="flex:1;height:28px;">
+        ${b('▲', `gcDeplacer(${i},-1)`, 'Monter')}${b('▼', `gcDeplacer(${i},1)`, 'Descendre')}${b('✕', `gcSupprimer(${i})`, 'Supprimer', 'btn-danger')}
+      </div>
+      ${dp ? '' : `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;">${types.map(t => `<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;letter-spacing:0;font-size:10px;cursor:pointer;" title="${esc(t.label)}">
+          <input type="checkbox" ${c.types.includes(t.code) ? 'checked' : ''} onchange="gcType(${i},'${esc(t.code)}',this.checked)" style="width:12px;height:12px;">${esc(t.code)}</label>`).join('')}</div>`}
+    </div>`).join('');
+  const typesDp = dp ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:14px 0 6px;">TYPES DE DOCUMENTS DU DOSSIER PERMANENT</div>
+      ${_gc.types.map((t, i) => `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+        <input type="text" value="${esc(t.code)}" ${t.nouveau ? '' : 'disabled'} oninput="gcTypeMaj(${i},'code',this.value)" placeholder="CODE" style="width:90px;height:26px;font-family:var(--mono);">
+        <input type="text" value="${esc(t.label)}" oninput="gcTypeMaj(${i},'label',this.value)" placeholder="Libellé" style="flex:1;height:26px;">
+        ${b('✕', `gcTypeSupprimer(${i})`, 'Supprimer', 'btn-danger')}</div>`).join('')}
+      <button class="btn btn-sm" onclick="gcTypeAjouter()" style="margin-top:4px;">+ NOUVEAU TYPE</button>` : '';
+  document.getElementById('gc-liste').innerHTML = (lignes || `<div style="font-size:11px;color:var(--text2);font-style:italic;margin-bottom:8px;">Aucun classeur : toutes les pièces sont dans « Non classés ».</div>`)
+    + `<button class="btn btn-sm" onclick="gcAjouter()">+ NOUVEAU CLASSEUR</button>`
+    + (dp ? '' : `<div style="font-size:10px;color:var(--text2);margin-top:8px;">Cochez les types de pièces réunis dans chaque classeur. Un même type peut être rangé dans plusieurs classeurs ; une pièce dont le type n'est rangé nulle part (ou sans type) apparaît dans « Non classés ».</div>`)
+    + typesDp;
+}
+async function enregistrerGestionClasseurs() {
+  if(!_gc) return;
+  const err = document.getElementById('gc-err'); err.textContent = '';
+  const dp = _gc.espace === 'permanent';
+  const noms = _gc.classeurs.map(c => String(dp ? c.label : c.nom).trim());
+  if(noms.some(n => !n)) { err.textContent = 'Chaque classeur doit avoir un nom.'; return; }
+  if(new Set(noms.map(n => n.toLowerCase())).size !== noms.length) { err.textContent = 'Deux classeurs portent le même nom.'; return; }
+  try {
+    if(dp) {
+      if(!_gc.classeurs.length) { err.textContent = 'Il faut au moins un classeur dans le dossier permanent.'; return; }
+      const codes = _gc.types.map(t => t.code.trim());
+      if(_gc.types.some(t => !t.code.trim() || !t.label.trim())) { err.textContent = 'Chaque type doit avoir un code et un libellé.'; return; }
+      if(new Set(codes).size !== codes.length) { err.textContent = 'Deux types ont le même code.'; return; }
+      const rubriques = _gc.classeurs.map(c => ({ code: c.code, label: c.label.trim(), couleur: c.couleur }));
+      const supprimes = rubriquesDP().map(r => r.code).filter(code => !rubriques.some(r => r.code === code));
+      await enregistrerDocsConfig({ rubriques, typesDP: _gc.types.map(t => ({ code: t.code.trim(), label: t.label.trim() })) });
+      // Documents des classeurs supprimés : retirés de ces classeurs
+      for(const p of (PIECES || []).filter(p => p.espace === 'permanent' && classeursDe(p).some(c => supprimes.includes(c)))) {
+        const reste = classeursDe(p).filter(c => !supprimes.includes(c));
+        await majPiece(p, { classeurs: reste, rubrique: reste[0] || '' });
+      }
+      if(supprimes.includes(_docsClasseur.permanent)) _docsClasseur.permanent = null;
+    } else {
+      await enregistrerDocsConfig({ classeursCompta: _gc.classeurs.map(c => ({ id: c.id, nom: c.nom.trim(), couleur: c.couleur, types: c.types })) });
+      if(_docsClasseur.compta && !_docsClasseur.compta.startsWith('__') && !classeursCompta().some(c => c.id === _docsClasseur.compta)) _docsClasseur.compta = null;
+    }
+  } catch(e) { err.textContent = "Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e); return; }
+  toast('Classeurs enregistrés', 'success');
+  fermerGestionClasseurs(); renderDocumentsVue();
+  try { renderRubriquesDP(); } catch(e) {}
+}
+
+// ── Paramètres : rappel des classeurs du DP (la gestion se fait dans la GED) ──
+async function renderRubriquesDPV107() {
+  const z = document.getElementById('params-dp-rubriques'); if(!z) return;
+  if(!DOCS_CONFIG) await chargerDocsConfig();
+  if(PIECES === null) await chargerPieces();
+  z.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;">${rubriquesDP().map((r, i) => {
+      const n = (PIECES || []).filter(p => p.espace === 'permanent' && classeursDe(p).includes(r.code)).length;
+      return `<span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-left:5px solid ${couleurRubrique(r, i)};background:${teinte(couleurRubrique(r, i), '14')};border-radius:var(--radius);font-size:11px;">${esc(r.label)} <span style="color:var(--text2);font-size:10px;">${n}</span></span>`;
+    }).join('')}</div>`;
+}
+function allerGestionClasseursDP() { showTab('documents'); _docsVue = 'permanent'; _docsClasseur.permanent = null; renderDocumentsVue(); ouvrirGestionClasseurs('permanent'); }
+
+// ── Grand Livre / journaux : le n° de pièce devient le lien vers le justificatif ──
+// vert : pièce jointe (ou document du module) → visionneuse ; orange : pièce à joindre → fenêtre de rattachement ;
+// gris barré : « sans justificatif » ; écritures de calcul : texte simple.
+function htmlNumDocLien(e) {
+  const nd = esc(e.numDoc || '');
+  const j = justifDe(e._io);
+  if(!j || j.statut === 'exempt') return nd;
+  const io = esc(cleIo(e._io));
+  const st = j.statut;
+  const couleur = st === 'joint' || st === 'auto' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
+  const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'auto' ? 'Voir le document du module (justificatif)' : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « sans justificatif » : cliquer pour modifier';
+  const txt = nd || (st === 'manquant' ? '📎 à joindre' : st === 'sans' ? '∅' : '📎');
+  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'line-through' : 'underline'};text-underline-offset:2px;font-weight:600;">${txt}</a>`;
+}
+function clicNumDoc(io) {
+  const j = justifDe(io); if(!j) return;
+  if(j.statut === 'joint' && j.pieces.length === 1) return voirPiece(j.pieces[0].id, { io });
+  if(j.statut === 'auto') return voirJustifAuto(io);
+  ouvrirPiecesEcriture(io);
 }
 
 </script>
