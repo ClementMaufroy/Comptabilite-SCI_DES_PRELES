@@ -692,6 +692,16 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 .docs-drop:hover, .docs-drop.over { border-color:var(--cyan); background:var(--cyan-glow); color:var(--cyan); }
 .docs-drop-off { cursor:default; color:var(--text2); }
 .docs-drop-off:hover { border-color:var(--line2); background:var(--bg1); color:var(--text2); }
+/* V99 — menu de gauche compact : tout visible sans défilement sur un portable 15 pouces ; compteurs jusqu'à 9 999 */
+:root { --nav-w: 208px; }
+.nav { padding: 2px 0 0; overflow-x: hidden; }
+.nav-section { padding: 7px 14px 1px; font-size: 8.5px; line-height: 1.3; }
+.nav-item { padding: 3px 12px 3px 14px; gap: 8px; line-height: 1.3; white-space: nowrap; }
+.nav-item .ni-icon { font-size: 12px; width: 15px; flex: none; }
+.nav-item .ni-count { flex: none; min-width: 34px; text-align: center; padding: 0 4px; }
+.nav-sep { display: none; }
+.nav-version { padding: 4px 14px; font-size: 8.5px; }
+body.pdf-en-cours::before { display: none; }
 </style>
 <style>
 /* ══ V77 : THÈMES (mode clair + couleur dominante) — n'affecte pas les documents édités ══ */
@@ -2395,7 +2405,7 @@ applyTheme();
         <textarea id="mail-body" rows="8"></textarea>
       </div>
     </div>
-    <div class="alert alert-warn mb8" style="font-size:10px;">Un e-mail ne peut pas joindre automatiquement les fichiers. Cliquer sur ENVOYER ouvrira chaque document dans un nouvel onglet (à enregistrer en PDF via Ctrl+P) puis votre messagerie avec le message pré-rempli — il vous restera à glisser les PDF enregistrés dans l'e-mail.</div>
+    <div class="alert alert-warn mb8" style="font-size:10px;">Un e-mail ne peut pas joindre automatiquement les fichiers. Cliquer sur ENVOYER télécharge chaque document en PDF puis ouvre votre messagerie avec le message pré-rempli : il vous restera à glisser les PDF téléchargés dans l'e-mail.</div>
     <div class="flex gap8" style="margin-top:12px;">
       <button class="btn btn-primary" onclick="confirmSendMail()">✉ ENVOYER</button>
       <button class="btn ml-auto" onclick="closeMailModal()">ANNULER</button>
@@ -2930,7 +2940,7 @@ applyTheme();
       </div>
       <button class="btn btn-sm btn-primary" onclick="imprimerPieceVue()">⎙ IMPRIMER</button>
       <button class="btn btn-sm" onclick="_vue && telechargerPiece(_vue.id)">⬇ TÉLÉCHARGER</button>
-      <button class="btn btn-sm btn-danger" onclick="supprimerPieceDepuisVue()" title="Supprimer définitivement (mot de passe)">🗑</button>
+      <button class="btn btn-sm btn-danger" id="dv-suppr" onclick="supprimerPieceDepuisVue()" title="Supprimer définitivement (mot de passe)">🗑</button>
       <button class="btn btn-sm" onclick="fermerVisionneuse()">FERMER</button>
     </div>
     <div id="dv-corps" style="flex:1;min-height:0;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;background:var(--bg2);"></div>
@@ -3883,6 +3893,7 @@ function saveDB() {
   _pendingSave = { json, year: CURRENT_YEAR };
   setSaveStatus('saving');
   _saveTimeout = setTimeout(() => { flushPendingSave(); }, 800);
+  if(EXERCISE_STATUS !== 'closed' && typeof planifierSyncGED === 'function') planifierSyncGED(); // V99 : copies PDF dans la GED
 }
 // Envoie immédiatement la sauvegarde en attente (s'il y en a une). Renvoie true si tout est enregistré.
 // À appeler AVANT tout changement d'exercice.
@@ -4418,9 +4429,9 @@ function updateNavCounts() {
   if(ncEch) ncEch.textContent = (DB.echeanciers||[]).length;
   const ncEmp = document.getElementById('nc-emprunts');
   if(ncEmp) ncEmp.textContent = (DB.emprunts||[]).length;
-  // V98 : pièces (non archivées) de l'exercice affiché
+  // V98/V99 : pièces de l'exercice affiché
   const ncDoc = document.getElementById('nc-documents');
-  if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR) && !p.archived).length : '–';
+  if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR)).length.toLocaleString('fr-FR') : '–';
 }
 function renderEditions() {
   const el = document.getElementById('ed-year-label');
@@ -11831,7 +11842,7 @@ function openMailModal() {
 }
 function closeMailModal() { document.getElementById('mail-modal').style.display = 'none'; window._mailPending = null; }
 
-function confirmSendMail() {
+async function confirmSendMail() {
   const to = document.getElementById('mail-to').value.trim();
   const subject = document.getElementById('mail-subject').value.trim();
   const body = document.getElementById('mail-body').value;
@@ -11840,18 +11851,21 @@ function confirmSendMail() {
 
   const loc = ensureLocatairesArray().find(l => l.id === window._mailPending.locId);
   if(loc) {
-    // Ouvrir chaque document sélectionné dans un nouvel onglet pour permettre l'enregistrement en PDF
-    window._mailPending.entryIds.forEach(id => {
+    // V99 : chaque document est téléchargé directement en PDF (plus d'impression Ctrl+P)
+    toast('Préparation des PDF…', '', 2500);
+    for(const id of window._mailPending.entryIds) {
       const entry = (loc.historique||[]).find(h => h.id === id);
-      if(aUnDocument(entry)) printDoc(htmlDuDocument(entry), entry.docTitle || 'Document', false);
-    });
+      if(!aUnDocument(entry)) continue;
+      try { await telechargerPdfDocument(entry, false); }
+      catch(e) { console.error(e); printDoc(htmlDuDocument(entry), entry.docTitle || 'Document', false); toast('PDF impossible pour un document : ouvert pour impression à la place', 'warn', 5000); }
+    }
   }
 
   const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   window.location.href = mailtoUrl;
 
   closeMailModal();
-  toast('Documents ouverts et messagerie lancée — joignez les PDF enregistrés à l\'e-mail','success');
+  toast('PDF téléchargés et messagerie lancée — glissez les PDF (dossier Téléchargements) dans l\'e-mail','success', 6000);
 }
 
 function viewHistoriqueDoc(locId, entryId) {
@@ -15487,7 +15501,7 @@ async function boot() {
   fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
-  chargerPieces().then(updateNavCounts); chargerDocsConfig(); // V98 : index de la base documentaire
+  chargerDocsConfig().then(() => chargerPieces()).then(() => { updateNavCounts(); if(EXERCISE_STATUS !== 'closed') planifierSyncGED(); }); // V98/V99 : base documentaire
   checkMonthlyExport();
   checkWeeklyExport();
   // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
@@ -16067,12 +16081,14 @@ document.addEventListener('DOMContentLoaded', () => {
 //  - 'compta'    : pièces comptables, rattachées à un exercice (+ type et n° de pièce)
 //  - 'permanent' : dossier permanent, par rubrique, indépendant des exercices, avec versions successives
 // Règles :
-//  - aucun ajout, archivage, restauration ni suppression dans un exercice CLÔTURÉ (consultation seule),
+//  - aucun ajout ni suppression dans un exercice CLÔTURÉ (consultation seule),
 //    quel que soit l'exercice affiché ;
 //  - le dossier permanent est toujours modifiable ;
 //  - les pièces d'un exercice test sont marquées TEST et supprimées avec lui ;
 //  - un vrai exercice qui contient des pièces ne peut pas être supprimé ;
-//  - archiver = masquer (rien n'est effacé) ; suppression définitive avec mot de passe.
+//  - V99 : pas d'archivage dans la GED (l'archivage reste propre aux modules, pour apurer leurs listes) ;
+//    suppression définitive avec mot de passe, sauf pour les documents générés par les modules
+//    (appels, quittances, fiches km, PV), qui se gèrent depuis leur module.
 
 const DP_RUBRIQUES_DEFAUT = [
   { code: 'statuts', label: 'Statuts' },
@@ -16093,7 +16109,12 @@ let PIECES = null;            // index chargé depuis Firebase (null = pas encor
 let _piecesErreur = null;
 let DOCS_CONFIG = null;       // { rubriques: [{code, label}] } — null = rubriques par défaut
 let _docsVue = 'compta';      // 'compta' | 'permanent'
-const _docsFiltres = { exercice: 'courant', type: '', q: '', archives: false };
+const _docsFiltres = { exercice: null, pourExercice: null, type: '', q: '' };
+// V99 : le filtre « exercice » suit l'exercice affiché ; un choix manuel ne vaut que tant qu'on reste sur le même exercice
+function filtreExerciceDocs() {
+  if(_docsFiltres.pourExercice !== String(CURRENT_YEAR)) { _docsFiltres.exercice = String(CURRENT_YEAR); _docsFiltres.pourExercice = String(CURRENT_YEAR); }
+  return _docsFiltres.exercice;
+}
 const _dpVersionsOuvertes = {};
 
 // ── Chargement ──
@@ -16130,8 +16151,11 @@ function exercicesConnus() {
 }
 function exercicesOuverts() { return exercicesConnus().filter(y => !exerciceClos(y)); }
 function piecesDeLExercice(y) { return (PIECES || []).filter(p => p.espace === 'compta' && String(p.exercice) === String(y)); }
-// Une pièce peut-elle être modifiée (archivée, restaurée, supprimée) ?
+// Une pièce peut-elle être supprimée ?
 function pieceModifiable(p) { return p.espace === 'permanent' || !exerciceClos(p.exercice); }
+// V99 : un document généré par un module (appel, quittance, fiche km, PV) se gère depuis son module
+function pieceGeneree(p) { return !!(p && p.origine); }
+const LIB_MODULE_ORIGINE = { loc: 'Gestion locative', km: 'Frais kilométriques', pv: 'Approbation du résultat' };
 
 // ── Utilitaires ──
 function tailleLisible(n) {
@@ -16209,9 +16233,7 @@ function renderDocumentsVue() {
   const corps = _docsVue === 'permanent' ? htmlDossierPermanent() : htmlPiecesComptables();
   zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
       ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}
-      <label style="display:flex;align-items:center;gap:6px;margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;">
-        <input type="checkbox" ${_docsFiltres.archives ? 'checked' : ''} onchange="docsFiltre('archives', this.checked)" style="width:14px;height:14px;"> Afficher les documents archivés
-      </label>
+      <button class="btn btn-sm" onclick="lancerSyncTousExercices()" style="margin-left:auto;" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button>
     </div>${alerte}${corps}`;
 }
 
@@ -16227,33 +16249,32 @@ function htmlZoneDepot(espace, rubrique, actif, messageInactif) {
 }
 
 function htmlActionsPiece(p) {
-  const modif = pieceModifiable(p);
   const b = (ic, act, tit, cls) => `<button class="btn btn-sm btn-icon ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 6px;font-size:10px;">${ic}</button>`;
   let h = b('👁', `voirPiece('${p.id}')`, 'Voir / imprimer') + b('⬇', `telechargerPiece('${p.id}')`, 'Télécharger');
-  if(modif) {
-    h += p.archived ? b('↩', `restaurerPiece('${p.id}')`, 'Restaurer') : b('📦', `archiverPiece('${p.id}')`, 'Archiver (masquer)');
-    h += b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
-  } else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
+  if(pieceGeneree(p)) h += `<span title="Document généré par le module ${esc(LIB_MODULE_ORIGINE[p.module] || '')} : il se gère depuis ce module" style="font-size:11px;padding:0 4px;">⚙</span>`;
+  else if(pieceModifiable(p)) h += b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
+  else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
   return h;
+}
+function badgeOrigine(p) {
+  return pieceGeneree(p) ? ` <span class="npill" style="font-size:9px;" title="Généré automatiquement">⚙ ${esc(LIB_MODULE_ORIGINE[p.module] || 'module')}</span>` : '';
 }
 
 // ── Pièces comptables ──
 function htmlPiecesComptables() {
   const f = _docsFiltres;
   const exercices = exercicesConnus();
-  const cible = f.exercice === 'courant' ? String(CURRENT_YEAR) : f.exercice;
+  const cible = filtreExerciceDocs();
   const types = getTypedocList();
   const q = (f.q || '').trim().toLowerCase();
   let liste = (PIECES || []).filter(p => p.espace === 'compta');
   if(cible !== 'tous') liste = liste.filter(p => String(p.exercice) === String(cible));
   if(f.type) liste = liste.filter(p => p.typePiece === f.type);
-  if(!f.archives) liste = liste.filter(p => !p.archived);
   if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier, libTypePiece(p.typePiece), p.exercice].join(' ').toLowerCase().includes(q));
   liste.sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
 
-  const optEx = `<option value="courant" ${f.exercice === 'courant' ? 'selected' : ''}>Exercice affiché (${esc(CURRENT_YEAR)})</option>
-    <option value="tous" ${f.exercice === 'tous' ? 'selected' : ''}>Tous les exercices</option>
-    ${exercices.map(y => `<option value="${esc(y)}" ${f.exercice === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}${exerciceClos(y) ? ' (clôturé)' : ''}</option>`).join('')}`;
+  const optEx = `<option value="tous" ${cible === 'tous' ? 'selected' : ''}>Tous les exercices</option>
+    ${exercices.map(y => `<option value="${esc(y)}" ${cible === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}${exerciceClos(y) ? ' (clôturé)' : ''}</option>`).join('')}`;
   const optTypes = `<option value="">Tous les types</option>` + types.map(t => `<option value="${esc(t.code)}" ${f.type === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
 
   const ouverts = exercicesOuverts();
@@ -16262,12 +16283,12 @@ function htmlPiecesComptables() {
     : !ouverts.length ? 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée'
     : `Exercice ${esc(cible)} clôturé : aucune pièce ne peut y être ajoutée`;
 
-  const lignes = liste.map(p => `<tr style="${p.archived ? 'opacity:.5;' : ''}">
+  const lignes = liste.map(p => `<tr>
       <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
       <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
       <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
-      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${p.archived ? ` <span style="font-size:9px;color:var(--text2);font-style:italic;">archivé${p.dateArchivage ? ' le ' + fmtDateFr(p.dateArchivage) : ''}</span>` : ''}</td>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}</td>
       <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
       <td class="td-act">${htmlActionsPiece(p)}</td>
     </tr>`).join('');
@@ -16297,13 +16318,12 @@ function groupesDP() {
   return Object.values(parGroupe).map(versions => {
     versions.sort((a, b) => (b.version || 1) - (a.version || 1));
     const courante = versions.find(v => v.enVigueur) || versions[0];
-    return { courante, anciennes: versions.filter(v => v !== courante), archived: versions.every(v => v.archived) };
+    return { courante, anciennes: versions.filter(v => v !== courante) };
   });
 }
 function htmlDossierPermanent() {
   const q = (_docsFiltres.q || '').trim().toLowerCase();
   let groupes = groupesDP();
-  if(!_docsFiltres.archives) groupes = groupes.filter(g => !g.archived);
   if(q) groupes = groupes.filter(g => [g.courante.titre, g.courante.nomFichier, libRubrique(g.courante.rubrique)].join(' ').toLowerCase().includes(q));
   const rubriques = rubriquesDP();
   const codes = new Set(rubriques.map(r => r.code));
@@ -16327,16 +16347,16 @@ function htmlRubriqueDP(code, label, groupes, actif) {
     const p = g.courante;
     const nbAnc = g.anciennes.length;
     const ouvert = !!_dpVersionsOuvertes[p.groupe || p.id];
-    const btnVersion = (actif && !p.archived) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent','${p.rubrique}',null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${(maxVersion(p.groupe || p.id) + 1)}</button>` : '';
-    const anciennes = ouvert ? g.anciennes.filter(v => _docsFiltres.archives || !v.archived).map(v => `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 34px;font-size:11px;color:var(--text2);${v.archived ? 'opacity:.5;' : ''}">
+    const btnVersion = (actif && !pieceGeneree(p)) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent','${p.rubrique}',null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${(maxVersion(p.groupe || p.id) + 1)}</button>` : '';
+    const anciennes = ouvert ? g.anciennes.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 34px;font-size:11px;color:var(--text2);">
         <span style="font-family:var(--mono);">v${v.version || 1}</span>
         <span style="flex:1;min-width:0;">${iconePiece(v)} ${esc(v.titre || v.nomFichier)} — ${v.dateDoc ? fmtDateFr(v.dateDoc) : ''}</span>
         <button class="btn btn-sm" onclick="remettreEnVigueur('${v.id}')" style="padding:0 6px;font-size:9px;">REMETTRE EN VIGUEUR</button>
         ${htmlActionsPiece(v)}
       </div>`).join('') : '';
-    return `<div style="border-top:1px solid var(--line);${p.archived ? 'opacity:.5;' : ''}">
+    return `<div style="border-top:1px solid var(--line);">
         <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;">
-          <a href="#" onclick="voirPiece('${p.id}');return false;" style="flex:1;min-width:0;color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
+          <a href="#" onclick="voirPiece('${p.id}');return false;" style="flex:1;min-width:0;color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}
           <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span>
           <span class="npill">v${p.version || 1}</span>
           ${nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>` : ''}
@@ -16367,7 +16387,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe) {
   _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null };
   const el = id => document.getElementById(id);
   // Exercices proposés : uniquement les exercices ouverts
-  const cibleFiltre = _docsFiltres.exercice === 'courant' ? String(CURRENT_YEAR) : _docsFiltres.exercice;
+  const cibleFiltre = filtreExerciceDocs();
   const ouverts = exercicesOuverts();
   const exDefaut = ouverts.includes(cibleFiltre) ? cibleFiltre : ouverts.includes(String(CURRENT_YEAR)) ? String(CURRENT_YEAR) : ouverts[0];
   el('dep-exercice').innerHTML = ouverts.map(y => `<option value="${esc(y)}" ${y === exDefaut ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}</option>`).join('');
@@ -16473,7 +16493,7 @@ async function enregistrerDepot() {
       const meta = Object.assign({}, base, {
         id, titre: d.fichiers.length === 1 ? titreSaisi : titreDepuisNom(f.name), dateDoc: date,
         nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin,
-        depose: new Date().toISOString(), archived: false
+        depose: new Date().toISOString()
       });
       if(d.espace === 'permanent') {
         meta.groupe = source ? (source.groupe || source.id) : id;
@@ -16531,7 +16551,8 @@ async function voirPiece(id) {
   const infos = p.espace === 'compta'
     ? [`Exercice ${p.exercice}${p.test ? ' (TEST)' : ''}`, p.typePiece ? libTypePiece(p.typePiece) : '', p.numDoc ? 'Pièce ' + p.numDoc : '', p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : '']
     : [`Dossier permanent — ${libRubrique(p.rubrique)}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
-  document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (p.archived ? ' · ARCHIVÉ' : '');
+  document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (pieceGeneree(p) ? ` · généré par ${LIB_MODULE_ORIGINE[p.module] || 'un module'}` : '');
+  document.getElementById('dv-suppr').style.display = (pieceGeneree(p) || !pieceModifiable(p)) ? 'none' : '';
   corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement…</div>`;
   modal.style.display = 'flex';
   _vue = { id, url: null, blobUrl: null };
@@ -16595,17 +16616,10 @@ async function majPiece(p, changements, messageOk) {
   return true;
 }
 function controleModifiable(p) {
+  if(pieceGeneree(p)) { toast(`Document généré par le module ${LIB_MODULE_ORIGINE[p.module] || ''} : il se gère depuis ce module`, 'error', 4000); return false; }
   if(pieceModifiable(p)) return true;
   toast(`Exercice ${p.exercice} clôturé : ce document est en consultation uniquement`, 'error', 4000);
   return false;
-}
-async function archiverPiece(id) {
-  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
-  if(await majPiece(p, { archived: true, dateArchivage: dateLocale(new Date()) }, 'Document archivé (masqué)')) { updateNavCounts(); renderDocumentsVue(); }
-}
-async function restaurerPiece(id) {
-  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
-  if(await majPiece(p, { archived: false, dateArchivage: null }, 'Document restauré')) { updateNavCounts(); renderDocumentsVue(); }
 }
 // Met une version en vigueur et retire ce statut aux autres versions du même document
 async function mettreEnVigueur(id, silencieux) {
@@ -16622,7 +16636,7 @@ function askSupprimerPiece(id) {
   const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
   const quoi = p.espace === 'compta' ? `la pièce <strong>${esc(p.titre || p.nomFichier)}</strong> de l'exercice ${esc(p.exercice)}`
     : `la version ${p.version || 1} de <strong>${esc(p.titre || p.nomFichier)}</strong> (dossier permanent)`;
-  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> Pour simplement le masquer, utilisez plutôt 📦 Archiver.`,
+  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> `,
     '🗑 SUPPRIMER DÉFINITIVEMENT', () => supprimerPieceDefinitivement(id));
 }
 async function supprimerPieceDefinitivement(id, silencieux) {
@@ -16655,7 +16669,7 @@ function suppressionExerciceAutorisee(y) {
   if(isTestExercise(y)) return true;
   if(PIECES === null) { toast("Suppression impossible : l'index des documents n'a pas pu être lu. Ouvrez l'onglet Documents pour réessayer.", 'error', 7000); return false; }
   const n = piecesDeLExercice(y).length;
-  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans Documents (archivées comprises).`, 'error', 7000); return false; }
+  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans Documents.`, 'error', 7000); return false; }
   return true;
 }
 
@@ -16710,11 +16724,211 @@ function deplacerRubriqueDP(i, sens) {
 function supprimerRubriqueDP(code) {
   if(PIECES === null) { toast("Index des documents illisible : suppression impossible pour l'instant", 'error'); return; }
   const n = PIECES.filter(p => p.espace === 'permanent' && p.rubrique === code).length;
-  if(n) { toast(`Impossible : cette rubrique contient ${n} document(s) (archivés compris)`, 'error', 5000); return; }
+  if(n) { toast(`Impossible : cette rubrique contient ${n} document(s)`, 'error', 5000); return; }
   const liste = rubriquesDP().filter(r => r.code !== code);
   if(!liste.length) { toast('Il doit rester au moins une rubrique', 'error'); return; }
   if(!confirm(`Supprimer la rubrique « ${libRubrique(code)} » ?`)) return;
   enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique supprimée', 'success'));
+}
+
+// ══════════════════════════════════════════════
+// V99 — DOCUMENTS GÉNÉRÉS PAR LES MODULES → PDF DANS LA GED
+// ══════════════════════════════════════════════
+// Appels de loyer, quittances, fiches km et PV d'AGO restent stockés dans leur module sous forme de données
+// figées (doc) ; la GED en reçoit automatiquement une copie PDF. Le lien se fait par la clé « origine »
+// (module:id du document) : un même document n'est jamais déposé deux fois, un document modifié est remplacé,
+// un document supprimé définitivement de son module disparaît de la GED.
+// Exercice ouvert : synchronisation automatique après chaque enregistrement.
+// Tous exercices (y compris clôturés) : bouton « ⟳ DOCUMENTS DES MODULES » — reprise des documents déjà émis
+// (ce n'est pas un ajout de pièce : le document appartient déjà à l'exercice, seul son format change).
+const URLS_HTML2PDF = [
+  'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+  'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+];
+let _html2pdfPromesse = null;
+function chargerHtml2pdf() {
+  if(window.html2pdf) return Promise.resolve();
+  if(_html2pdfPromesse) return _html2pdfPromesse;
+  _html2pdfPromesse = (async () => {
+    for(const url of URLS_HTML2PDF) {
+      try {
+        await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = url; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+        if(window.html2pdf) return;
+      } catch(e) { console.warn('Chargement impossible : ' + url); }
+    }
+    _html2pdfPromesse = null;
+    throw new Error('Bibliothèque PDF introuvable (connexion internet ?)');
+  })();
+  return _html2pdfPromesse;
+}
+// Le rendu se fait dans la page : on neutralise les styles de l'interface (couleurs du thème sombre, marges
+// remises à zéro…) et on reprend ceux de la fenêtre d'impression (printDoc), pour un PDF identique à l'impression.
+const CSS_PDF_ISOLE = `<style>
+  .pdf-iso { font-family: Arial, sans-serif; font-size: 13px; line-height: 1.35; color: #111; background: #fff; text-align: left; }
+  .pdf-iso * { box-sizing: border-box; letter-spacing: normal; text-transform: none; }
+  .pdf-iso h1 { font-size: 2em; margin: .67em 0; font-weight: bold; } .pdf-iso h2 { font-size: 1.5em; margin: .83em 0; font-weight: bold; }
+  .pdf-iso h3 { font-size: 1.17em; margin: 1em 0; font-weight: bold; } .pdf-iso p { margin: 1em 0; }
+  .pdf-iso ul, .pdf-iso ol { margin: 1em 0; padding-left: 40px; }
+  .pdf-iso table { width: 100%; border-collapse: collapse; font-size: 10px; }
+  .pdf-iso th { background: #fff; padding: 4px 8px; text-align: left; font-weight: 700; font-size: 9px; color: #333; border-top: 1px solid #111; border-bottom: 1px solid #111; font-family: Arial, sans-serif; }
+  .pdf-iso td { padding: 3px 8px; border-bottom: 1px solid #e8e8e8; vertical-align: middle; color: inherit; font-family: inherit; }
+  .pdf-iso tr:hover td { background: inherit; }
+  .pdf-iso img { max-width: 100%; }
+</style>`;
+// PDF (Blob) d'un document HTML de module, au format A4
+async function pdfDepuisHtml(html, paysage) {
+  await chargerHtml2pdf();
+  if(html && html.includes(LOGO_PLACEHOLDER)) html = html.split(LOGO_PLACEHOLDER).join(socLogo());
+  // Largeur utile d'une page A4 (marges de 8 mm) à 96 ppp : le document s'y adapte, comme à l'impression
+  const largeur = paysage ? 1060 : 730;
+  // Élément NON rattaché à la page : html2pdf le place lui-même dans sa zone de rendu (un élément hors écran
+  // donnerait une page blanche)
+  const hote = document.createElement('div');
+  hote.className = 'pdf-iso';
+  hote.style.cssText = `width:${largeur}px;background:#fff;color:#111;`;
+  hote.innerHTML = CSS_PDF_ISOLE + html;
+  document.body.classList.add('pdf-en-cours'); // masque la trame décorative de l'interface pendant la capture
+  try {
+    await Promise.all(Array.from(hote.querySelectorAll('img')).map(img => img.decode ? img.decode().catch(() => {}) : null));
+    return await window.html2pdf().set({
+      margin: [8, 8, 8, 8],
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: paysage ? 'landscape' : 'portrait' },
+      pagebreak: { mode: ['css', 'legacy'] }
+    }).from(hote).outputPdf('blob');
+  } finally { hote.remove(); document.body.classList.remove('pdf-en-cours'); }
+}
+// Empreinte du contenu figé d'un document : sert à détecter un document régénéré (ex. fiche km rééditée)
+function signatureDoc(x) {
+  const s = JSON.stringify(x.doc || x.docHtml || '');
+  let h = 5381; for(let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+  return h.toString(36) + '-' + s.length;
+}
+function rubriquePourPV() { const r = rubriquesDP(); return (r.find(x => x.code === 'ag') || r[0]).code; }
+function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
+// Documents générés présents dans les données d'un exercice
+function documentsGeneresDe(data, exercice) {
+  const out = [], test = isTestExercise(exercice);
+  const base = { exercice: String(exercice), test };
+  (data.locataires || []).forEach(loc => (loc.historique || []).forEach(h => {
+    if(h._exercicePrecedent || !aUnDocument(h)) return;
+    const quoi = h.type === 'quittance' ? 'Quittance' : h.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
+    out.push(Object.assign({}, base, { cle: 'loc:' + h.id, x: h, module: 'loc', espace: 'compta',
+      titre: `${quoi}${h.mois ? ' ' + moisLabelFromYYYYMM(h.mois) : ''} — ${[loc.prenom1, loc.nom1].filter(Boolean).join(' ')}`,
+      date: h.dateEmission || dateLocale(new Date()), typePiece: h.type === 'quittance' ? typeSiConnu('QUIT') : '', nom: h.docTitle || quoi, paysage: false }));
+  }));
+  ((data.km || {}).fiches || []).forEach(f => {
+    if(!aUnDocument(f)) return;
+    out.push(Object.assign({}, base, { cle: 'km:' + f.id, x: f, module: 'km', espace: 'compta',
+      titre: `Fiche kilométrique${f.mois ? ' ' + moisLabelFromYYYYMM(f.mois) : ''}${f.vehiculeNom ? ' — ' + f.vehiculeNom : ''}`,
+      date: f.dateEmission || (f.mois ? f.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), nom: f.docTitle || 'Fiche_KM', paysage: true }));
+  });
+  (data.pvApprobations || []).forEach(pv => {
+    if(!aUnDocument(pv)) return;
+    // PV d'AGO : dossier permanent (rubrique « PV d'AG et décisions »), sauf exercice test (reste dans ses pièces)
+    out.push(Object.assign({}, base, { cle: 'pv:' + pv.id, x: pv, module: 'pv', espace: test ? 'compta' : 'permanent', rubrique: rubriquePourPV(),
+      titre: `PV d'AGO — Affectation du résultat ${pv.anneeConcernee || ''}`.trim(),
+      date: pv.dateAG || pv.dateEmission || dateLocale(new Date()), typePiece: '', nom: pv.docTitle || 'PV_AGO', paysage: false }));
+  });
+  return out;
+}
+let _syncGEDEnCours = false, _syncGEDTimer = null;
+// Après chaque enregistrement d'un exercice ouvert (appelé par saveDB)
+function planifierSyncGED() {
+  if(!window._fbStorageActif) return;
+  clearTimeout(_syncGEDTimer);
+  const ex = String(CURRENT_YEAR);
+  _syncGEDTimer = setTimeout(() => {
+    if(String(CURRENT_YEAR) !== ex || EXERCISE_STATUS === 'closed' || window._saveSuspended) return;
+    let data; try { data = JSON.parse(JSON.stringify(DB)); } catch(e) { return; }
+    synchroniserGED([{ exercice: ex, data }], {}).then(r => {
+      if(r && r.echecs) toast(`${r.echecs} document(s) n'ont pas pu être copiés en PDF dans la GED (nouvel essai au prochain enregistrement)`, 'warn', 6000);
+    });
+  }, 2500);
+}
+async function synchroniserGED(sources, opts) {
+  opts = opts || {};
+  if(!window._fbStorageActif || _syncGEDEnCours) return null;
+  if(PIECES === null && !(await chargerPieces())) return null;
+  _syncGEDEnCours = true;
+  const res = { crees: 0, maj: 0, supprimes: 0, echecs: 0, total: 0 };
+  try {
+    for(const src of sources) {
+      const docs = documentsGeneresDe(src.data, src.exercice);
+      const cles = new Set(docs.map(d => d.cle));
+      const aFaire = docs.filter(d => { const e = PIECES.find(p => p.origine === d.cle); return !e || e.origineSig !== signatureDoc(d.x); });
+      res.total += aFaire.length;
+      for(const d of aFaire) {
+        const existant = PIECES.find(p => p.origine === d.cle);
+        try {
+          const html = htmlDuDocument(d.x); if(!html) continue;
+          const blob = await pdfDepuisHtml(html, d.paysage);
+          const id = existant ? existant.id : crypto.randomUUID();
+          const nomFichier = nomFichierSur(d.nom).replace(/\.pdf$/i, '') + '.pdf';
+          const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${Date.now().toString(36)}_${nomFichier}`;
+          await window._fbFichierEnvoyer(chemin, blob, 'application/pdf');
+          const meta = {
+            id, titre: d.titre, dateDoc: d.date, nomFichier, mime: 'application/pdf', taille: blob.size, chemin,
+            depose: existant ? existant.depose : new Date().toISOString(), modifie: existant ? new Date().toISOString() : null,
+            origine: d.cle, origineSig: signatureDoc(d.x), origineExercice: d.exercice, module: d.module
+          };
+          if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true });
+          else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece, numDoc: '' });
+          try { await window._fbPieceSave(meta); }
+          catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
+          if(existant) {
+            try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {}
+            Object.keys(existant).forEach(k => delete existant[k]); Object.assign(existant, meta); res.maj++;
+          } else { PIECES.push(meta); res.crees++; }
+        } catch(e) { console.error('Copie PDF dans la GED impossible', d.cle, e); res.echecs++; }
+        if(opts.progression) opts.progression(res);
+      }
+      // Documents générés de CET exercice dont la source n'existe plus (supprimée définitivement du module)
+      for(const p of PIECES.filter(p => p.origine && String(p.origineExercice) === String(src.exercice) && !cles.has(p.origine))) {
+        if(await supprimerPieceDefinitivement(p.id, true)) res.supprimes++;
+      }
+    }
+  } finally { _syncGEDEnCours = false; }
+  updateNavCounts();
+  if(document.getElementById('tab-documents')?.classList.contains('active')) renderDocumentsVue();
+  return res;
+}
+// Bouton « ⟳ DOCUMENTS DES MODULES » : tous les exercices, y compris clôturés
+async function lancerSyncTousExercices() {
+  if(!window._fbStorageActif) { toast('Stockage des documents non configuré', 'error'); return; }
+  if(_syncGEDEnCours) { toast('Une copie des documents est déjà en cours', 'warn'); return; }
+  if(!confirm("Copier en PDF dans la GED tous les documents émis par les modules (appels, quittances, fiches km, PV d'AGO), pour tous les exercices — y compris clôturés, où seul le format change ?\n\nCela peut prendre quelques minutes ; gardez cette page ouverte.")) return;
+  if(!(await toutEnregistrer())) { toast('Des modifications ne sont pas enregistrées : réessayez dans un instant', 'error'); return; }
+  const barre = document.createElement('div');
+  barre.id = 'sync-ged-barre';
+  barre.style.cssText = 'position:fixed;left:50%;top:84px;transform:translateX(-50%);z-index:3000;background:var(--bg2);border:1px solid var(--cyan);border-radius:var(--radius);padding:10px 18px;font-family:var(--mono);font-size:11px;color:var(--text0);box-shadow:0 8px 24px rgba(0,0,0,.4);';
+  barre.textContent = 'Lecture des exercices…';
+  document.body.appendChild(barre);
+  const sources = [], illisibles = [];
+  for(const y of exercicesConnus()) {
+    if(String(y) === String(CURRENT_YEAR)) { sources.push({ exercice: String(y), data: JSON.parse(JSON.stringify(DB)) }); continue; }
+    try { const d = await window._fbLoad(y); if(d) sources.push({ exercice: String(y), data: d }); } catch(e) { illisibles.push(y); }
+  }
+  let res = null;
+  try {
+    res = await synchroniserGED(sources, { progression: r => { barre.textContent = `Création des PDF : ${r.crees + r.maj + r.echecs} / ${r.total}…`; } });
+  } finally { barre.remove(); }
+  if(!res) { toast('Copie impossible : index des documents illisible', 'error', 6000); return; }
+  const parts = [`${res.crees} document(s) ajouté(s)`];
+  if(res.maj) parts.push(`${res.maj} mis à jour`);
+  if(res.supprimes) parts.push(`${res.supprimes} retiré(s)`);
+  if(res.echecs) parts.push(`${res.echecs} échec(s)`);
+  if(illisibles.length) parts.push(`exercice(s) illisible(s) : ${illisibles.join(', ')}`);
+  toast(parts.join(' · '), (res.echecs || illisibles.length) ? 'warn' : 'success', 8000);
+}
+// Téléchargement direct d'un document de module en PDF (envoi par mail)
+async function telechargerPdfDocument(x, paysage) {
+  const blob = await pdfDepuisHtml(htmlDuDocument(x), paysage);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = nomFichierSur(x.docTitle || 'Document').replace(/\.pdf$/i, '') + '.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 </script>
