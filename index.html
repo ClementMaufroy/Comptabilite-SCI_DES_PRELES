@@ -3678,6 +3678,7 @@ window.addEventListener('resize', () => { if(_postItOpen) renderPostItPieces(); 
 
 function togglePostItPieces() {
   _postItOpen = !_postItOpen;
+  if(_postItOpen && typeof _pajFiltre !== 'undefined') { _pajFiltre = 'all'; _pajSel = new Set(); } // V110 : filtre remis à zéro
   renderPostItPieces();
 }
 
@@ -5094,7 +5095,13 @@ function saveEcriture() {
   }
 
   renum(); saveDB(); updateNavCounts();
+  const avaitPJ = _saisiePJ.length > 0; // V110
   deposerPJSaisie(io, journal, date, newNumDoc, lines[0]?.libelleEcriture || ''); // V102 : justificatif joint à la saisie
+  if(!avaitPJ) setTimeout(() => { try { // V110 : avertir (sans bloquer) si l'écriture reste sans pièce
+    preparerJustifs(); const jj = justifDe(io);
+    const ref = newNumDoc && piecesParReference().has(normRef(newNumDoc));
+    if(jj && jj.statut === 'manquant' && !ref) toast(`⚠ Écriture #${jj.num} enregistrée sans justificatif : pensez à joindre la pièce (clic sur son n° de pièce, en orange)`, 'warn', 7000);
+  } catch(e) {} }, 300);
 
   if(isEditing) {
     toast('Écriture #'+editingNum+' mise à jour','success');
@@ -10743,7 +10750,7 @@ function saveMouvement() {
   toast(editId ? 'Mouvement modifié' : 'Mouvement enregistré et comptabilisé', 'success');
   // Enchaîne sur la proposition de quittance si un mois est nouvellement soldé
   if(nouveauxMoisSoldes.length) {
-    setTimeout(() => proposerQuittanceAuto(loc.id, nouveauxMoisSoldes[0]), 400);
+    setTimeout(() => proposerQuittanceAuto(loc.id, nouveauxMoisSoldes), 400); // V110 : tous les mois soldés
   }
 }
 
@@ -10929,8 +10936,10 @@ function askDeleteMouvement(mvtId) {
       </label>
     </div>`;
   }
+  const casc = cascadeSuppressionMouvement(loc, mvt); // V110
+  const cascTxt = (casc.mvts.length || casc.appels.length) ? `<div style="margin-top:10px;font-size:11px;color:var(--text1);">Seront aussi supprimés : ${[...casc.mvts.map(m => { const tt = (loc.types||[]).find(x => x.id === m.typeId); return `mouvement <strong>${esc(tt ? tt.nom : '?')}</strong> (${fmt(m.montant)} €)`; }), ...casc.appels.map(h => `appel de loyer <strong>${moisLabelFromYYYYMM(h.mois)}</strong>`)].join(', ')}.</div>` : '';
   document.getElementById('mvt-delete-msg').innerHTML =
-    `Supprimer le mouvement <strong>${t ? t.nom : '?'}</strong> du ${mvt.dateOperation} — <strong>${fmt(mvt.montant)}€</strong> ?<br>` +
+    `Supprimer le mouvement <strong>${t ? t.nom : '?'}</strong> du ${mvt.dateOperation} — <strong>${fmt(mvt.montant)}€</strong> ?<br>` + cascTxt +
     `<span style="color:var(--text2);font-size:11px;">L'écriture comptable correspondante sera également supprimée.</span>` +
     quittanceBlock;
   document.getElementById('mvt-delete-modal').style.display = 'flex';
@@ -10945,8 +10954,12 @@ function confirmDeleteMouvement() {
       const moisAffectes = (mvt.affectations||[]).map(a => a.mois);
       const alsoQuittancesEl = document.getElementById('mvt-delete-also-quittances');
       const alsoQuittances = alsoQuittancesEl && alsoQuittancesEl.checked;
+      const casc = cascadeSuppressionMouvement(loc, mvt); // V110 : provision liée + appel du mois
       supprimerEcrituresDuMouvement(mvt);
-      loc.mouvements = loc.mouvements.filter(m => m.id !== _mvtDeleteTarget);
+      casc.mvts.forEach(m => supprimerEcrituresDuMouvement(m));
+      const idsSuppr = new Set([_mvtDeleteTarget, ...casc.mvts.map(m => m.id)]);
+      loc.mouvements = loc.mouvements.filter(m => !idsSuppr.has(m.id));
+      if(casc.appels.length) loc.historique = (loc.historique || []).filter(h => !casc.appels.includes(h));
       if(alsoQuittances && moisAffectes.length) {
         loc.historique = (loc.historique||[]).filter(h => !(h.type === 'quittance' && h._v2 && moisAffectes.includes(h.mois)));
       }
@@ -10961,6 +10974,25 @@ function confirmDeleteMouvement() {
   renderLocataireDetail();
 }
 
+// V110 : supprimer un mouvement « + » (loyer) supprime aussi les mouvements « + » du même mois qui partagent sa pièce
+// (provision) et l'appel de loyer de ce mois, devenu sans objet. Les quittances restent au choix (case à cocher).
+function cascadeSuppressionMouvement(loc, mvt) {
+  const res = { mvts: [], appels: [] };
+  if(!mvt || mvt.sens !== '+') return res;
+  const mois = (mvt.affectations || []).map(a => a.mois);
+  const t = (loc.types || []).find(x => x.id === mvt.typeId);
+  const estLoyer = t && (/loyer/i.test(t.nom || '') || String(t.compteCredit || '').startsWith('706'));
+  if(estLoyer) {
+    const ref = m0 => t ? genererNumeroPiece(t, m0) : '';
+    res.mvts = (loc.mouvements || []).filter(m => m.id !== mvt.id && m.sens === '+' && (m.affectations || []).some(a => {
+      if(!mois.includes(a.mois)) return false;
+      const tm = (loc.types || []).find(x => x.id === m.typeId);
+      return tm && genererNumeroPiece(tm, a.mois) === ref(a.mois) && !(/loyer/i.test(tm.nom || ''));
+    }));
+  }
+  res.appels = (loc.historique || []).filter(h => h.type === 'appel' && !h._exercicePrecedent && mois.includes(h.mois));
+  return res;
+}
 function cancelDeleteMouvement() {
   _mvtDeleteTarget = null;
   document.getElementById('mvt-delete-modal').style.display = 'none';
@@ -10972,11 +11004,15 @@ function cancelDeleteMouvement() {
 function proposerQuittanceAuto(locId, mois) {
   const loc = ensureLocatairesArray().find(l => l.id === locId);
   if(!loc) return;
+  const liste = (Array.isArray(mois) ? mois : [mois]).slice().sort(); // V110 : un paiement peut solder plusieurs mois
+  mois = liste[0];
   document.getElementById('quittance-auto-loc-id').value = locId;
-  document.getElementById('quittance-auto-mois').value = mois;
-  document.getElementById('quittance-auto-msg').innerHTML =
-    `Le solde du mois <strong style="color:var(--cyan);">${moisLabelFromYYYYMM(mois)}</strong> vient de passer à 0 pour <strong>${esc(loc.prenom1||'')} ${esc(loc.nom1||'')}</strong>.<br><br>` +
-    `Souhaitez-vous générer la <strong>quittance</strong> correspondante ?`;
+  document.getElementById('quittance-auto-mois').value = liste.join(',');
+  document.getElementById('quittance-auto-msg').innerHTML = liste.length === 1
+    ? `Le solde du mois <strong style="color:var(--cyan);">${moisLabelFromYYYYMM(mois)}</strong> vient de passer à 0 pour <strong>${esc(loc.prenom1||'')} ${esc(loc.nom1||'')}</strong>.<br><br>` +
+      `Souhaitez-vous générer la <strong>quittance</strong> correspondante ?`
+    : `Les soldes de <strong>${liste.length} mois</strong> viennent de passer à 0 pour <strong>${esc(loc.prenom1||'')} ${esc(loc.nom1||'')}</strong>. Quittances à générer :<br><br>` +
+      liste.map(m => `<label style="display:flex;align-items:center;gap:8px;margin:0 0 4px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;"><input type="checkbox" class="qa-mois" value="${m}" checked style="width:14px;height:14px;"> 🧾 ${moisLabelFromYYYYMM(m)}</label>`).join('');
   document.getElementById('quittance-auto-modal').style.display = 'flex';
 }
 
@@ -10986,11 +11022,12 @@ function closeQuittanceAutoModal() {
 
 function confirmerQuittanceAuto() {
   const locId = document.getElementById('quittance-auto-loc-id').value;
-  const mois = document.getElementById('quittance-auto-mois').value;
+  const coches = Array.from(document.querySelectorAll('#quittance-auto-msg .qa-mois'));
+  const liste = coches.length ? coches.filter(c => c.checked).map(c => c.value) : document.getElementById('quittance-auto-mois').value.split(',').filter(Boolean);
   closeQuittanceAutoModal();
   const loc = ensureLocatairesArray().find(l => l.id === locId);
-  if(!loc || !mois) return;
-  genererQuittanceV2(loc, mois);
+  if(!loc || !liste.length) return;
+  liste.forEach(m => genererQuittanceV2(loc, m)); // V110 : une quittance par mois soldé
 }
 
 // Génère une quittance à partir des mouvements du mois (pas de l'ancien système)
@@ -12449,7 +12486,7 @@ function renderKmSaisieMois() {
       const p = `km-edit-${t.id}-`;
       const ent = enterSave(`saveKmTrajetEdit('${t.id}')`);
       return `<tr>
-        <td><input type="date" id="${p}date" value="${t.date}" min="${dMin}" max="${dMax}" ${ent} style="width:130px;font-family:var(--mono);font-size:10px;"></td>
+        <td>${htmlJourKm(p, mois, String(t.date || '').slice(8, 10).replace(/^0/, ''))}</td>
         <td><select id="${p}veh" onchange="kmMajMontantApercu('${p}')" ${ent} style="width:100%;font-size:10px;">${kmVehiculeOptions(km, t.vehiculeId)}</select></td>
         <td><input type="text" id="${p}lieu" value="${(t.lieu||'').replace(/"/g,'&quot;')}" ${ent} style="width:100%;"></td>
         <td><input type="text" id="${p}motif" value="${(t.motif||'').replace(/"/g,'&quot;')}" ${ent} style="width:100%;"></td>
@@ -12480,7 +12517,7 @@ function renderKmSaisieMois() {
     const p = 'km-new-';
     const ent = enterSave('addKmTrajet()');
     addRow = `<tr style="background:var(--bg2);">
-      <td><input type="date" id="${p}date" min="${dMin}" max="${dMax}" ${ent} style="width:130px;font-family:var(--mono);font-size:10px;"></td>
+      <td>${htmlJourKm(p, mois, '')}</td>
       <td><select id="${p}veh" onchange="kmMajMontantApercu('${p}')" ${ent} style="width:100%;font-size:10px;">${kmVehiculeOptions(km, defVeh)}</select></td>
       <td><input type="text" id="${p}lieu" placeholder="Lieu" ${ent} style="width:100%;"></td>
       <td><input type="text" id="${p}motif" placeholder="Motif" ${ent} style="width:100%;"></td>
@@ -12501,7 +12538,10 @@ function renderKmSaisieMois() {
   </table>`;
 }
 function kmLireTrajetForm(prefix, mois) {
-  const date = document.getElementById(prefix+'date').value;
+  const jourEl = document.getElementById(prefix+'jour'); // V110 : n° du jour, mois et année préremplis
+  const jour = jourEl ? parseInt(jourEl.value, 10) : 0;
+  if(jourEl && (!jour || jour < 1 || jour > dernierJourMois(mois))) { toast(`Jour invalide : entre 1 et ${dernierJourMois(mois)} pour ${moisLabelFromYYYYMM(mois)}`, 'error'); return null; }
+  const date = jourEl ? `${mois}-${String(jour).padStart(2, '0')}` : document.getElementById(prefix+'date').value;
   const vehiculeId = document.getElementById(prefix+'veh').value;
   const lieu = document.getElementById(prefix+'lieu').value.trim();
   const motif = document.getElementById(prefix+'motif').value.trim();
@@ -12523,7 +12563,7 @@ function addKmTrajet() {
   saveDB();
   renderKmSaisieMois();
   renderKmFichesList();
-  setTimeout(() => document.getElementById('km-new-date')?.focus(), 0);
+  setTimeout(() => document.getElementById('km-new-jour')?.focus(), 0);
 }
 function removeKmTrajet(id) {
   if(bloqueSiCloture()) return; // V81 (M3)
@@ -12628,7 +12668,10 @@ function getOrBuildKmFicheMois(km, mois) {
     return fiche;
   }
   const { trajets, totalKm, montant } = kmTotauxMois(km, mois);
-  if(!trajets.length || montant <= 0) return fiche || null;
+  if(!trajets.length || montant <= 0) { // V110 : brouillon devenu vide → supprimé (sinon fiche « fantôme »)
+    if(fiche && !fiche.comptabilise) km.fiches = km.fiches.filter(f => f !== fiche);
+    return null;
+  }
   const doc = instantaneKm(km, mois, trajets, totalKm, montant);
   const docTitle = `Fiche_KM_${mois}`;
   if(fiche) {
@@ -16189,7 +16232,8 @@ const DP_RUBRIQUES_DEFAUT = [
   { code: 'prets', label: 'Prêts' },
   { code: 'assurances', label: 'Assurances' },
   { code: 'fiscalite', label: 'Fiscalité' },
-  { code: 'divers', label: 'Divers' }
+  { code: 'divers', label: 'Divers' },
+  { code: 'etats_financiers', label: 'États financiers', couleur: '#2dd4bf' } // V110 : alimenté à chaque clôture
 ];
 const DOC_TAILLE_MAX = 20 * 1024 * 1024;          // 20 Mo par fichier
 const DOC_COMPRESSION_SEUIL = 400 * 1024;          // photos de plus de 400 Ko recompressées
@@ -16324,6 +16368,8 @@ async function renderDocuments(recharger) {
     await Promise.all([chargerPieces(), DOCS_CONFIG ? null : chargerDocsConfig()]);
     updateNavCounts();
   }
+  if(DOCS_CONFIG && !rubriquesDP().some(r => r.code === 'etats_financiers')) assurerClasseursSysteme().then(() => renderDocumentsVue()); // V110
+  migrerEditionsVersDP(); // V110
   renderDocumentsVue();
 }
 function docsChangerVue(v) { if(v === _docsVue && typeof _docsClasseur !== 'undefined') _docsClasseur[v] = null; _docsVue = v; renderDocumentsVue(); } // V107 : re-clic = retour aux classeurs
@@ -17026,7 +17072,7 @@ function signatureDoc(x) {
   let h = 5381; for(let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
   return h.toString(36) + '-' + s.length + '-' + VERSION_MISE_EN_PAGE_PDF;
 }
-function rubriquePourPV() { const r = rubriquesDP(); return (r.find(x => x.code === 'ag') || r[0]).code; }
+function rubriquePourPV() { const r = rubriquesDP(); const f = r.find(x => x.code === 'ag') || r.find(x => normLib(x.label) === normLib("PV d'AG et décisions")); return f ? f.code : null; } // V110 : plus de classeur par défaut
 function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
 // Description, pour la GED, d'un document généré par un module
 function descripteurDocument(module, x, exercice, loc, data) {
@@ -17052,7 +17098,7 @@ function documentsGeneresDe(data, exercice) {
   (data.locataires || []).forEach(loc => (loc.historique || []).forEach(h => {
     if(!h._exercicePrecedent && aUnDocument(h)) out.push(descripteurDocument('loc', h, exercice, loc, data));
   }));
-  ((data.km || {}).fiches || []).forEach(f => { if(aUnDocument(f)) out.push(descripteurDocument('km', f, exercice)); });
+  ((data.km || {}).fiches || []).forEach(f => { if(aUnDocument(f) && f.comptabilise !== false) out.push(descripteurDocument('km', f, exercice)); }); // V110 : seules les fiches comptabilisées sont des pièces
   (data.pvApprobations || []).forEach(pv => { if(aUnDocument(pv)) out.push(descripteurDocument('pv', pv, exercice)); });
   return out;
 }
@@ -17064,6 +17110,7 @@ function deposerDocumentGenere(d) {
   const travail = (async () => {
     const dejaFait = pieceAJourPour(d); if(dejaFait) return { meta: dejaFait, etat: 'ajour' };
     const existant = (PIECES || []).find(p => p.origine === d.cle);
+    if(d.espace === 'permanent' && !d.rubrique) throw new Error(MSG_CLASSEUR_PV); // V110 : classeur du PV absent
     const html = htmlDuDocument(d.x); if(!html) throw new Error('Document sans contenu');
     const blob = d.edition ? await pdfDepuisEdition(html, d.paysage) : await pdfDepuisHtml(html, d.paysage); // V106 : éditions sur plusieurs pages
     const id = existant ? existant.id : crypto.randomUUID();
@@ -17076,7 +17123,8 @@ function deposerDocumentGenere(d) {
       origine: d.cle, origineSig: signatureDoc(d.x), origineExercice: d.exercice, module: d.module
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
-      classeurs: existant ? classeursDe(existant) : [d.rubrique], typeDP: existant ? (existant.typeDP || '') : (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '' }); // V107 : classement conservé
+      classeurs: existant && classeursDe(existant).length ? classeursDe(existant) : [d.rubrique], typeDP: (existant && existant.typeDP) || d.typeDP || (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '',
+      sousDossier: d.sousDossier || (existant && existant.sousDossier) || '' }); // V107 : classement conservé, V110 : sous-dossier
     else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: d.numDoc || (existant && existant.numDoc) || '' }); // V109 : n° de pièce des écritures
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
@@ -17117,7 +17165,8 @@ async function synchroniserGED(sources, opts) {
       const cles = new Set(docs.map(d => d.cle));
       // V108 : type corrigé sur les PDF déjà présents (ex. appels de loyer auparavant sans type)
       for(const d of docs) { const p = pieceAJourPour(d); if(!p || p.espace !== 'compta') continue; const ch = {}; if(d.typePiece && p.typePiece !== d.typePiece) ch.typePiece = d.typePiece; if(d.numDoc && p.numDoc !== d.numDoc) ch.numDoc = d.numDoc; if(Object.keys(ch).length) { try { await majPiece(p, ch); } catch(e) {} } } // V109 : type et n° de pièce
-      const aFaire = docs.filter(d => !pieceAJourPour(d));
+      if(docs.some(d => d.espace === 'permanent' && !d.rubrique)) avisClasseurPV(); // V110
+      const aFaire = docs.filter(d => !pieceAJourPour(d) && !(d.espace === 'permanent' && !d.rubrique));
       res.ajour += docs.length - aFaire.length;
       res.total += aFaire.length;
       for(const d of aFaire) {
@@ -17179,6 +17228,8 @@ async function pdfGedDocument(module, x, loc, exercice) {
 }
 async function ouvrirDocumentModule(module, x, loc, exercice) {
   if(!aUnDocument(x)) { toast('Document non disponible', 'error'); return; }
+  // V110 : fiche km non comptabilisée = brouillon, simple aperçu (ce n'est pas encore une pièce de la GED)
+  if(module === 'km' && x.comptabilise === false) { const h = htmlDuDocument(x); if(h) { printDoc(h, x.docTitle || 'Fiche km', false, true); return; } }
   const titre = module === 'pv' ? "PV d'AGO" : module === 'km' ? 'Fiche kilométrique' : (x.type === 'quittance' ? 'Quittance' : 'Appel de loyer');
   // La visionneuse s'ouvre tout de suite ; le PDF s'y affiche dès qu'il est prêt
   document.getElementById('dv-titre').textContent = titre;
@@ -17188,7 +17239,7 @@ async function ouvrirDocumentModule(module, x, loc, exercice) {
   document.getElementById('doc-viewer-modal').style.display = 'flex';
   _vue = { id: null, url: null, blobUrl: null };
   let p = null;
-  try { p = await pdfGedDocument(module, x, loc, exercice); } catch(e) { console.error(e); }
+  try { p = await pdfGedDocument(module, x, loc, exercice); } catch(e) { console.error(e); if(e && e.message === MSG_CLASSEUR_PV) toast(MSG_CLASSEUR_PV, 'error', 12000); }
   if(document.getElementById('doc-viewer-modal').style.display !== 'flex') return; // fermée entre-temps
   if(p) { voirPiece(p.id); return; }
   fermerVisionneuse();
@@ -17330,12 +17381,12 @@ function renderPiecesEcriture() {
   if(actif) {
     const lie = (j.module === 'echeancier' || j.module === 'emprunt');
     h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-        ${b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
+        ${(j.statut === 'sans' || j.calcManuel) ? '' : b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
         ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « SANS JUSTIFICATIF »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ MARQUER SANS JUSTIFICATIF', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
         ${!j.pieces.length && j.statut === 'manquant' ? b('⚙ ÉCRITURE DE CALCUL', `basculerCalcul(['${esc(_pjIo)}'], true)`) : ''}${j.calcManuel ? b('ANNULER « ÉCRITURE DE CALCUL »', `basculerCalcul(['${esc(_pjIo)}'], false)`) : ''}
       </div>
       ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
-      ${htmlSelecteurPieces(j)}`;
+      ${(j.statut === 'sans' || j.calcManuel) ? `<div style="font-size:11px;color:var(--text2);font-style:italic;">${j.statut === 'sans' ? 'Écriture marquée « sans justificatif »' : 'Écriture désignée « de calcul »'} : aucune pièce à joindre. Annulez ce marquage pour en joindre une.</div>` : htmlSelecteurPieces(j)}`;
   }
   corps.innerHTML = h;
 }
@@ -17768,18 +17819,19 @@ function piecesParReference() {
 }
 let _autoTimer = null, _autoEnCours = false;
 function programmerAutoLiaison() { if(_autoTimer || _autoEnCours) return; _autoTimer = setTimeout(autoLierParReference, 1200); }
+let _anomaliesEnAttente = new Map();
 async function autoLierParReference() {
   _autoTimer = null;
   if(_autoEnCours || !window._fbStorageActif || !PIECES || !DB || !DB.ecritures) return;
   const clos = EXERCISE_STATUS === 'closed'; // exercice clôturé : seuls les documents de ses modules sont joints
   _autoEnCours = true;
-  let nbEcr = 0; const exemples = [];
+  let nbEcr = 0; const exemples = []; _anomaliesEnAttente = new Map();
   try {
     const ex = String(CURRENT_YEAR);
     const refs = clos ? new Map() : piecesParReference();
     preparerJustifs();
     const refus = new Set(ensureLiensRefuses());
-    const ajouts = new Map(), iosLies = new Set();
+    const ajouts = new Map(), iosLies = new Set(), parIo = new Map(); // V110 : anomalies signalées
     _justifs.forEach(j => {
       if(_ioEnDepot.has(j.io)) return; // V109 : toute écriture, même déjà justifiée ou marquée, reçoit les pièces de même n°
       const pm = pieceDuModulePourEcriture(j); // V108 : fiche km du mois / PV d'AGO
@@ -17794,9 +17846,13 @@ async function autoLierParReference() {
       if(String(CURRENT_YEAR) !== ex) break; // exercice changé entre-temps
       const liens = (p.liens || []).slice();
       js.forEach(j => { if(!liens.some(l => l.ex === ex && l.io === j.io)) liens.push({ ex, io: j.io, nd: j.numDoc || '', auto: true }); });
-      if(await majPiece(p, { liens })) js.forEach(j => { if(!iosLies.has(j.io)) { iosLies.add(j.io); if(exemples.length < 1) exemples.push({ j, p }); } });
+      if(await majPiece(p, { liens })) js.forEach(j => {
+        if(!parIo.has(j.io)) parIo.set(j.io, { avant: j.pieces.slice(), sans: j.statut === 'sans', nouvelles: [] });
+        parIo.get(j.io).nouvelles.push(p);
+        if(!iosLies.has(j.io)) { iosLies.add(j.io); if(exemples.length < 1) exemples.push({ j, p }); }
+      });
     }
-    nbEcr = iosLies.size;
+    nbEcr = iosLies.size; _anomaliesEnAttente = parIo;
   } catch(e) { console.error('Liaison automatique', e); }
   finally { _autoEnCours = false; }
   if(nbEcr) {
@@ -17804,6 +17860,7 @@ async function autoLierParReference() {
     toast(nbEcr === 1 ? `📎 Écriture #${e0.j.num} jointe automatiquement à « ${e0.p.titre || e0.p.nomFichier} » (${e0.p.origine ? 'document du module' : 'même n° de pièce ' + e0.j.numDoc})`
       : `📎 ${nbEcr} écritures jointes automatiquement à leur document (même n° de pièce, fiche km, PV d'AGO)`, 'success', 6000);
     apresChangementJustifs();
+    try { anomaliesApresLiaison(_anomaliesEnAttente); } catch(e) { console.warn(e); }
   }
 }
 // Modifier la référence (n° de pièce) d'un document déposé
@@ -17902,7 +17959,7 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
       const ext = tamponne ? 'pdf' : extensionDe(p.nomFichier, p.mime);
       let dossier, base;
       if(p.espace === 'permanent') {
-        dossier = `Dossier permanent/${nomZipSur(classeursDe(p).length ? libRubrique(classeursDe(p)[0]) : 'Sans classeur', 60)}`; // V107 : 1er classeur
+        dossier = `Dossier permanent/${nomZipSur(classeursDe(p).length ? libRubrique(classeursDe(p)[0]) : 'Sans classeur', 60)}${p.sousDossier ? '/' + nomZipSur(p.sousDossier, 40) : ''}`; // V107 : 1er classeur, V110 : sous-dossier
         base = `${p.titre || titreDepuisNom(p.nomFichier)} - v${p.version || 1}${p.enVigueur ? ' (en vigueur)' : ''}`;
       } else {
         dossier = `Pièces comptables/${nomZipSur(String(p.exercice || 'sans exercice') + (p.test ? ' TEST' : ''), 30)}`;
@@ -18103,13 +18160,14 @@ async function deposerEditionsCloture(silencieux) {
   const y = String(CURRENT_YEAR), rapport = { ok: [], echecs: [] };
   try {
     afficherProgressionSauvegarde('Éditions de clôture : préparation…', 0.02);
+    await assurerClasseursSysteme(); // V110
     const eds = await capturerEditionsCloture();
     for(let i = 0; i < eds.length; i++) {
       const e = eds[i];
       afficherProgressionSauvegarde(`Éditions de clôture : ${e.titre} (${i + 1} / ${eds.length})`, (i + 0.5) / eds.length);
       if(e.erreur) { rapport.echecs.push(`${e.titre} — ${e.erreur}`); continue; }
       try {
-        const d = { cle: `ed:${y}:${e.code}`, espace: 'compta', exercice: y, test: isTestExercise(y), module: 'ed', edition: true,
+        const d = { cle: `ed:${y}:${e.code}`, espace: isTestExercise(y) ? 'compta' : 'permanent', rubrique: CODE_ETATS_FINANCIERS, sousDossier: y, typeDP: 'EF', exercice: y, test: isTestExercise(y), module: 'ed', edition: true, // V110 : DP › États financiers › année
           x: { docHtml: e.html.join('\n<!--atrium-page-->\n') }, titre: e.titre, date: dateFinExercice(), typePiece: '', nom: e.nom, paysage: e.paysage };
         await deposerDocumentGenere(d);
         rapport.ok.push(e.titre);
@@ -18236,7 +18294,7 @@ function htmlPiecesComptablesV107() {
     const depotActif = !!window._fbStorageActif && ouverts.length > 0;
     return `<div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:11px;color:var(--text2);">Classeurs des pièces comptables — nombre de pièces de l'exercice <strong style="color:var(--cyan);">${esc(cible === 'tous' ? 'tous exercices' : cible)}</strong></span>
-        <button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')" style="margin-left:auto;">⚙ GÉRER LES CLASSEURS</button>
+        <span style="margin-left:auto;">${htmlCoutStockage()}</span><button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')">⚙ GÉRER LES CLASSEURS</button>
       </div>
       ${htmlZoneDepot('compta', null, depotActif, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée')}
       <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
@@ -18415,6 +18473,7 @@ function gcSupprimer(i) {
     const n = (PIECES || []).filter(p => p.espace === 'permanent' && classeursDe(p).includes(c.code)).length;
     if(n && !confirm(`Le classeur « ${c.label} » contient ${n} document(s). Le supprimer ? Les documents restent dans leurs autres classeurs (ou passent dans « Sans classeur »).`)) return;
   }
+  if(c.code === CODE_ETATS_FINANCIERS) { toast('Classeur « États financiers » : alimenté automatiquement à chaque clôture, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; }
   _gc.classeurs.splice(i, 1); renderGestionClasseurs();
 }
 function gcAjouter() {
@@ -18514,7 +18573,7 @@ function htmlNumDocLien(e) {
   const couleur = st === 'joint' || st === 'auto' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
   const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'auto' ? 'Voir le document du module (justificatif)' : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « sans justificatif » : cliquer pour modifier';
   const txt = nd || (st === 'manquant' ? '📎 à joindre' : st === 'sans' ? '∅' : '📎');
-  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'line-through' : 'underline'};text-underline-offset:2px;font-weight:600;">${txt}</a>`;
+  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'underline dotted' : 'underline'};text-underline-offset:2px;font-weight:${st === 'sans' ? 400 : 600};">${txt}</a>`;
 }
 function clicNumDoc(io) {
   const j = justifDe(io); if(!j) return;
@@ -18908,7 +18967,16 @@ function htmlDossierPermanentV109() {
       <td class="td-act">${!ancienne && actif && !pieceGeneree(p) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent',null,null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${maxVersion(p.groupe || p.id) + 1}</button>` : ''}
         ${!ancienne ? `<button class="btn btn-sm btn-icon" onclick="ouvrirClassementDP('${p.id}')" title="Classeurs et type du document" style="padding:1px 6px;font-size:10px;">🗂</button>` : ''}${htmlActionsPiece(p)}</td></tr>`;
   };
-  const lignes = liste.map(g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '')).join('');
+  const ligneGroupe = g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '');
+  let lignes;
+  if(liste.some(g => g.courante.sousDossier)) { // V110 : sous-dossiers (ex. une année par dossier dans « États financiers »)
+    const sds = [...new Set(liste.map(g => g.courante.sousDossier || ''))].sort((a, b) => (a === '') - (b === '') || b.localeCompare(a, 'fr', { numeric: true }));
+    lignes = sds.map(sd => {
+      const gs = liste.filter(g => (g.courante.sousDossier || '') === sd), cle = id + '|' + sd, ferme = _sdFermes.has(cle);
+      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span></td></tr>` : '')
+        + (ferme ? '' : gs.map(ligneGroupe).join(''));
+    }).join('');
+  } else lignes = liste.map(ligneGroupe).join('');
   const nbF = fcNb('gedp');
   return `${htmlBarreClasseur('permanent', info.nom, info.couleur)}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -18933,7 +19001,8 @@ function majAlerteNavGED() {
   if(typeof PIECES === 'undefined' || !PIECES || !DB || !DB.ecritures) { z.style.display = 'none'; return; }
   let orph = 0, nc = 0;
   try { orph = piecesSansEcritureExercice().length; nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')).length; } catch(e) {}
-  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : ''].filter(Boolean).join(' · ');
+  const cout = (() => { try { return coutStockageMensuel(); } catch(e) { return 0; } })();
+  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : '', cout > 1 ? `stockage estimé à ${cout.toFixed(2).replace('.', ',')} €/mois (au-dessus de 1 €)` : ''].filter(Boolean).join(' · ');
   z.style.display = msg ? '' : 'none'; z.title = msg;
 }
 
@@ -18961,6 +19030,84 @@ function refPieceLoyer(loc, x, data) {
   const code = String(numDoc || '').split(/[\/_]/)[0];
   const type = typeSiConnu(code) || typeSiConnu(prefixe) || typeSiConnu('QUIT');
   return { type, numDoc };
+}
+
+
+// ══════════════════════════════════════════════
+// V110 — VAGUE 4
+// ══════════════════════════════════════════════
+
+// ── Alerte : pièce de même n° jointe à une écriture qui avait déjà une pièce, ou marquée « sans justificatif » ──
+function anomaliesApresLiaison(ajoutsParIo) {
+  // ajoutsParIo : io → { avant: [pièces], sans: bool, nouvelles: [pièces] }
+  const msgs = [];
+  ajoutsParIo.forEach((a, io) => {
+    const j = justifDe(io); if(!j) return;
+    const deposees = a.avant.concat(a.nouvelles).filter(p => !pieceGeneree(p));
+    if(a.sans) msgs.push(`#${j.num} était marquée « sans justificatif » : « ${a.nouvelles.map(p => p.titre || p.nomFichier).join(', ')} » (même n°) y a été jointe`);
+    else if(deposees.length > 1) msgs.push(`#${j.num} (${j.numDoc}) a maintenant ${deposees.length} pièces déposées de même n° : ${deposees.map(p => '« ' + (p.titre || p.nomFichier) + ' »').join(', ')}`);
+  });
+  if(msgs.length) toast(`⚠ Anomalie de rattachement — vérifiez : ${msgs.join(' ; ')}`, 'warn', 15000);
+}
+
+// ── Classeur système « États financiers » (DP) : éditions de clôture rangées par année ──
+const CODE_ETATS_FINANCIERS = 'etats_financiers';
+function classeurEtatsFinanciers() { return { code: CODE_ETATS_FINANCIERS, label: 'États financiers', couleur: '#2dd4bf' }; }
+async function assurerClasseursSysteme() {
+  if(!window._fbStorageActif || !window._fbDocsConfigSave) return;
+  const r = rubriquesDP();
+  const manqueEF = !r.some(x => x.code === CODE_ETATS_FINANCIERS);
+  const manqueType = !typesDP().some(t => t.code === 'EF');
+  if(!manqueEF && !manqueType) return;
+  try {
+    await enregistrerDocsConfig({ rubriques: manqueEF ? r.concat([classeurEtatsFinanciers()]) : r, typesDP: manqueType ? typesDP().concat([{ code: 'EF', label: 'États financiers' }]) : typesDP() });
+  } catch(e) { console.warn('Classeur « États financiers » non créé', e); }
+}
+// Éditions de clôture déjà déposées dans les pièces comptables (V106) → déplacées dans le DP
+let _migrationEditionsFaite = false;
+async function migrerEditionsVersDP() {
+  if(_migrationEditionsFaite || !PIECES || !window._fbStorageActif) return;
+  _migrationEditionsFaite = true;
+  const aDeplacer = PIECES.filter(p => String(p.origine || '').startsWith('ed:') && p.espace === 'compta' && !p.test);
+  if(!aDeplacer.length) return;
+  await assurerClasseursSysteme();
+  for(const p of aDeplacer) {
+    const annee = String(p.origineExercice || p.exercice || String(p.origine).split(':')[1] || '');
+    try { await majPiece(p, { espace: 'permanent', rubrique: CODE_ETATS_FINANCIERS, classeurs: [CODE_ETATS_FINANCIERS], sousDossier: annee, groupe: p.id, version: 1, enVigueur: true, typeDP: 'EF' }); } catch(e) { console.warn(e); }
+  }
+  toast(`${aDeplacer.length} édition(s) de clôture rangée(s) dans le DP › États financiers`, 'success', 6000);
+  if(document.getElementById('tab-documents')?.classList.contains('active')) renderDocumentsVue();
+}
+let _sdFermes = new Set();
+function basculerSousDossier(cle) { if(_sdFermes.has(cle)) _sdFermes.delete(cle); else _sdFermes.add(cle); renderDocumentsVue(); }
+
+// ── PV d'AGO : classeur « PV d'AG et décisions » obligatoire ──
+const MSG_CLASSEUR_PV = "Merci de créer le classeur « PV d'AG et décisions » dans le Dossier Permanent (GED › Dossier permanent › ⚙ Gérer les classeurs) : le PV y sera rangé.";
+function normLib(s) { return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[’`]/g, "'").toLowerCase().replace(/\s+/g, ' ').trim(); }
+let _avisPVDonne = false;
+function avisClasseurPV() { if(_avisPVDonne) return; _avisPVDonne = true; toast(MSG_CLASSEUR_PV, 'warn', 12000); }
+
+// ── Estimation du coût du stockage des documents ──
+// Cloud Storage, classe Standard, région europe-west9 (Paris) : pas de quota gratuit dans cette région.
+// Tarif indicatif ~0,023 $ par Go et par mois (à ajuster ici si Google le modifie) ; les opérations sont négligeables.
+const TARIF_STOCKAGE_EUR_GO_MOIS = 0.022;
+function volumeStockage() { return (PIECES || []).reduce((s, p) => s + (+p.taille || 0), 0); }
+function coutStockageMensuel() { return volumeStockage() / (1024 ** 3) * TARIF_STOCKAGE_EUR_GO_MOIS; }
+function htmlCoutStockage() {
+  if(!PIECES) return '';
+  const o = volumeStockage(), c = coutStockageMensuel();
+  const vol = o > 1024 ** 3 ? (o / 1024 ** 3).toLocaleString('fr-FR', { maximumFractionDigits: 2 }) + ' Go' : (o / 1024 ** 2).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' Mo';
+  const alerte = c > 1;
+  return `<span title="Estimation du coût Google Cloud Storage (région Paris, sans quota gratuit). La facture réelle est surveillée par l'alerte de budget de la console Google Cloud." style="font-size:10px;color:${alerte ? 'var(--red);font-weight:700' : 'var(--text2)'};">${alerte ? '⚠ ' : ''}Stockage : ${vol} · ≈ ${c.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/mois${alerte ? ' — au-dessus de 1 €' : ''}</span>`;
+}
+
+// ── KM : saisie du seul n° du jour (mois et année préremplis) ──
+function htmlJourKm(p, mois, valeur) {
+  const [yy, mm] = mois.split('-'), dern = dernierJourMois(mois);
+  return `<div style="display:flex;align-items:center;gap:3px;font-family:var(--mono);font-size:10px;">
+      <input type="number" id="${p}jour" min="1" max="${dern}" value="${valeur || ''}" placeholder="jj" style="width:52px;font-family:var(--mono);font-size:10px;text-align:right;"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();${p === 'km-new-' ? 'addKmTrajet()' : `saveKmTrajetEdit('${p.slice(8, -1)}')`};}">
+      <span style="color:var(--text2);">/${mm}/${yy}</span></div>`;
 }
 
 </script>
