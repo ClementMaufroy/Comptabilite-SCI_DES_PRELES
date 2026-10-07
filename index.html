@@ -237,6 +237,11 @@ document.addEventListener('DOMContentLoaded', () => { if(ATRIUM_INSTALL_INCOMPLE
     const snap = await getDocsFromServer(query(collection(db, window.ATRIUM_INSTALL.collection), where('_kind', '==', 'piece')));
     return snap.docs.map(d => { const x = d.data(); delete x._kind; return x; });
   };
+  // V100 : écoute en direct de l'index (dépôts faits sur un autre poste, copies PDF des modules…)
+  window._fbPiecesEcouter = (cb, onErr) => onSnapshot(
+    query(collection(db, window.ATRIUM_INSTALL.collection), where('_kind', '==', 'piece')),
+    (snap) => cb(snap.docs.map(d => { const x = d.data(); delete x._kind; return x; })),
+    (err) => { console.error('Écoute des documents', err); if(onErr) onErr(err); });
   window._fbPieceSave = async (meta) => { await setDoc(pieceRef(meta.id), Object.assign({}, meta, { _kind: 'piece' })); };
   window._fbPieceDelete = async (id) => { await deleteDoc(pieceRef(id)); };
   window._fbFichierEnvoyer = (chemin, blob, contentType, onProgress) => new Promise((resolve, reject) => {
@@ -701,6 +706,10 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 .nav-item .ni-count { flex: none; min-width: 34px; text-align: center; padding: 0 4px; }
 .nav-sep { display: none; }
 .nav-version { padding: 4px 14px; font-size: 8.5px; }
+/* V100 — GED : seul le contenu de la liste défile, en-tête et filtres restent fixes */
+#tab-documents.active { overflow: hidden; }
+.docs-scroll { flex: 1; min-height: 0; overflow: auto; }
+.docs-scroll thead th { position: sticky; top: 0; z-index: 2; background: var(--bg3); }
 body.pdf-en-cours::before { display: none; }
 </style>
 <style>
@@ -1693,11 +1702,8 @@ applyTheme();
           <div class="page-title">DOCUMENTS</div>
           <div class="page-sub">Pièces comptables de tous les exercices et dossier permanent</div>
         </div>
-        <div class="page-actions">
-          <button class="btn btn-sm" onclick="renderDocuments()" title="Relire la liste dans Firebase">↻ ACTUALISER</button>
-        </div>
       </div>
-      <div id="docs-wrap" style="display:flex;flex-direction:column;gap:12px;"></div>
+      <div id="docs-wrap" style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;"></div>
     </div>
 
     <!-- ══════════════ PARAMÈTRES ══════════════ -->
@@ -9562,7 +9568,8 @@ function printDoc(html, title, autoprint, landscape) {
       table { line-height: 1.2; margin-bottom: 10px !important; }
       table td { padding-top: 2px !important; padding-bottom: 2px !important; }
       table tr:first-child td, table tr:last-child td { padding-top: 4px !important; padding-bottom: 4px !important; }
-      table td[colspan="2"][style*="height:6px"] { height: 3px !important; padding: 0 !important; }` : '';
+      table td[colspan="2"][style*="height:6px"] { height: 3px !important; padding: 0 !important; }
+      table, body > div > div { break-inside: avoid; page-break-inside: avoid; } /* V100 : jamais de coupure dans un tableau ou un encart */` : '';
   const win = window.open('', '_blank', 'width=900,height=700');
   if(!win) { toast('Autorisez les popups pour imprimer', 'error'); return; }
   win.document.write(`<!DOCTYPE html><html><head>
@@ -15501,7 +15508,7 @@ async function boot() {
   fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
-  chargerDocsConfig().then(() => chargerPieces()).then(() => { updateNavCounts(); if(EXERCISE_STATUS !== 'closed') planifierSyncGED(); }); // V98/V99 : base documentaire
+  chargerDocsConfig().then(() => chargerPieces()).then(() => { updateNavCounts(); ecouterPieces(); if(EXERCISE_STATUS !== 'closed') planifierSyncGED(); }); // V98→V100 : base documentaire
   checkMonthlyExport();
   checkWeeklyExport();
   // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
@@ -16123,6 +16130,24 @@ async function chargerPieces() {
   try { PIECES = await window._fbPiecesList(); _piecesErreur = null; return true; }
   catch(e) { console.error('Index des documents illisible', e); PIECES = null; _piecesErreur = (e && (e.code || e.message)) || String(e); return false; }
 }
+// V100 : écoute en direct de l'index — la GED est toujours à jour, sans bouton « Actualiser »
+let _piecesUnsub = null;
+function ecouterPieces() {
+  if(_piecesUnsub || !window._fbPiecesEcouter) return;
+  _piecesUnsub = window._fbPiecesEcouter(liste => {
+    PIECES = liste; _piecesErreur = null;
+    updateNavCounts();
+    const ongletActif = document.getElementById('tab-documents')?.classList.contains('active');
+    const saisieEnCours = document.activeElement && document.activeElement.id === 'docs-q';
+    if(ongletActif && !saisieEnCours) renderDocumentsVue();
+  }, () => { _piecesUnsub = null; });
+}
+// Ajoute ou remplace une fiche dans l'index local (l'écoute en direct a pu l'ajouter entre-temps)
+function indexerPiece(meta) {
+  if(!PIECES) PIECES = [];
+  const i = PIECES.findIndex(p => p.id === meta.id);
+  if(i >= 0) PIECES[i] = meta; else PIECES.push(meta);
+}
 async function chargerDocsConfig() {
   if(!window._fbDocsConfigLoad) return;
   try { DOCS_CONFIG = (await window._fbDocsConfigLoad()) || null; } catch(e) { console.error(e); }
@@ -16210,7 +16235,7 @@ async function preparerFichier(f) {
 // ══════════════════════════════════════════════
 async function renderDocuments(recharger) {
   const zone = document.getElementById('docs-wrap'); if(!zone) return;
-  if(recharger !== false || PIECES === null) {
+  if(PIECES === null || (recharger !== false && !_piecesUnsub)) {
     zone.innerHTML = `<div class="card" style="font-size:12px;color:var(--text2);">Chargement des documents…</div>`;
     await Promise.all([chargerPieces(), DOCS_CONFIG ? null : chargerDocsConfig()]);
     updateNavCounts();
@@ -16222,6 +16247,12 @@ function docsFiltre(cle, val) { _docsFiltres[cle] = val; renderDocumentsVue(); }
 
 function renderDocumentsVue() {
   const zone = document.getElementById('docs-wrap'); if(!zone) return;
+  const ancien = zone.querySelector('.docs-scroll'); const defil = ancien ? ancien.scrollTop : 0, vueAvant = zone.dataset.vue;
+  renderDocumentsVueInterne(zone);
+  zone.dataset.vue = _docsVue;
+  const nouveau = zone.querySelector('.docs-scroll'); if(nouveau && vueAvant === _docsVue) nouveau.scrollTop = defil;
+}
+function renderDocumentsVueInterne(zone) {
   const onglet = (v, lib) => `<button class="btn btn-sm ${_docsVue === v ? 'btn-primary' : ''}" onclick="docsChangerVue('${v}')">${lib}</button>`;
   let alerte = '';
   if(!window._fbStorageActif) alerte = `<div class="alert alert-warn">⚠ Le stockage des documents n'est pas configuré dans ce fichier (champ storageBucket du bloc INSTALLATION). La consultation et le dépôt sont impossibles.</div>`;
@@ -16302,7 +16333,7 @@ function htmlPiecesComptables() {
       </div>
     </div>
     ${htmlZoneDepot('compta', null, depotActif, msgInactif)}
-    <div class="tbl-wrap">
+    <div class="tbl-wrap docs-scroll">
       <table>
         <thead><tr><th style="width:80px;">Date</th><th style="width:80px;">Exercice</th><th style="width:70px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:70px;">Taille</th><th style="width:130px;"></th></tr></thead>
         <tbody>${lignes || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
@@ -16338,7 +16369,7 @@ function htmlDossierPermanent() {
       </div>
     </div>
     ${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
-    ${blocs.join('')}`;
+    <div class="docs-scroll" style="display:flex;flex-direction:column;gap:10px;">${blocs.join('')}</div>`;
 }
 function htmlRubriqueDP(code, label, groupes, actif) {
   groupes.sort((a, b) => (b.courante.dateDoc || '').localeCompare(a.courante.dateDoc || '') || (a.courante.titre || '').localeCompare(b.courante.titre || ''));
@@ -16502,7 +16533,7 @@ async function enregistrerDepot() {
       }
       try { await window._fbPieceSave(meta); }
       catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
-      PIECES.push(meta);
+      indexerPiece(meta);
       if(source) await mettreEnVigueur(meta.id, true); // les versions antérieures ne sont plus « en vigueur »
       nbOk++;
       if(etat) { etat.textContent = '✓'; etat.style.color = 'var(--green)'; }
@@ -16776,34 +16807,76 @@ const CSS_PDF_ISOLE = `<style>
   .pdf-iso img { max-width: 100%; }
 </style>`;
 // PDF (Blob) d'un document HTML de module, au format A4
+// V100 — MISE EN PAGE DES DOCUMENTS GÉNÉRÉS
+// Règle : un document tient sur une seule page A4 chaque fois que c'est possible.
+//  1. lignes des tableaux resserrées (comme à l'impression des documents locatifs) ;
+//  2. si ça ne tient pas, resserrage renforcé (interlignes et marges réduits encore), puis texte un peu plus petit ;
+//  3. si ça ne tient toujours pas, la page suivante commence AU DÉBUT d'un bloc entier (tableau, encart de texte,
+//     en-tête) : jamais de coupure au milieu d'un tableau ni de l'encart « Informations ».
+const CSS_PDF_SERRE = `<style>
+  .pdf-iso.serre table { line-height: 1.2 !important; margin-bottom: 10px !important; }
+  .pdf-iso.serre table td { padding-top: 2px !important; padding-bottom: 2px !important; }
+  .pdf-iso.serre table tr:first-child td, .pdf-iso.serre table tr:last-child td { padding-top: 4px !important; padding-bottom: 4px !important; }
+  .pdf-iso.serre table td[colspan="2"][style*="height:6px"] { height: 3px !important; padding: 0 !important; }
+  .pdf-iso.serre > div:not(style) { padding-top: 0 !important; padding-bottom: 0 !important; }
+  .pdf-iso.tres-serre table { line-height: 1.1 !important; margin-bottom: 6px !important; }
+  .pdf-iso.tres-serre table td { padding-top: 1px !important; padding-bottom: 1px !important; }
+  .pdf-iso.tres-serre table tr:first-child td, .pdf-iso.tres-serre table tr:last-child td { padding-top: 3px !important; padding-bottom: 3px !important; }
+  .pdf-iso.tres-serre p { margin: .45em 0 !important; }
+  .pdf-iso.tres-serre div { line-height: 1.35 !important; }
+  .pdf-iso.reduit table, .pdf-iso.reduit table td, .pdf-iso.reduit div, .pdf-iso.reduit p, .pdf-iso.reduit span { font-size: 9.5px !important; }
+  .pdf-iso.reduit table { margin-bottom: 4px !important; }
+  .pdf-iso.reduit table td { padding-top: 0 !important; padding-bottom: 0 !important; }
+  .pdf-iso.reduit .pdf-bloc { margin-top: 6px !important; }
+</style>`;
+// Marque comme « bloc insécable » chaque élément de premier niveau du document (en-tête, tableaux, encarts)
+function marquerBlocsPdf(hote) {
+  const racine = Array.from(hote.children).find(e => e.tagName !== 'STYLE');
+  if(!racine) return;
+  const blocs = racine.children.length > 1 ? Array.from(racine.children) : [racine];
+  blocs.forEach(b => b.classList.add('pdf-bloc'));
+  hote.querySelectorAll('table').forEach(t => t.classList.add('pdf-bloc'));
+}
 async function pdfDepuisHtml(html, paysage) {
   await chargerHtml2pdf();
   if(html && html.includes(LOGO_PLACEHOLDER)) html = html.split(LOGO_PLACEHOLDER).join(socLogo());
   // Largeur utile d'une page A4 (marges de 8 mm) à 96 ppp : le document s'y adapte, comme à l'impression
   const largeur = paysage ? 1060 : 730;
-  // Élément NON rattaché à la page : html2pdf le place lui-même dans sa zone de rendu (un élément hors écran
-  // donnerait une page blanche)
+  const hauteurPage = Math.floor(largeur * (paysage ? 194 / 281 : 281 / 194)) - 4; // hauteur utile, même échelle
   const hote = document.createElement('div');
-  hote.className = 'pdf-iso';
+  hote.className = 'pdf-iso serre';
   hote.style.cssText = `width:${largeur}px;background:#fff;color:#111;`;
-  hote.innerHTML = CSS_PDF_ISOLE + html;
+  hote.innerHTML = CSS_PDF_ISOLE + CSS_PDF_SERRE + html;
+  marquerBlocsPdf(hote);
   document.body.classList.add('pdf-en-cours'); // masque la trame décorative de l'interface pendant la capture
   try {
     await Promise.all(Array.from(hote.querySelectorAll('img')).map(img => img.decode ? img.decode().catch(() => {}) : null));
+    // Mesure (hors écran) : si le document dépasse une page, on resserre davantage
+    hote.style.position = 'absolute'; hote.style.left = '-30000px'; hote.style.top = '0';
+    document.body.appendChild(hote);
+    if(hote.scrollHeight > hauteurPage) hote.classList.add('tres-serre');
+    if(hote.scrollHeight > hauteurPage) hote.classList.add('reduit'); // dernier recours avant la 2e page : texte un peu plus petit
+    // Ne tient toujours pas : on garde le format le plus serré (moins de pages) ; coupure entre deux blocs
+    hote.remove();
+    hote.style.position = ''; hote.style.left = ''; hote.style.top = '';
+    // Élément détaché : html2pdf le place lui-même dans sa zone de rendu
     return await window.html2pdf().set({
       margin: [8, 8, 8, 8],
       image: { type: 'jpeg', quality: 0.92 },
       html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
       jsPDF: { unit: 'mm', format: 'a4', orientation: paysage ? 'landscape' : 'portrait' },
-      pagebreak: { mode: ['css', 'legacy'] }
+      pagebreak: { mode: ['css'], avoid: ['.pdf-bloc', 'tr'] }
     }).from(hote).outputPdf('blob');
   } finally { hote.remove(); document.body.classList.remove('pdf-en-cours'); }
 }
+// V100 : à changer quand la mise en page des PDF évolue → les PDF existants sont refaits (exercice ouvert : automatiquement ;
+// tous exercices : bouton « ⟳ DOCUMENTS DES MODULES »)
+const VERSION_MISE_EN_PAGE_PDF = 'p2';
 // Empreinte du contenu figé d'un document : sert à détecter un document régénéré (ex. fiche km rééditée)
 function signatureDoc(x) {
   const s = JSON.stringify(x.doc || x.docHtml || '');
   let h = 5381; for(let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
-  return h.toString(36) + '-' + s.length;
+  return h.toString(36) + '-' + s.length + '-' + VERSION_MISE_EN_PAGE_PDF;
 }
 function rubriquePourPV() { const r = rubriquesDP(); return (r.find(x => x.code === 'ag') || r[0]).code; }
 function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
@@ -16879,8 +16952,8 @@ async function synchroniserGED(sources, opts) {
           catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
           if(existant) {
             try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {}
-            Object.keys(existant).forEach(k => delete existant[k]); Object.assign(existant, meta); res.maj++;
-          } else { PIECES.push(meta); res.crees++; }
+            indexerPiece(meta); res.maj++;
+          } else { indexerPiece(meta); res.crees++; }
         } catch(e) { console.error('Copie PDF dans la GED impossible', d.cle, e); res.echecs++; }
         if(opts.progression) opts.progression(res);
       }
