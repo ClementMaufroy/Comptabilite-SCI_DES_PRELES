@@ -706,6 +706,10 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 .nav-item .ni-count { flex: none; min-width: 34px; text-align: center; padding: 0 4px; }
 .nav-sep { display: none; }
 .nav-version { padding: 4px 14px; font-size: 8.5px; }
+/* V115 : ambre doux des pièces à joindre ; dépôt par glisser-déposer sur toute la GED */
+:root { --pj-manquant: #d9a25c; }
+html[data-theme="light"] { --pj-manquant: #a8701f; }
+#docs-wrap.drop-over { outline: 2px dashed var(--cyan); outline-offset: 4px; border-radius: var(--radius); }
 /* V100 — GED : seul le contenu de la liste défile, en-tête et filtres restent fixes */
 #tab-documents.active { overflow: hidden; }
 .docs-scroll { flex: 1; min-height: 0; overflow: auto; }
@@ -2902,38 +2906,33 @@ applyTheme();
 
 <!-- ══════════════ V98 : DÉPÔT DE DOCUMENTS ══════════════ -->
 <div id="doc-upload-modal" class="modal-overlay" style="z-index:1060;">
-  <div class="modal" style="width:620px;">
+  <div class="modal" style="width:600px;">
     <div class="modal-title" id="dep-titre-modal">⬆ DÉPOSER DES DOCUMENTS</div>
-    <div id="dep-espaces" style="display:flex;gap:18px;margin-bottom:12px;">
-      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;"><input type="radio" name="dep-espace" id="dep-espace-compta" onchange="depotMajEspace()" style="width:14px;height:14px;"> 🧾 Pièce comptable</label>
-      <label style="display:flex;align-items:center;gap:6px;margin:0;cursor:pointer;text-transform:none;letter-spacing:0;font-size:12px;"><input type="radio" name="dep-espace" id="dep-espace-permanent" onchange="depotMajEspace()" style="width:14px;height:14px;"> 🗂 Dossier permanent</label>
+    <div id="dep-espaces" style="display:none;">
+      <input type="radio" name="dep-espace" id="dep-espace-compta" onchange="depotMajEspace()">
+      <input type="radio" name="dep-espace" id="dep-espace-permanent" onchange="depotMajEspace()">
     </div>
-    <div class="docs-drop" style="margin-bottom:8px;" onclick="document.getElementById('dep-input').click()"
+    <div id="dep-drop" class="docs-drop" style="margin-bottom:10px;padding:12px;" onclick="document.getElementById('dep-input').click()"
       ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
       ondrop="event.preventDefault();this.classList.remove('over');depotAjouterFichiers(event.dataTransfer.files)">⬆ Glissez des fichiers ici, ou cliquez pour les choisir</div>
     <input type="file" id="dep-input" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.eml,.msg" style="display:none;" onchange="depotAjouterFichiers(this.files);this.value='';">
-    <div id="dep-fichiers" style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg2);max-height:160px;overflow-y:auto;margin-bottom:12px;"></div>
-    <div id="dep-bloc-compta">
-      <div class="form-row c3 mb8">
-        <div class="form-field"><label>Exercice *</label><select id="dep-exercice"></select></div>
-        <div class="form-field"><label>Type de pièce</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
-        <div class="form-field"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:32px;line-height:32px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
-      </div>
-      <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Seuls les exercices ouverts sont proposés : une pièce ne peut pas être ajoutée à un exercice clôturé.</div>
+    <div id="dep-fichiers" style="max-height:120px;overflow-y:auto;margin-bottom:10px;"></div>
+    <div class="form-field mb8" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
+    <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Chaque fichier prend pour titre son nom de fichier ; les autres informations s'appliquent à tous.</div>
+    <div style="display:flex;gap:10px;align-items:flex-end;" class="mb8">
+      <div class="form-field" style="width:140px;flex:none;"><label>Date *</label><input type="date" id="dep-date"></div>
+      <div id="dep-bloc-compta" style="flex:1;min-width:0;"><div style="display:flex;gap:10px;align-items:flex-end;">
+        <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
+        <div class="form-field" style="flex:1.3;min-width:0;"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
+        <div class="form-field" id="dep-ex-zone" style="width:100px;flex:none;"><label title="Seuls les exercices ouverts sont proposés">Exercice</label><select id="dep-exercice"></select></div>
+      </div></div>
+      <div id="dep-bloc-permanent" style="flex:1;min-width:0;"><div style="display:flex;gap:10px;align-items:flex-end;">
+        <select id="dep-rubrique" style="display:none;"></select>
+        <div class="form-field" style="flex:1.2;min-width:0;"><label>Classeur *</label><div id="dep-classeurs"></div></div>
+        <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
+        <div class="form-field" style="flex:1;min-width:0;"><label title="Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div>
+      </div></div>
     </div>
-    <div id="dep-bloc-permanent">
-      <select id="dep-rubrique" style="display:none;"></select>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:4px;">CLASSEUR *</div>
-      <div id="dep-classeurs" style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:10px;max-height:110px;overflow-y:auto;"></div>
-      <div class="form-row c2 mb8"><div class="form-field"><label>Type de document</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
-        <div class="form-field"><label title="Les écritures portant ce n° de pièce seront jointes automatiquement à ce document">Référence (n° de pièce)</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div></div>
-      <div style="font-size:10px;color:var(--text2);margin:-2px 0 8px;">Avec une référence, toute écriture portant ce n° de pièce (ex. un échéancier) est jointe automatiquement à ce document, quel que soit l'exercice.</div>
-    </div>
-    <div class="form-row c2 mb8">
-      <div class="form-field" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
-      <div class="form-field"><label>Date du document *</label><input type="date" id="dep-date"></div>
-    </div>
-    <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Plusieurs fichiers : chacun prend pour titre son nom de fichier. Les autres informations s'appliquent à tous.</div>
     <div id="dep-progress" style="display:none;height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden;"><div id="dep-progress-barre" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
     <div id="dep-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;line-height:1.5;"></div>
     <div class="flex gap8">
@@ -2949,7 +2948,7 @@ applyTheme();
   <div class="modal" style="max-width:640px;width:94vw;">
     <div class="modal-title" id="pj-titre">📎 PIÈCES</div>
     <div id="pj-corps" style="max-height:70vh;overflow-y:auto;"></div>
-    <div style="display:flex;justify-content:flex-end;margin-top:12px;"><button class="btn" onclick="fermerPiecesEcriture()">FERMER</button></div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:12px;"><span id="pj-actions" style="display:flex;align-items:center;gap:12px;"></span><button class="btn ml-auto" onclick="fermerPiecesEcriture()">FERMER</button></div>
   </div>
 </div>
 <!-- V102 : appel de loyer → écritures du mois -->
@@ -16145,6 +16144,12 @@ function docsFiltre(cle, val) { _docsFiltres[cle] = val; renderDocumentsVue(); }
 
 function renderDocumentsVue() {
   const zone = document.getElementById('docs-wrap'); if(!zone) return;
+  if(!zone._glisserOk) { // V115 : glisser des fichiers n'importe où dans la GED ouvre le dépôt, dans le classeur affiché
+    zone._glisserOk = true;
+    zone.addEventListener('dragover', e => { if(e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files')) { e.preventDefault(); zone.classList.add('drop-over'); } });
+    zone.addEventListener('dragleave', e => { if(!zone.contains(e.relatedTarget)) zone.classList.remove('drop-over'); });
+    zone.addEventListener('drop', e => { zone.classList.remove('drop-over'); if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); deposerDepuisGlisser(e.dataTransfer.files); } });
+  }
   const ancien = zone.querySelector('.docs-scroll'); const defil = ancien ? ancien.scrollTop : 0, vueAvant = zone.dataset.vue;
   renderDocumentsVueInterne(zone);
   zone.dataset.vue = _docsVue;
@@ -16167,14 +16172,10 @@ function renderDocumentsVueInterne(zone) {
 }
 
 // Zone de dépôt (glisser-déposer ou clic)
-function htmlZoneDepot(espace, rubrique, actif, messageInactif) {
-  if(!actif) return `<div class="docs-drop docs-drop-off">🔒 ${messageInactif}</div>`;
-  const r = rubrique ? `,'${rubrique}'` : '';
-  return `<div class="docs-drop" onclick="ouvrirDepot('${espace}'${r ? r : ',null'})"
-      ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')"
-      ondrop="event.preventDefault();this.classList.remove('over');ouvrirDepot('${espace}'${r ? r : ',null'},event.dataTransfer.files)">
-      ⬆ Glissez vos fichiers ici, ou cliquez pour les choisir <span style="color:var(--text2);">(PDF, photos… 20 Mo max par fichier)</span>
-    </div>`;
+function htmlZoneDepot(espace, rubrique, actif, messageInactif) { // V115 : un bouton ; les fichiers se glissent n'importe où dans la GED
+  if(!actif) return `<span title="${esc(messageInactif)}" style="font-size:10px;color:var(--text2);white-space:nowrap;">🔒 dépôt fermé</span>`;
+  const r = rubrique ? `,'${rubrique}'` : ',null';
+  return `<button class="btn btn-sm btn-primary" onclick="ouvrirDepot('${espace}'${r})" title="Ou glissez vos fichiers n'importe où dans la GED">⬆ DÉPOSER</button>`;
 }
 
 function htmlActionsPiece(p) {
@@ -16232,8 +16233,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-numdoc-dp').value = source ? (source.numDoc || '') : ''; // V104
   // V107 : classeurs (plusieurs possibles) et type du dossier permanent
   const clsCoches = new Set(source ? classeursDe(source).slice(0, 1) : (rubrique ? [rubrique] : [])); // V113 : un seul classeur
-  el('dep-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:6px;margin:0;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-      <input type="radio" name="dep-cls" value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+  el('dep-classeurs').innerHTML = `<select id="dep-cls-sel"><option value="">—</option>${rubriquesDP().map(r => `<option value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select>`; // V115 : liste déroulante
   el('dep-type-dp').innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
   el('dep-type-dp').value = source ? (source.typeDP || '') : '';
   el('dep-date').value = dateLocale(new Date());
@@ -16243,7 +16243,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-btn').disabled = false;
   el('dep-espace-compta').checked = _depot.espace === 'compta';
   el('dep-espace-permanent').checked = _depot.espace === 'permanent';
-  el('dep-espaces').style.display = source ? 'none' : 'flex';
+  el('dep-espaces').style.display = 'none'; // V115 : l'espace est celui où l'on se trouve
   el('dep-titre-modal').textContent = source ? `⊕ NOUVELLE VERSION — ${source.titre || source.nomFichier}` : '⬆ DÉPOSER DES DOCUMENTS';
   el('dep-input').multiple = !source;
   el('dep-input').value = '';
@@ -16260,6 +16260,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
     el('dep-titre-modal').textContent = `⬆ JOINDRE UN JUSTIFICATIF — écriture${o.lien.ios.length > 1 ? 's' : ''} ${o.libelleEcritures || ''}`;
   }
   el('dep-exercice').disabled = !!(o && o.lien);
+  el('dep-ex-zone').style.display = (ouverts.length > 1 && !(o && o.lien)) ? '' : 'none'; // V115 : seulement s'il y a un choix
   if(o && !o.lien && o.typePiece) el('dep-type').value = o.typePiece; // V107 : type du classeur ouvert
   majPrefixeNumDoc();
   depotMajEspace();
@@ -16292,19 +16293,19 @@ function depotAjouterFichiers(liste) {
   depotRenderFichiers();
 }
 function depotRetirerFichier(i) { if(!_depot || _depot.enCours) return; _depot.fichiers.splice(i, 1); depotRenderFichiers(); }
-function depotRenderFichiers() {
+function depotRenderFichiers() { // V115 : la zone de dépôt disparaît dès qu'un fichier est choisi
   const z = document.getElementById('dep-fichiers'); if(!z || !_depot) return;
-  const multi = _depot.fichiers.length > 1;
+  const n = _depot.fichiers.length, multi = n > 1;
   document.getElementById('dep-titre-zone').style.display = multi ? 'none' : '';
   document.getElementById('dep-multi-note').style.display = multi ? '' : 'none';
-  z.innerHTML = _depot.fichiers.length
-    ? _depot.fichiers.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:11px;border-bottom:1px solid var(--line);">
+  const drop = document.getElementById('dep-drop'); if(drop) drop.style.display = n ? 'none' : '';
+  z.style.border = n ? '1px solid var(--line2)' : 'none'; z.style.borderRadius = 'var(--radius)'; z.style.background = n ? 'var(--bg2)' : 'transparent';
+  z.innerHTML = n ? _depot.fichiers.map((f, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;font-size:11px;border-bottom:1px solid var(--line);">
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.name)}</span>
         <span style="color:var(--text2);font-size:10px;">${tailleLisible(f.size)}</span>
         <span id="dep-etat-${i}" style="font-size:10px;font-family:var(--mono);min-width:44px;text-align:right;"></span>
         <button class="btn btn-sm btn-icon" onclick="depotRetirerFichier(${i})" style="padding:0 5px;font-size:9px;">✕</button>
-      </div>`).join('')
-    : `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucun fichier sélectionné.</div>`;
+      </div>`).join('') + (_depot.versionDe ? '' : `<div style="padding:4px 8px;"><a href="#" onclick="document.getElementById('dep-input').click();return false;" style="font-size:10px;color:var(--text2);">+ ajouter un fichier</a></div>`) : '';
 }
 async function enregistrerDepot() {
   if(!_depot || _depot.enCours) return;
@@ -16326,7 +16327,7 @@ async function enregistrerDepot() {
     base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: numDocDepot() }; // V108
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
-    const classeurs = Array.from(document.querySelectorAll('#dep-classeurs input:checked')).map(i => i.value); // V107
+    const clsSel = document.getElementById('dep-cls-sel'); const classeurs = clsSel && clsSel.value ? [clsSel.value] : []; // V115
     if(!classeurs.length) { err.textContent = 'Choisissez un classeur.'; return; }
     base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
   }
@@ -16985,7 +16986,7 @@ function htmlTromboneEcriture(e) {
 }
 let _pjIo = null, _pjRecherche = '', _pjTout = false, _pjRetourPostIt = false;
 function ouvrirPiecesEcriture(io, depuisPostIt) {
-  _pjIo = cleIo(io); _pjRecherche = ''; _pjTout = false; _pjEspace = 'compta'; _pjClasseur = null; _pjRetourPostIt = !!depuisPostIt;
+  _pjIo = cleIo(io); _pjRecherche = ''; _pjTout = false; _pjVoirTout = false; _pjRetourPostIt = !!depuisPostIt;
   if(depuisPostIt) closePostItPieces(); // le panneau reviendra à la fermeture
   renderPiecesEcriture(); document.getElementById('pj-modal').style.display = 'flex';
 }
@@ -16993,34 +16994,32 @@ function fermerPiecesEcriture() {
   document.getElementById('pj-modal').style.display = 'none'; _pjIo = null;
   if(_pjRetourPostIt) { _pjRetourPostIt = false; setTimeout(() => { _postItOpen = true; renderPostItPieces(); }, 0); }
 }
-function renderPiecesEcriture() {
+let _pjVoirTout = false;
+function renderPiecesEcriture() { // V115 : en-tête sur une ligne, liste des pièces visible tout de suite, actions en bas
   if(_pjIo === null) return;
   preparerJustifs();
   const j = justifDe(_pjIo);
-  const corps = document.getElementById('pj-corps');
-  if(!j) { corps.innerHTML = `<div style="padding:12px;color:var(--text2);">Écriture introuvable (supprimée ?).</div>`; return; }
+  const corps = document.getElementById('pj-corps'), actions = document.getElementById('pj-actions');
+  if(!j) { corps.innerHTML = `<div style="padding:12px;color:var(--text2);">Écriture introuvable (supprimée ?).</div>`; if(actions) actions.innerHTML = ''; return; }
   const ouvert = EXERCISE_STATUS !== 'closed';
   const actif = ouvert && !!window._fbStorageActif && PIECES !== null;
-  document.getElementById('pj-titre').textContent = `📎 PIÈCES — ÉCRITURE #${j.num}`;
-  const b = (lib, act, cls) => `<button class="btn btn-sm ${cls || ''}" onclick="${act}" style="padding:1px 8px;font-size:9px;">${lib}</button>`;
-  let h = `<div style="font-size:11px;color:var(--text1);margin-bottom:10px;line-height:1.6;">
-      <span class="jbadge j-${esc(j.journal)}">${esc(j.journal)}</span> ${j.date ? fmtDateFr(j.date) : ''} — ${esc(j.libelle)} — <strong>${fmt(j.montant)} €</strong>${j.numDoc ? ` — pièce <span style="font-family:var(--mono);">${esc(j.numDoc)}</span>` : ''}
-      <div style="margin-top:4px;font-weight:600;color:${j.statut === 'manquant' ? 'var(--amber)' : 'var(--text2)'};">${esc(LIB_STATUT_JUSTIF[j.statut])}${!ouvert ? ' · exercice clôturé : consultation uniquement' : ''}</div></div>`;
-  // Pièces rattachées
-  if(j.pieces.length) h += `<div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:10px;">${j.pieces.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;">
-      <span style="flex:1;min-width:0;">${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${badgeOrigine(p)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}${(p.liens || []).some(l => l.ex === String(CURRENT_YEAR) && l.io === _pjIo && l.auto) ? ' · <span style="color:var(--green);">jointe automatiquement (même n° de pièce)</span>' : ''}</span></span>
-      ${b('👁 VOIR', `voirPiece('${p.id}')`)}${ouvert ? b('DÉTACHER', `detacherPiece('${p.id}')`) : ''}</div>`).join('')}</div>`;
-  if(j.statut === 'exempt') h += `<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Écriture calculée par Atrium : aucune pièce n'est demandée (vous pouvez tout de même en joindre une).</div>`;
-  if(actif) {
-    const lie = (j.module === 'echeancier' || j.module === 'emprunt');
-    h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-        ${j.statut === 'sans' ? '' : b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
-        ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « PAS DE PIÈCE »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ PAS DE PIÈCE', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
-      </div>
-      ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
-      ${j.statut === 'sans' ? `<div style="font-size:11px;color:var(--text2);font-style:italic;">Écriture marquée « pas de pièce » : aucune pièce à joindre. Annulez ce marquage pour en joindre une.</div>` : htmlSelecteurPieces(j)}`;
-  }
+  document.getElementById('pj-titre').textContent = `📎 ÉCRITURE #${j.num}`;
+  const statut = { joint: ['justifiée', 'var(--green)'], exempt: ['calculée, sans pièce', 'var(--text2)'], sans: ['pas de pièce', 'var(--text2)'], manquant: ['pièce à joindre', 'var(--pj-manquant)'] }[j.statut] || ['', 'var(--text2)'];
+  const lien = (lib, act, st) => `<a href="#" onclick="${act};return false;" style="font-size:11px;color:var(--text2);${st || ''}">${lib}</a>`;
+  let h = `<div style="font-size:11px;color:var(--text1);margin-bottom:12px;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;">
+      <span class="jbadge j-${esc(j.journal)}">${esc(j.journal)}</span><span>${j.date ? fmtDateFr(j.date) : ''}</span><span style="color:var(--text2);">·</span>
+      <span style="min-width:0;">${esc(j.libelle)}</span><span style="color:var(--text2);">·</span><strong>${fmt(j.montant)} €</strong>
+      ${j.numDoc ? `<span style="color:var(--text2);">·</span><span style="font-family:var(--mono);">${esc(j.numDoc)}</span>` : ''}
+      <span style="margin-left:auto;color:${statut[1]};">${statut[0]}${!ouvert ? ' · exercice clôturé' : ''}</span></div>`;
+  if(j.pieces.length) h += `<div style="margin-bottom:12px;">${j.pieces.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="voirPiece('${p.id}')">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${p.espace === 'permanent' ? ' <span class="npill" style="font-size:9px;">DP</span>' : ''} <span style="color:var(--text2);font-size:10px;">${p.numDoc ? esc(p.numDoc) + ' · ' : ''}${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span></span>
+      ${ouvert ? lien('détacher', `detacherPiece('${p.id}')`) : ''}</div>`).join('')}</div>`;
+  if(j.statut === 'sans') h += `<div style="font-size:11px;color:var(--text2);margin-bottom:6px;">Écriture marquée « pas de pièce ». ${ouvert ? lien('Annuler ce marquage', `basculerSansJustif(['${esc(_pjIo)}'], false)`, 'color:var(--cyan);') : ''}</div>`;
+  else if(actif) h += htmlSelecteurPieces(j);
   corps.innerHTML = h;
+  if(actions) actions.innerHTML = actif && j.statut !== 'sans'
+    ? `<button class="btn btn-primary btn-sm" onclick="deposerPourEcriture('${esc(_pjIo)}')">⬆ DÉPOSER UN FICHIER</button>${!j.pieces.length && j.statut !== 'exempt' ? lien('∅ pas de pièce', `basculerSansJustif(['${esc(_pjIo)}'], true)`) : ''}`
+    : '';
 }
 // Écritures visées : celle ouverte, et si demandé toutes celles du même échéancier / emprunt
 function iosCibles(io) {
@@ -17898,10 +17897,11 @@ function htmlTuileClasseur(espace, id, nom, couleur, nb, detail, alerte) {
     </div>`;
 }
 const GRILLE_CLASSEURS = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;';
-function htmlBarreClasseur(espace, nom, couleur) {
+function htmlBarreClasseur(espace, nom, couleur, droite) { // V115 : outils à droite, sur la même ligne
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-sm" onclick="ouvrirClasseur('${espace}', null)">← CLASSEURS</button>
       <span style="display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border-left:6px solid ${couleur};background:${teinte(couleur, '1f')};border-radius:var(--radius);font-weight:700;font-size:12px;">📂 ${esc(nom)}</span>
+      ${droite ? `<span style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${droite}</span>` : ''}
     </div>`;
 }
 
@@ -17935,11 +17935,10 @@ function htmlPiecesComptablesV107() {
       ncTous ? `<strong style="color:#ff3b4f;">${ncTous.toLocaleString('fr-FR')} pièce(s) à ranger</strong>${ncTous !== nc ? ` (dont ${(ncTous - nc).toLocaleString('fr-FR')} d'autres exercices)` : ''} : sans type, ou type rangé dans aucun classeur` : 'Pièces sans type, ou dont le type n\'est rangé dans aucun classeur', !!ncTous));
     tuiles.push(htmlTuileClasseur('compta', '__tous', 'Tous les documents', '#94a3b8', duEx.length, 'Toutes les pièces, avec les filtres'));
     const depotActif = !!window._fbStorageActif && ouverts.length > 0;
-    return `<div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:11px;color:var(--text2);">Classeurs des pièces comptables — nombre de pièces de l'exercice <strong style="color:var(--cyan);">${esc(cible === 'tous' ? 'tous exercices' : cible)}</strong></span>
-        <span style="margin-left:auto;">${htmlCoutStockage()}</span><button class="btn btn-sm" onclick="ouvrirLiensCroises()" title="Contrôle : documents d'un locataire joints aux écritures d'un autre (exercice affiché)">🔎 LIENS ENTRE LOCATAIRES</button><button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')">⚙ GÉRER LES CLASSEURS</button>
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--text2);">Pièces de l'exercice <strong style="color:var(--cyan);">${esc(cible === 'tous' ? 'tous exercices' : cible)}</strong></span>
+        <span style="margin-left:auto;">${htmlCoutStockage()}</span><button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')" title="Gérer les classeurs">⚙ CLASSEURS</button>${htmlZoneDepot('compta', null, depotActif, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée')}
       </div>
-      ${htmlZoneDepot('compta', null, depotActif, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée')}
       <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
   }
   // Intérieur d'un classeur : les filtres
@@ -18018,11 +18017,10 @@ function htmlDossierPermanentV107() {
     const sans = groupesDuClasseurDP('__sans', groupes).length;
     if(sans) tuiles.push(htmlTuileClasseur('permanent', '__sans', 'Sans classeur', '#64748b', sans, 'Documents rangés dans aucun classeur'));
     tuiles.push(htmlTuileClasseur('permanent', '__tous', 'Tous les documents', '#94a3b8', groupes.length, 'Tout le dossier permanent, avec les filtres'));
-    return `<div style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:11px;color:var(--text2);">Classeurs du dossier permanent — communs à tous les exercices, toujours modifiables. Un document peut être rangé dans plusieurs classeurs.</span>
-        <button class="btn btn-sm" onclick="ouvrirGestionClasseurs('permanent')" style="margin-left:auto;">⚙ GÉRER LES CLASSEURS ET LES TYPES</button>
+    return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:11px;color:var(--text2);">Commun à tous les exercices</span>
+        <button class="btn btn-sm" onclick="ouvrirGestionClasseurs('permanent')" style="margin-left:auto;" title="Gérer les classeurs et les types du dossier permanent">⚙ CLASSEURS</button>${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
       </div>
-      ${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
       <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
   }
   const q = (_docsFiltres.q || '').trim().toLowerCase();
@@ -18216,10 +18214,10 @@ function htmlNumDocLien(e) {
   if(!j || j.statut === 'exempt') return nd;
   const io = esc(cleIo(e._io));
   const st = j.statut;
-  const couleur = st === 'joint' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
+  const couleur = st === 'joint' ? 'var(--green)' : st === 'manquant' ? 'var(--pj-manquant)' : 'var(--text2)'; // V115 : ambre adouci
   const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « pas de pièce » : cliquer pour modifier';
   const txt = nd || (st === 'manquant' ? '📎 à joindre' : st === 'sans' ? '∅' : '📎');
-  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'underline dotted' : 'underline'};text-underline-offset:2px;font-weight:${st === 'sans' ? 400 : 600};">${txt}</a>`;
+  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'underline dotted' : 'underline'};text-underline-offset:2px;font-weight:400;">${txt}</a>`; // V115 : couleur sans gras
 }
 function clicNumDoc(io) {
   const j = justifDe(io); if(!j) return;
@@ -18292,44 +18290,28 @@ function htmlLignePieceCandidate(p, j) {
       <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button>
     </div>`;
 }
-function htmlSelecteurPieces(j) {
+function htmlSelecteurPieces(j) { // V115 : une seule liste, triée par probabilité ; recherche sur pièces comptables et DP
   const { compta, dp } = candidatsJoindre(j);
   const q = _pjRecherche.trim().toLowerCase();
-  const filtreQ = l => q ? l.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q)) : l;
-  const tri = l => l.slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || ''));
-  // Suggestions : même n° de pièce, quel que soit le classeur
-  const sugg = [...compta, ...dp].filter(p => p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
-  let h = sugg.length ? `<div style="font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:.08em;margin:6px 0 4px;">★ MÊME N° DE PIÈCE</div>
-      <div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:8px;">${sugg.map(p => htmlLignePieceCandidate(p, j)).join('')}</div>` : '';
-  const ong = (v, lib, n) => `<button class="btn btn-sm ${_pjEspace === v ? 'btn-primary' : ''}" onclick="_pjEspace='${v}';_pjClasseur=null;renderPiecesEcriture()" style="font-size:10px;">${lib} (${n})</button>`;
-  h += `<div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:6px 0;">JOINDRE UNE PIÈCE DÉJÀ DANS LA GED</div>
-    <div style="display:flex;gap:6px;margin-bottom:8px;">${ong('compta', '🧾 PIÈCES COMPTABLES ' + esc(CURRENT_YEAR), compta.length)}${ong('permanent', '🗂 DOSSIER PERMANENT', dp.length)}</div>`;
-  // Classeurs de l'espace choisi
-  let classeurs;
-  if(_pjEspace === 'compta') {
-    classeurs = classeursCompta().map(c => ({ id: c.id, nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], liste: piecesDuClasseurCompta(c.id, compta) }));
-    const nc = piecesDuClasseurCompta('__nc', compta); if(nc.length) classeurs.push({ id: '__nc', nom: 'Non classés', couleur: '#ff3b4f', liste: nc });
-    classeurs.push({ id: '__tous', nom: 'Tous', couleur: '#94a3b8', liste: compta });
-  } else {
-    const gs = dp.map(p => ({ courante: p, anciennes: [] }));
-    classeurs = rubriquesDP().map((r, i) => ({ id: r.code, nom: r.label, couleur: couleurRubrique(r, i), liste: groupesDuClasseurDP(r.code, gs).map(g => g.courante) }));
-    const sans = groupesDuClasseurDP('__sans', gs).map(g => g.courante); if(sans.length) classeurs.push({ id: '__sans', nom: 'Sans classeur', couleur: '#64748b', liste: sans });
-    classeurs.push({ id: '__tous', nom: 'Tous', couleur: '#94a3b8', liste: dp });
-  }
-  h += `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${classeurs.map(c => {
-      const sel = _pjClasseur === c.id;
-      return `<button class="btn btn-sm" onclick="_pjClasseur='${esc(c.id)}';renderPiecesEcriture()" style="font-size:10px;border-left:4px solid ${c.couleur};${sel ? `background:${c.couleur}33;color:var(--text0);border-color:${c.couleur};` : ''}">📁 ${esc(c.nom)} <span style="color:var(--text2);">${c.liste.length}</span></button>`;
-    }).join('')}</div>`;
-  const choisi = classeurs.find(c => c.id === _pjClasseur);
-  h += `<input type="text" id="pj-q" value="${esc(_pjRecherche)}" placeholder="${choisi ? 'Rechercher dans « ' + esc(choisi.nom) + ' »' : 'Rechercher dans tout l\'espace'} (titre, n° de pièce, fichier)…" oninput="_pjRecherche=this.value;clearTimeout(window._pjT);window._pjT=setTimeout(()=>{renderPiecesEcriture();const i=document.getElementById('pj-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="margin-bottom:6px;">`;
-  let liste = null;
-  if(choisi) liste = filtreQ(choisi.liste);
-  else if(q) liste = filtreQ(_pjEspace === 'compta' ? compta : dp);
-  const corps = liste === null
-    ? `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Choisissez un classeur (ou tapez une recherche).</div>`
-    : liste.length ? tri(liste).slice(0, 100).map(p => htmlLignePieceCandidate(p, j)).join('')
-    : `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce${q ? ' pour cette recherche' : ' dans ce classeur'}.</div>`;
-  return h + `<div style="max-height:220px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${corps}</div>`;
+  const memeRef = p => !!(p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
+  const rang = p => memeRef(p) ? 0 : (p.espace === 'compta' && pieceSansEcriture(p)) ? 1 : 2;
+  let liste = compta.concat(dp);
+  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q));
+  else if(!_pjVoirTout) liste = liste.filter(p => rang(p) < 2);
+  liste.sort((a, b) => (rang(a) - rang(b)) || (b.dateDoc || '').localeCompare(a.dateDoc || ''));
+  const reste = compta.length + dp.length - liste.length;
+  const lie = (j.module === 'echeancier' || j.module === 'emprunt');
+  const nbLies = lie ? (() => { const t = _pjTout; _pjTout = true; const n = iosCibles(j.io).length - 1; _pjTout = t; return n; })() : 0;
+  const ligne = p => `<div style="display:flex;align-items:center;gap:8px;padding:5px 2px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${memeRef(p) ? '<span title="Même n° de pièce" style="color:var(--green);">★</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${p.espace === 'permanent' ? ' <span class="npill" style="font-size:9px;">DP</span>' : ''}
+        <span style="color:var(--text2);font-size:10px;">${p.numDoc ? esc(p.numDoc) + ' · ' : ''}${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${rang(p) === 1 ? ' · sans écriture' : ''}</span></span>
+      <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" title="Voir" style="padding:1px 6px;font-size:10px;">👁</button>
+      <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button></div>`;
+  return `<input type="text" id="pj-q" value="${esc(_pjRecherche)}" placeholder="🔍 Rechercher une pièce (titre, n° de pièce, fichier) — pièces comptables ${esc(CURRENT_YEAR)} et dossier permanent" oninput="_pjRecherche=this.value;clearTimeout(window._pjT);window._pjT=setTimeout(()=>{renderPiecesEcriture();const i=document.getElementById('pj-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},250)" style="margin-bottom:6px;">
+    <div style="max-height:260px;overflow-y:auto;">${liste.length ? liste.slice(0, 100).map(ligne).join('')
+      : `<div style="padding:10px 2px;font-size:11px;color:var(--text2);font-style:italic;">${q ? 'Aucune pièce pour cette recherche.' : 'Aucune pièce probable (même n° de pièce ou pièce sans écriture).'}</div>`}</div>
+    ${!q && !_pjVoirTout && reste > 0 ? `<a href="#" onclick="_pjVoirTout=true;renderPiecesEcriture();return false;" style="font-size:10px;color:var(--text2);display:inline-block;margin-top:6px;">Afficher toutes les pièces (${reste})</a>` : ''}
+    ${nbLies > 0 ? `<label style="display:flex;align-items:center;gap:6px;margin:8px 0 0;text-transform:none;letter-spacing:0;font-size:10px;color:var(--text2);cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:13px;height:13px;"> Joindre aussi aux ${nbLies} autre(s) écriture(s) de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'}</label>` : ''}`;
 }
 
 // ── Documents des modules joints automatiquement (fiche km du mois, PV d'AGO) ──
@@ -18490,7 +18472,7 @@ function renderGL() {
   const outils = document.getElementById('gl-outils');
   if(outils) outils.innerHTML = `
       <button class="btn btn-sm" onclick="_glSansPJ=!_glSansPJ;renderGL()" title="Afficher uniquement les écritures sans pièce jointe (à joindre, ou marquées « pas de pièce »)"
-        style="${_glSansPJ ? 'background:rgba(255,159,64,.2);border-color:#ff9f40;color:#ff9f40;' : ''}">📎 ÉCRITURES SANS PIÈCE JOINTE (${nbSans.toLocaleString('fr-FR')})${_glSansPJ ? ' ✓' : ''}</button>
+        style="${_glSansPJ ? 'background:rgba(217,162,92,.18);border-color:var(--pj-manquant);color:var(--pj-manquant);' : ''}">📎 ÉCRITURES SANS PIÈCE JOINTE (${nbSans.toLocaleString('fr-FR')})${_glSansPJ ? ' ✓' : ''}</button>
       ${fcNb('gl') || _glSansPJ ? `<button class="btn btn-sm" onclick="resetGLFilters()">✕ EFFACER LES FILTRES (${fcNb('gl') + (_glSansPJ ? 1 : 0)})</button>` : ''}
       <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾ ; dès qu'un filtre est actif, cochez / décochez les lignes pour suivre le solde (lettrage).</span>
       <span id="gl-solde-chip" style="display:${filtre ? 'inline-flex' : 'none'};margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>`;
@@ -18560,12 +18542,7 @@ function htmlPiecesComptablesV109() {
   const zone = depotActif ? htmlZoneDepot('compta', null, true, '').replace(/ouvrirDepot\('compta',null(,event\.dataTransfer\.files)?\)/g, (m, f2) => `ouvrirDepot('compta',null${f2 || ',null'},null,{typePiece:'${esc(typeDepot)}'})`)
     : htmlZoneDepot('compta', null, false, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée');
   const nbF = fcNb('gedc') + (_gedSansEcriture ? 1 : 0);
-  return `${htmlBarreClasseur('compta', info.nom, info.couleur)}
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${htmlBoutonSansEcriture()}
-      ${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedc');_gedSansEcriture=false;renderDocumentsVue()">✕ EFFACER LES FILTRES (${nbF})</button>` : ''}
-      <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾ (exercice affiché par défaut).</span>
-      <span class="chip" style="margin-left:auto;">${rows.length} document${rows.length > 1 ? 's' : ''}</span></div>
-    ${zone}
+  return `${htmlBarreClasseur('compta', info.nom, info.couleur, `${htmlBoutonSansEcriture()}${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedc');_gedSansEcriture=false;renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${rows.length} document${rows.length > 1 ? 's' : ''}</span>${zone}`)}
     <div class="tbl-wrap docs-scroll">
       <table>
         <thead><tr>${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:86px;')}${th('type', 'Type', 'width:76px;')}${th('doc', 'N° pièce', 'width:130px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}<th style="width:64px;">Taille</th><th style="width:150px;"></th></tr></thead>
@@ -18610,12 +18587,7 @@ function htmlDossierPermanentV109() {
     }).join('');
   } else lignes = liste.map(ligneGroupe).join('');
   const nbF = fcNb('gedp');
-  return `${htmlBarreClasseur('permanent', info.nom, info.couleur)}
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      ${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()">✕ EFFACER LES FILTRES (${nbF})</button>` : ''}
-      <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾.</span>
-      <span class="chip" style="margin-left:auto;">${liste.length} document${liste.length > 1 ? 's' : ''}</span></div>
-    ${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}
+  return `${htmlBarreClasseur('permanent', info.nom, info.couleur, `${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${liste.length} document${liste.length > 1 ? 's' : ''}</span>${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}`)}
     <div class="tbl-wrap docs-scroll">
       <table>
         <thead><tr>${th('type', 'Type', 'width:76px;')}${th('doc', 'Référence', 'width:140px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}${th('date', 'Date', 'width:90px;')}${th('ver', 'Version', 'width:150px;')}<th style="width:190px;"></th></tr></thead>
@@ -19112,6 +19084,18 @@ function migrerV113() {
     return n;
   })();
   return _migrationV113;
+}
+
+// ══════════════════════════════════════════════
+// V115 — GED : glisser-déposer n'importe où, dans le classeur affiché
+// ══════════════════════════════════════════════
+function deposerDepuisGlisser(files) {
+  if(!files || !files.length) return;
+  if(_docsVue === 'corbeille') { toast('Ouvrez les pièces comptables ou le dossier permanent pour déposer', 'warn'); return; }
+  if(_docsVue === 'permanent') { const id = _docsClasseur.permanent; ouvrirDepot('permanent', id && !id.startsWith('__') ? id : null, files); return; }
+  const id = _docsClasseur.compta, info = id ? infoClasseurCompta(id) : null;
+  const t = info && info.types && info.types.length === 1 ? info.types[0] : '';
+  ouvrirDepot('compta', null, files, null, t ? { typePiece: t } : null);
 }
 
 </script>
