@@ -100,9 +100,9 @@ function afficherEcranInstallation() {
     <div style="font-size:12px;color:var(--text2);margin-bottom:20px;line-height:1.5;">Ce fichier n'est pas encore relié à votre base de données Firebase. Suivez ces étapes une seule fois.</div>
     <div style="text-align:left;">
       ${etape(1, 'Créer le projet Firebase', 'Sur <span style="font-family:var(--mono);">console.firebase.google.com</span>, créez un nouveau projet.')}
-      ${etape(2, 'Activer la connexion', 'Menu <em>Authentication</em> › <em>Sign-in method</em> : activez « E-mail/Mot de passe ». Onglet <em>Users</em> : créez votre compte. Onglet <em>Settings</em> › <em>Authorized domains</em> : ajoutez l\'adresse où l\'outil sera publié (ex. <span style="font-family:var(--mono);">votre-nom.github.io</span>).')}
-      ${etape(3, 'Créer la base de données', 'Menu <em>Firestore Database</em> : créez la base, puis dans l\'onglet <em>Règles</em>, remplacez le contenu par :' + code("rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}"))}
-      ${etape(4, 'Activer le stockage des documents', 'Passez le projet sur le plan <em>Blaze</em> (paiement à l\'usage — créez une alerte budgétaire, par exemple à 1 €). Menu <em>Storage</em> › <em>Commencer</em> : choisissez une région européenne (ex. <span style="font-family:var(--mono);">europe-west9</span>, Paris). Onglet <em>Règles</em>, remplacez le contenu par :' + code("rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /documents/{allPaths=**} {\n      allow read, delete: if request.auth != null;\n      allow create, update: if request.auth != null\n        &amp;&amp; request.resource.size &lt; 25 * 1024 * 1024;\n    }\n  }\n}"))}
+      ${etape(2, 'Activer la connexion', 'Menu <em>Authentication</em> › <em>Sign-in method</em> : activez « E-mail/Mot de passe ». Onglet <em>Users</em> : créez votre compte et notez son <strong>identifiant utilisateur (UID)</strong>. Onglet <em>Settings</em> › <em>User actions</em> : décochez la création de comptes si l\'option est proposée. Onglet <em>Settings</em> › <em>Authorized domains</em> : ajoutez l\'adresse où l\'outil sera publié (ex. <span style="font-family:var(--mono);">votre-nom.github.io</span>).')}
+      ${etape(3, 'Créer la base de données', 'Menu <em>Firestore Database</em> : créez la base, puis dans l\'onglet <em>Règles</em>, remplacez le contenu par le texte ci-dessous, en mettant votre UID à la place de VOTRE_UID (seul votre compte aura accès) :' + code("rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null\n        &amp;&amp; request.auth.uid == 'VOTRE_UID';\n    }\n  }\n}"))}
+      ${etape(4, 'Activer le stockage des documents', 'Passez le projet sur le plan <em>Blaze</em> (paiement à l\'usage — créez une alerte budgétaire, par exemple à 1 €). Menu <em>Storage</em> › <em>Commencer</em> : choisissez une région européenne (ex. <span style="font-family:var(--mono);">europe-west9</span>, Paris). Onglet <em>Règles</em>, remplacez le contenu par le texte ci-dessous (VOTRE_UID : comme à l\'étape 3) :' + code("rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /documents/{allPaths=**} {\n      allow read, delete: if request.auth != null && request.auth.uid == 'VOTRE_UID';\n      allow create, update: if request.auth != null && request.auth.uid == 'VOTRE_UID'\n        &amp;&amp; request.resource.size &lt; 25 * 1024 * 1024;\n    }\n  }\n}"))}
       ${etape(5, 'Autoriser l\'impression et le téléchargement direct', 'Dans la console Google Cloud du projet, ouvrez <em>Cloud Shell</em> (icône &gt;_ en haut à droite) et lancez ces deux commandes, en remplaçant l\'adresse et le nom du bucket (champ <span style="font-family:var(--mono);">storageBucket</span>) par les vôtres :' + code("echo '[{\"origin\":[\"https://votre-nom.github.io\"],\"method\":[\"GET\"],\"maxAgeSeconds\":3600}]' &gt; cors.json\ngsutil cors set cors.json gs://VOTRE-PROJET.firebasestorage.app"))}
       ${etape(6, 'Récupérer la configuration', '<em>Paramètres du projet</em> › <em>Vos applications</em> : ajoutez une application Web (&lt;/&gt;) et copiez les valeurs de <span style="font-family:var(--mono);">firebaseConfig</span> (y compris <span style="font-family:var(--mono);">storageBucket</span>).')}
       ${etape(7, 'Renseigner ce fichier', 'Ouvrez ce fichier HTML dans un éditeur de texte. Dans le bloc <strong>« ① INSTALLATION »</strong> tout en haut, remplacez chaque <span style="font-family:var(--mono);">A_RENSEIGNER</span> par vos valeurs, enregistrez, publiez le fichier puis rechargez cette page.')}
@@ -1720,6 +1720,15 @@ applyTheme();
       </div>
 
       <div style="max-width:900px;">
+        <!-- V111 : Sécurité Firebase (UID et règles d'accès) -->
+        <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--line2);">
+            <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">🔐 SÉCURITÉ — ACCÈS À LA BASE</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px;">Règles à coller dans la console Firebase pour que seul votre compte puisse lire et modifier les données et les documents.</div>
+          </div>
+          <div id="params-securite" style="padding:14px;"></div>
+        </div>
+
         <!-- V86 : Section Identité de la société -->
         <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
           <div style="padding:10px 14px;border-bottom:1px solid var(--line2);">
@@ -2988,7 +2997,7 @@ applyTheme();
       <button class="btn btn-sm" id="dv-ecriture" style="display:none;" onclick="const io=_vue&&_vue.io;fermerVisionneuse();if(io)ouvrirPiecesEcriture(io);">📎 PIÈCES DE L'ÉCRITURE</button>
       <button class="btn btn-sm btn-primary" onclick="imprimerPieceVue()">⎙ IMPRIMER</button>
       <button class="btn btn-sm" onclick="_vue && telechargerPiece(_vue.id)">⬇ TÉLÉCHARGER</button>
-      <button class="btn btn-sm btn-danger" id="dv-suppr" onclick="supprimerPieceDepuisVue()" title="Supprimer définitivement (mot de passe)">🗑</button>
+      <button class="btn btn-sm btn-danger" id="dv-suppr" onclick="supprimerPieceDepuisVue()" title="Mettre à la corbeille (mot de passe)">🗑</button>
       <button class="btn btn-sm" onclick="fermerVisionneuse()">FERMER</button>
     </div>
     <div id="dv-corps" style="flex:1;min-height:0;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;background:var(--bg2);"></div>
@@ -3326,6 +3335,9 @@ async function exportAllExercisesBackup() {
     showBackupExportedModal({ ok: [], echecs, ignores });
     return false;
   }
+  // V111 : index de la GED (fiches des documents, corbeille comprise) et configuration des classeurs
+  try { const g = await contenuSauvegardeGED(); if(g) filesToSave.push(g); else if(window._fbStorageActif) echecs.push({ y: 'GED', raison: "index des documents illisible : relancez la sauvegarde" }); }
+  catch(e) { console.error(e); echecs.push({ y: 'GED', raison: 'index des documents non sauvegardé' }); }
   const ok = [];
   if(window.showDirectoryPicker) {
     let dirHandle;
@@ -3372,7 +3384,7 @@ function htmlRapportZip(z) {
   let h = '<div style="border-top:1px solid var(--line2);margin-top:8px;padding-top:8px;">';
   if(z.erreur) h += `<div style="color:var(--red);">✗ Documents de la GED — ${esc(z.erreur)}</div>`;
   else if(z.vide) h += `<div style="color:var(--text2);">– Documents de la GED : aucun document</div>`;
-  else h += `<div>✓ Documents de la GED : <strong>${z.nb.toLocaleString('fr-FR')}</strong> fichier(s), dont ${z.tamponnes.toLocaleString('fr-FR')} tamponné(s) — ${mo(z.taille)}<br><span style="color:var(--text2);font-size:10px;">${esc(z.nom)}</span></div>`;
+  else h += `<div>✓ Documents de la GED : <strong>${z.nb.toLocaleString('fr-FR')}</strong> original(aux) + ${z.tamponnes.toLocaleString('fr-FR')} copie(s) tamponnée(s) — ${mo(z.taille)}<br><span style="color:var(--text2);font-size:10px;">${esc(z.nom)}</span></div>`;
   (z.echecs || []).slice(0, 8).forEach(e => { h += `<div style="color:var(--red);">✗ ${esc(e)}</div>`; });
   if((z.echecs || []).length > 8) h += `<div style="color:var(--red);">… et ${z.echecs.length - 8} autre(s)</div>`;
   (z.nonTamponnes || []).slice(0, 5).forEach(e => { h += `<div style="color:var(--amber);">⚠ copié sans tampon : ${esc(e)}</div>`; });
@@ -3385,8 +3397,8 @@ function showBackupExportedModal(rapport) {
   const ok = r.ok || [], echecs = r.echecs || [], ignores = r.ignores || [];
   const complet = !r.fatal && ok.length > 0 && !echecs.length && (!r.zip || zipComplet(r.zip));
   const kb = n => Math.max(1, Math.round(n / 1024)).toLocaleString('fr-FR') + ' Ko';
-  const lignesOk = ok.map(f => `<div>✓ Exercice <strong>${f.y}</strong>${f.test ? ' (TEST)' : ''} — ${kb(f.content.length)}</div>`).join('');
-  const lignesKo = echecs.map(e => `<div style="color:var(--red);">✗ Exercice <strong>${e.y}</strong> — ${e.raison}</div>`).join('');
+  const lignesOk = ok.map(f => f.ged ? `<div>✓ Index de la GED (${f.nbFiches.toLocaleString('fr-FR')} fiche(s), classeurs) — ${kb(f.content.length)}</div>` : `<div>✓ Exercice <strong>${f.y}</strong>${f.test ? ' (TEST)' : ''} — ${kb(f.content.length)}</div>`).join('');
+  const lignesKo = echecs.map(e => e.y === 'GED' ? `<div style="color:var(--red);">✗ Index de la GED — ${e.raison}</div>` : `<div style="color:var(--red);">✗ Exercice <strong>${e.y}</strong> — ${e.raison}</div>`).join('');
   const lignesIgn = ignores.map(e => `<div style="color:var(--text2);">– Exercice ${e.y} — ignoré : ${e.raison}</div>`).join('');
   const titre = r.fatal ? 'SAUVEGARDE IMPOSSIBLE' : complet ? 'SAUVEGARDE COMPLÈTE' : 'SAUVEGARDE INCOMPLÈTE';
   const couleur = complet ? 'var(--text0)' : 'var(--red)';
@@ -3421,6 +3433,7 @@ function handleBackupRestoreFile(evt) {
     evt.target.value = '';
     let parsed;
     try { parsed = JSON.parse(reader.result); } catch(e) { toast('Fichier illisible ou corrompu', 'error'); return; }
+    if(parsed && parsed._backupGED) { toast("Ce fichier est l'index de la GED : il ne se restaure pas ici. Conservez-le avec le ZIP des documents (restauration de la GED : prévue dans une prochaine version).", 'warn', 9000); return; } // V111
     const data = parsed.data || parsed; // tolère un JSON "brut" (juste DB) ou le format avec _backupMeta
     if(!data || typeof data !== 'object' || !Array.isArray(data.ecritures)) {
       toast("Fichier invalide — ce n'est pas une sauvegarde reconnue", "error");
@@ -3904,6 +3917,8 @@ async function _ecrireExercice(json, year) {
     if(newRev !== null && newRev !== undefined) LOADED_REV[y] = newRev;
     if(_saveFailure && _saveFailure.year === y && !_saveFailure.conflict) { _saveFailure = null; _retirerBandeauSauvegarde(); }
     setSaveStatus(_pendingSave ? 'saving' : 'ok');
+    // V111 : copies PDF dans la GED seulement après un enregistrement RÉUSSI (jamais sur des données refusées ou périmées)
+    if(y === String(CURRENT_YEAR) && EXERCISE_STATUS !== 'closed' && typeof planifierSyncGED === 'function') planifierSyncGED();
     return true;
   } catch(e) {
     console.error('Firebase save error', e);
@@ -3961,7 +3976,6 @@ function saveDB() {
   _pendingSave = { json, year: CURRENT_YEAR };
   setSaveStatus('saving');
   _saveTimeout = setTimeout(() => { flushPendingSave(); }, 800);
-  if(EXERCISE_STATUS !== 'closed' && typeof planifierSyncGED === 'function') planifierSyncGED(); // V99 : copies PDF dans la GED
 }
 // Envoie immédiatement la sauvegarde en attente (s'il y en a une). Renvoie true si tout est enregistré.
 // À appeler AVANT tout changement d'exercice.
@@ -6278,6 +6292,7 @@ Object.defineProperty(window, 'TYPEDOC_LIST', { get: () => getTypedocList() });
 // MODULE PARAMÈTRES
 // ══════════════════════════════════════════════
 function renderParametres() {
+  try { renderParamsSecurite(); } catch(e) { console.error(e); } // V111
   renderSocieteSettings();
   renderThemeSettings();
   renderPiecesTypesList();
@@ -13058,7 +13073,7 @@ function controlerDoublonDocument(loc, type, mois, relancer) {
   const liste = ici.map(h => `<li>${nom} de ${moisLabelFromYYYYMM(h.mois)} émis${type === 'quittance' ? 'e' : ''} le ${h.dateEmission ? fmtDateFr(h.dateEmission) : '?'}${h.archived ? ' (archivé' + (type === 'quittance' ? 'e' : '') + ')' : ''}${aUnDocument(h) ? ` — <a href="#" onclick="event.preventDefault();viewHistoriqueDoc('${loc.id}','${h.id}')" style="color:var(--cyan);">consulter</a>` : ''}</li>`).join('');
   demanderMotDePasse(`${nom.toUpperCase()} DÉJÀ ÉMIS${type === 'quittance' ? 'E' : ''}`,
     `Il existe déjà ${ici.length > 1 ? ici.length + ' documents' : 'un' + (type === 'quittance' ? 'e ' : ' ') + nom} pour <strong>${moisLabelFromYYYYMM(mois)}</strong> (${esc([loc.prenom1, loc.nom1].filter(Boolean).join(' '))}) :<ul style="margin:6px 0 6px 18px;">${liste}</ul>` +
-    `Pour le remplacer, l'ancien document sera <strong style="color:var(--red);">supprimé définitivement</strong> (aucune trace conservée), puis le nouveau sera généré.`,
+    `Pour le remplacer, l'ancien document sera <strong style="color:var(--red);">supprimé</strong> du module (son PDF part dans la corbeille de la GED), puis le nouveau sera généré.`,
     'SUPPRIMER L\'ANCIEN ET GÉNÉRER',
     () => { supprimerDocumentsDefinitivement(loc, ici.map(h => h.id)); relancer(); });
   return false;
@@ -16239,7 +16254,10 @@ const DOC_TAILLE_MAX = 20 * 1024 * 1024;          // 20 Mo par fichier
 const DOC_COMPRESSION_SEUIL = 400 * 1024;          // photos de plus de 400 Ko recompressées
 const DOC_COMPRESSION_COTE = 2200;                 // plus grand côté après compression (px)
 
-let PIECES = null;            // index chargé depuis Firebase (null = pas encore lu, ou illisible)
+let PIECES = null;            // index chargé depuis Firebase (null = pas encore lu, ou illisible) — V111 : documents actifs seulement
+let CORBEILLE = [];           // V111 : documents mis à la corbeille (fiche marquée « corbeille »), restaurables
+function repartirPieces(liste) { PIECES = (liste || []).filter(p => !p.corbeille); CORBEILLE = (liste || []).filter(p => p.corbeille); }
+function trouverPiece(id) { return (PIECES || []).find(x => x.id === id) || (CORBEILLE || []).find(x => x.id === id) || null; }
 let _piecesErreur = null;
 let DOCS_CONFIG = null;       // { rubriques: [{code, label}] } — null = rubriques par défaut
 let _docsVue = 'compta';      // 'compta' | 'permanent'
@@ -16254,7 +16272,7 @@ const _dpVersionsOuvertes = {};
 // ── Chargement ──
 async function chargerPieces() {
   if(!window._fbPiecesList) { PIECES = null; _piecesErreur = 'Firebase non chargé'; return false; }
-  try { PIECES = await window._fbPiecesList(); _piecesErreur = null; return true; }
+  try { repartirPieces(await window._fbPiecesList()); _piecesErreur = null; return true; }
   catch(e) { console.error('Index des documents illisible', e); PIECES = null; _piecesErreur = (e && (e.code || e.message)) || String(e); return false; }
 }
 // V100 : écoute en direct de l'index — la GED est toujours à jour, sans bouton « Actualiser »
@@ -16262,7 +16280,7 @@ let _piecesUnsub = null;
 function ecouterPieces() {
   if(_piecesUnsub || !window._fbPiecesEcouter) return;
   _piecesUnsub = window._fbPiecesEcouter(liste => {
-    PIECES = liste; _piecesErreur = null;
+    repartirPieces(liste); _piecesErreur = null;
     updateNavCounts();
     try { programmerAutoLiaison(); } catch(e) {} // V104 : document déposé → écritures de même référence jointes
     const ongletActif = document.getElementById('tab-documents')?.classList.contains('active');
@@ -16273,8 +16291,8 @@ function ecouterPieces() {
 // Ajoute ou remplace une fiche dans l'index local (l'écoute en direct a pu l'ajouter entre-temps)
 function indexerPiece(meta) {
   if(!PIECES) PIECES = [];
-  const i = PIECES.findIndex(p => p.id === meta.id);
-  if(i >= 0) PIECES[i] = meta; else PIECES.push(meta);
+  PIECES = PIECES.filter(p => p.id !== meta.id); CORBEILLE = (CORBEILLE || []).filter(p => p.id !== meta.id);
+  (meta.corbeille ? CORBEILLE : PIECES).push(meta);
 }
 async function chargerDocsConfig() {
   if(!window._fbDocsConfigLoad) return;
@@ -16391,9 +16409,9 @@ function renderDocumentsVueInterne(zone) {
       ${alerte}<div class="alert alert-danger">L'index des documents n'a pas pu être lu dans Firebase (${esc(_piecesErreur || 'erreur inconnue')}). Aucun document n'est affiché. <button class="btn btn-sm" onclick="renderDocuments()" style="margin-left:8px;">↻ RÉESSAYER</button></div>`;
     return;
   }
-  const corps = _docsVue === 'permanent' ? htmlDossierPermanentV109() : htmlPiecesComptablesV109(); // V107 : classeurs, V109 : filtres par colonne
+  const corps = _docsVue === 'corbeille' ? htmlCorbeille() : _docsVue === 'permanent' ? htmlDossierPermanentV109() : htmlPiecesComptablesV109(); // V107 : classeurs, V109 : filtres par colonne, V111 : corbeille
   zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}
+      ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}${onglet('corbeille', `🗑 CORBEILLE (${(CORBEILLE || []).length.toLocaleString('fr-FR')})`)}
       <button class="btn btn-sm" onclick="lancerSyncTousExercices()" style="margin-left:auto;" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button>
     </div>${alerte}${corps}`;
 }
@@ -16412,8 +16430,9 @@ function htmlZoneDepot(espace, rubrique, actif, messageInactif) {
 function htmlActionsPiece(p) {
   const b = (ic, act, tit, cls) => `<button class="btn btn-sm btn-icon ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 6px;font-size:10px;">${ic}</button>`;
   let h = b('👁', `voirPiece('${p.id}')`, 'Voir / imprimer') + b('⬇', `telechargerPiece('${p.id}')`, 'Télécharger');
-  if(pieceGeneree(p)) h += `<span title="Document généré par le module ${esc(LIB_MODULE_ORIGINE[p.module] || '')} : il se gère depuis ce module" style="font-size:11px;padding:0 4px;">⚙</span>`;
-  else if(pieceModifiable(p)) h += b('🏷', `modifierReferencePiece('${p.id}')`, 'Modifier la référence (n° de pièce)') + b('🗑', `askSupprimerPiece('${p.id}')`, 'Supprimer définitivement', 'btn-danger');
+  if(pieceGeneree(p) && _sourcesIntrouvables.has(p.id)) h += b('🗑', `askCorbeilleIntrouvable('${p.id}')`, 'Source introuvable dans son module : mettre à la corbeille', 'btn-danger'); // V111
+  else if(pieceGeneree(p)) h += `<span title="Document généré par le module ${esc(LIB_MODULE_ORIGINE[p.module] || '')} : il se gère depuis ce module" style="font-size:11px;padding:0 4px;">⚙</span>`;
+  else if(pieceModifiable(p)) h += b('🏷', `modifierReferencePiece('${p.id}')`, 'Modifier la référence (n° de pièce)') + b('🗑', `askSupprimerPiece('${p.id}')`, 'Mettre à la corbeille (restaurable)', 'btn-danger');
   else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
   return h;
 }
@@ -16737,7 +16756,7 @@ async function blobDePiece(url) {
   try { const r = await fetch(url); if(!r.ok) return null; return await r.blob(); } catch(e) { return null; }
 }
 async function voirPiece(id, ctx) {
-  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const p = trouverPiece(id); if(!p) return; // V111 : corbeille comprise
   const btnEcr = document.getElementById('dv-ecriture'); // V107 : ouverte depuis le n° de pièce d'une écriture
   if(btnEcr) btnEcr.style.display = (ctx && ctx.io) ? '' : 'none';
   const modal = document.getElementById('doc-viewer-modal');
@@ -16747,7 +16766,8 @@ async function voirPiece(id, ctx) {
     ? [`Exercice ${p.exercice}${p.test ? ' (TEST)' : ''}`, p.typePiece ? libTypePiece(p.typePiece) : '', p.numDoc ? 'Pièce ' + p.numDoc : '', p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : '']
     : [`Dossier permanent — ${classeursDe(p).map(libRubrique).join(', ') || 'sans classeur'}${p.typeDP ? ' — ' + libTypeDP(p.typeDP) : ''}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
   document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (pieceGeneree(p) ? ` · généré par ${LIB_MODULE_ORIGINE[p.module] || 'un module'}` : '');
-  document.getElementById('dv-suppr').style.display = (pieceGeneree(p) || !pieceModifiable(p)) ? 'none' : '';
+  document.getElementById('dv-suppr').style.display = (pieceGeneree(p) || !pieceModifiable(p) || p.corbeille) ? 'none' : '';
+  if(p.corbeille) document.getElementById('dv-infos').textContent += ' · 🗑 dans la corbeille';
   corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement…</div>`;
   modal.style.display = 'flex';
   _vue = { id, url: null, blobUrl: null, io: ctx && ctx.io ? ctx.io : null };
@@ -16785,7 +16805,7 @@ async function voirPiece(id, ctx) {
 }
 async function imprimerPieceVue() {
   if(!_vue || !_vue.url) return;
-  const p = (PIECES || []).find(x => x.id === _vue.id); if(!p) return;
+  const p = trouverPiece(_vue.id); if(!p) return;
   const genre = _vue.tamponne ? 'pdf' : genrePiece(p); // V103 : la copie tamponnée est toujours un PDF
   if(genre === 'pdf') {
     const fr = document.getElementById('dv-frame');
@@ -16802,7 +16822,7 @@ async function imprimerPieceVue() {
   } else telechargerPiece(p.id);
 }
 async function telechargerPiece(id) {
-  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const p = trouverPiece(id); if(!p) return;
   let url = (_vue && _vue.id === id && _vue.url) || null;
   try { if(!url) url = await window._fbFichierUrl(p.chemin); }
   catch(e) { toast(messageErreurStorage(e), 'error', 6000); return; }
@@ -16859,21 +16879,14 @@ function askSupprimerPiece(id) {
   const liees = (p.liens || []).filter(l => l.ex === String(CURRENT_YEAR) && _justifs.has(l.io)).map(l => '#' + _justifs.get(l.io).num);
   const autres = (p.liens || []).filter(l => l.ex !== String(CURRENT_YEAR)).length;
   const avert = liees.length || autres ? `<br><span style="color:var(--amber);">Cette pièce justifie ${liees.length ? `l'écriture${liees.length > 1 ? 's' : ''} ${liees.join(', ')}` : ''}${liees.length && autres ? ' et ' : ''}${autres ? `${autres} écriture(s) d'un autre exercice` : ''} : ${liees.length + autres > 1 ? 'elles repasseront' : 'elle repassera'} dans « Pièces à joindre » (les écritures ne sont pas supprimées).</span>` : '';
-  demanderMotDePasse('SUPPRIMER DÉFINITIVEMENT', `Supprimer définitivement ${quoi} ?${avert}<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> `,
-    '🗑 SUPPRIMER DÉFINITIVEMENT', () => supprimerPieceDefinitivement(id));
+  demanderMotDePasse('METTRE À LA CORBEILLE', `Mettre à la corbeille ${quoi} ?${avert}<br><span style="color:var(--text2);">Le document reste restaurable depuis GED › 🗑 Corbeille, avec ses liens, tant que vous ne videz pas la corbeille.</span> `,
+    '🗑 METTRE À LA CORBEILLE', () => mettrePieceEnCorbeille(id, 'Supprimé à la main'));
 }
-async function supprimerPieceDefinitivement(id, silencieux) {
+// V111 : plus aucune suppression directe — tout passe par la corbeille
+async function mettrePieceEnCorbeille(id, motif, silencieux, auto) {
   const p = (PIECES || []).find(x => x.id === id); if(!p) return false;
-  // Le fichier d'abord : si cette étape échoue, l'index reste et rien n'est perdu de vue
-  try { await window._fbFichierSupprimer(p.chemin); await window._fbPieceDelete(p.id); }
-  catch(e) { if(!silencieux) toast('Suppression impossible : ' + messageErreurStorage(e), 'error', 6000); return false; }
-  PIECES = PIECES.filter(x => x.id !== id);
-  // Dossier permanent : si la version en vigueur disparaît, la plus récente restante prend le relais
-  if(p.espace === 'permanent' && p.enVigueur) {
-    const restantes = PIECES.filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)).sort((a, b) => (b.version || 1) - (a.version || 1));
-    if(restantes.length) await mettreEnVigueur(restantes[0].id, true);
-  }
-  if(!silencieux) { toast('Document supprimé définitivement', 'success'); updateNavCounts(); if(_vue && _vue.id === id) fermerVisionneuse(); renderDocumentsVue(); apresChangementJustifs(); }
+  if(!(await mettreEnCorbeille(p, motif, auto))) return false;
+  if(!silencieux) { toast('Document mis à la corbeille (restaurable depuis GED › 🗑 Corbeille)', 'success', 5000); updateNavCounts(); if(_vue && _vue.id === id) fermerVisionneuse(); renderDocumentsVue(); apresChangementJustifs(); }
   return true;
 }
 function supprimerPieceDepuisVue() { if(_vue) { const id = _vue.id; askSupprimerPiece(id); } }
@@ -16883,16 +16896,16 @@ async function supprimerPiecesExercice(y) {
   if(PIECES === null) await chargerPieces();
   const liste = piecesDeLExercice(y);
   let echecs = 0;
-  for(const p of liste) { if(!(await supprimerPieceDefinitivement(p.id, true))) echecs++; }
-  if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être supprimées : supprimez-les depuis la GED` : `${liste.length} pièce(s) de l'exercice test « ${y} » supprimée(s)`, echecs ? 'error' : 'success', 6000);
+  for(const p of liste) { if(!(await mettrePieceEnCorbeille(p.id, `Exercice test « ${y} » supprimé`, true))) echecs++; } // V111 : corbeille
+  if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être mises à la corbeille` : `${liste.length} pièce(s) de l'exercice test « ${y} » mise(s) à la corbeille de la GED`, echecs ? 'error' : 'success', 6000);
   updateNavCounts();
 }
 // Un vrai exercice qui contient des pièces ne peut pas être supprimé
 function suppressionExerciceAutorisee(y) {
   if(isTestExercise(y)) return true;
   if(PIECES === null) { toast("Suppression impossible : l'index des documents n'a pas pu être lu. Ouvrez l'onglet GED pour réessayer.", 'error', 7000); return false; }
-  const n = piecesDeLExercice(y).length;
-  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans la GED.`, 'error', 7000); return false; }
+  const n = piecesDeLExercice(y).length + (CORBEILLE || []).filter(p => p.espace === 'compta' && String(p.exercice) === String(y)).length; // V111 : corbeille comprise
+  if(n) { toast(`Suppression impossible : l'exercice « ${y} » contient ${n} pièce(s) dans la GED (corbeille comprise).`, 'error', 7000); return false; }
   return true;
 }
 
@@ -17102,18 +17115,22 @@ function documentsGeneresDe(data, exercice) {
   (data.pvApprobations || []).forEach(pv => { if(aUnDocument(pv)) out.push(descripteurDocument('pv', pv, exercice)); });
   return out;
 }
-function pieceAJourPour(d) { return (PIECES || []).find(p => p.origine === d.cle && p.origineSig === signatureDoc(d.x)) || null; }
+// V111 : un document de module est FIGÉ dès sa première copie dans la GED (seules les éditions de clôture sont refaites)
+function pieceAJourPour(d) { return (PIECES || []).find(p => p.origine === d.cle && (!d.edition || p.origineSig === signatureDoc(d.x))) || null; }
 // Crée (ou remplace) le PDF d'un document généré. Un même document n'est jamais traité deux fois en même temps.
 const _depotsDocsEnCours = {};
 function deposerDocumentGenere(d) {
   if(_depotsDocsEnCours[d.cle]) return _depotsDocsEnCours[d.cle];
   const travail = (async () => {
     const dejaFait = pieceAJourPour(d); if(dejaFait) return { meta: dejaFait, etat: 'ajour' };
-    const existant = (PIECES || []).find(p => p.origine === d.cle);
+    // V111 : document mis à la corbeille automatiquement puis revenu dans son module (ex. ↩ ANNULER) → restauré, pas recréé
+    const enCorbeille = !d.edition && (CORBEILLE || []).find(p => p.origine === d.cle && p.corbeille && p.corbeille.auto);
+    if(enCorbeille && await retirerDeCorbeille(enCorbeille)) return { meta: enCorbeille, etat: 'restaure' };
+    const existant = (PIECES || []).find(p => p.origine === d.cle); // V111 : n'existe plus que pour une édition de clôture à refaire
     if(d.espace === 'permanent' && !d.rubrique) throw new Error(MSG_CLASSEUR_PV); // V110 : classeur du PV absent
     const html = htmlDuDocument(d.x); if(!html) throw new Error('Document sans contenu');
     const blob = d.edition ? await pdfDepuisEdition(html, d.paysage) : await pdfDepuisHtml(html, d.paysage); // V106 : éditions sur plusieurs pages
-    const id = existant ? existant.id : crypto.randomUUID();
+    const id = crypto.randomUUID(); // V111 : nouvelle fiche ; l'ancienne édition part à la corbeille
     const nomFichier = nomFichierSur(d.nom).replace(/\.pdf$/i, '') + '.pdf';
     const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${Date.now().toString(36)}_${nomFichier}`;
     await window._fbFichierEnvoyer(chemin, blob, 'application/pdf');
@@ -17129,8 +17146,8 @@ function deposerDocumentGenere(d) {
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
     catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
-    if(existant) { try { await window._fbFichierSupprimer(existant.chemin); } catch(e) {} }
     indexerPiece(meta);
+    if(existant) { try { await mettreEnCorbeille(existant, 'Remplacé par une nouvelle version', false); } catch(e) { console.warn(e); } } // V111 : jamais d'effacement
     return { meta, etat: existant ? 'maj' : 'cree' };
   })();
   _depotsDocsEnCours[d.cle] = travail;
@@ -17146,9 +17163,12 @@ function planifierSyncGED() {
   _syncGEDTimer = setTimeout(() => {
     if(String(CURRENT_YEAR) !== ex || EXERCISE_STATUS === 'closed' || window._saveSuspended) return;
     if(_syncGEDEnCours) { planifierSyncGED(); return; } // une copie est en cours : on repasse ensuite
+    if(_pendingSave || _saveInFlight) { planifierSyncGED(); return; } // V111 : on attend que tout soit enregistré
+    if(_saveFailure) return; // V111 : jamais sur des données que Firebase a refusées
     let data; try { data = JSON.parse(JSON.stringify(DB)); } catch(e) { return; }
-    synchroniserGED([{ exercice: ex, data }], {}).then(r => {
+    synchroniserGED([{ exercice: ex, data }], { corbeilleAuto: true }).then(r => {
       if(r && r.echecs) toast(`${r.echecs} document(s) n'ont pas pu être copiés en PDF dans la GED (nouvel essai au prochain enregistrement)`, 'warn', 6000);
+      if(r && r.corbeille) toast(`🗑 ${r.corbeille} document(s) de module mis à la corbeille de la GED (supprimé ou annulé dans son module) — restaurable(s) depuis GED › Corbeille`, 'warn', 9000);
       if(r && String(CURRENT_YEAR) === ex && EXERCISE_STATUS !== 'closed') allegerAnciensDocuments();
     });
   }, 2500);
@@ -17158,13 +17178,13 @@ async function synchroniserGED(sources, opts) {
   if(!window._fbStorageActif || _syncGEDEnCours) return null;
   if(PIECES === null && !(await chargerPieces())) return null;
   _syncGEDEnCours = true;
-  const res = { crees: 0, maj: 0, ajour: 0, supprimes: 0, echecs: 0, total: 0 };
+  const res = { crees: 0, maj: 0, ajour: 0, supprimes: 0, corbeille: 0, introuvables: 0, echecs: 0, total: 0 };
   try {
     for(const src of sources) {
       const docs = documentsGeneresDe(src.data, src.exercice);
       const cles = new Set(docs.map(d => d.cle));
       // V108 : type corrigé sur les PDF déjà présents (ex. appels de loyer auparavant sans type)
-      for(const d of docs) { const p = pieceAJourPour(d); if(!p || p.espace !== 'compta') continue; const ch = {}; if(d.typePiece && p.typePiece !== d.typePiece) ch.typePiece = d.typePiece; if(d.numDoc && p.numDoc !== d.numDoc) ch.numDoc = d.numDoc; if(Object.keys(ch).length) { try { await majPiece(p, ch); } catch(e) {} } } // V109 : type et n° de pièce
+      for(const d of docs) { const p = (PIECES || []).find(q => q.origine === d.cle); if(!p || p.espace !== 'compta' || d.edition) continue; const ch = {}; if(d.typePiece && p.typePiece !== d.typePiece) ch.typePiece = d.typePiece; if(d.numDoc && p.numDoc !== d.numDoc) ch.numDoc = d.numDoc; if(Object.keys(ch).length) { try { await majPiece(p, ch); } catch(e) {} } } // V109 : type et n° de pièce
       if(docs.some(d => d.espace === 'permanent' && !d.rubrique)) avisClasseurPV(); // V110
       const aFaire = docs.filter(d => !pieceAJourPour(d) && !(d.espace === 'permanent' && !d.rubrique));
       res.ajour += docs.length - aFaire.length;
@@ -17174,10 +17194,14 @@ async function synchroniserGED(sources, opts) {
         catch(e) { console.error('Copie PDF dans la GED impossible', d.cle, e); res.echecs++; }
         if(opts.progression) opts.progression(res);
       }
-      // Documents générés de CET exercice dont la source n'existe plus (supprimée définitivement du module)
-      for(const p of PIECES.filter(p => p.origine && !String(p.origine).startsWith('ed:') && String(p.origineExercice) === String(src.exercice) && !cles.has(p.origine))) { // V106 : éditions de clôture exclues
-        if(await supprimerPieceDefinitivement(p.id, true)) res.supprimes++;
+      // Documents générés de CET exercice dont la source n'existe plus dans son module.
+      // V111 : jamais effacés. Après un enregistrement réussi de l'exercice ouvert (corbeilleAuto) : mis à la corbeille,
+      // restaurables ; sinon (bouton « ⟳ Documents des modules ») : seulement signalés « source introuvable ».
+      for(const p of PIECES.filter(p => p.origine && !String(p.origine).startsWith('ed:') && String(p.origineExercice) === String(src.exercice) && !cles.has(p.origine) && !p.conserve)) { // V106 : éditions de clôture exclues
+        if(opts.corbeilleAuto) { if(await mettreEnCorbeille(p, 'Supprimé ou annulé dans son module', true)) { res.corbeille++; _sourcesIntrouvables.delete(p.id); } }
+        else { _sourcesIntrouvables.add(p.id); res.introuvables++; }
       }
+      for(const p of PIECES.filter(p => p.origine && cles.has(p.origine))) _sourcesIntrouvables.delete(p.id);
     }
   } finally { _syncGEDEnCours = false; }
   updateNavCounts();
@@ -17207,7 +17231,7 @@ async function lancerSyncTousExercices() {
   } finally { barre.remove(); }
   if(!res) { toast('Copie impossible : index des documents illisible ou copie déjà en cours', 'error', 6000); return; }
   const parts = [`${res.crees} ajouté(s)`, `${res.maj} mis à jour`, `${res.ajour} déjà à jour`];
-  if(res.supprimes) parts.push(`${res.supprimes} retiré(s)`);
+  if(res.introuvables) parts.push(`${res.introuvables} dont la source est introuvable (signalé(s) dans la GED, rien n'est supprimé)`);
   if(res.echecs) parts.push(`${res.echecs} échec(s)`);
   if(illisibles.length) parts.push(`exercice(s) illisible(s) : ${illisibles.join(', ')}`);
   toast('Documents des modules : ' + parts.join(' · '), (res.echecs || illisibles.length) ? 'warn' : 'success', 9000);
@@ -17923,7 +17947,7 @@ function afficherProgressionSauvegarde(texte, ratio) {
       <div style="font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:12px;letter-spacing:.05em;">💾 SAUVEGARDE EN COURS</div>
       <div id="backup-progress-txt" style="font-size:11px;color:var(--text1);margin-bottom:10px;min-height:16px;"></div>
       <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;"><div id="backup-progress-bar" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
-      <div style="font-size:10px;color:var(--text2);margin-top:10px;">Ne fermez pas l'onglet. Les pièces jointes à des écritures sont tamponnées de leur n° de pièce.</div></div>`;
+      <div style="font-size:10px;color:var(--text2);margin-top:10px;">Ne fermez pas l'onglet. Le ZIP contient les originaux, plus une copie tamponnée de chaque pièce jointe à une écriture.</div></div>`;
     document.body.appendChild(el);
   }
   document.getElementById('backup-progress-txt').textContent = texte;
@@ -17935,14 +17959,14 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
   if(!window._fbStorageActif) { rapport.erreur = 'stockage des documents non configuré'; return rapport; }
   if(PIECES === null) await chargerPieces();
   if(PIECES === null) { rapport.erreur = "l'index des documents n'a pas pu être lu"; return rapport; }
-  const pieces = PIECES.slice();
+  const pieces = PIECES.concat(CORBEILLE || []); // V111 : la corbeille est sauvegardée aussi
   if(!pieces.length) { rapport.vide = true; return rapport; }
   try { await chargerJSZip(); } catch(e) { rapport.erreur = 'bibliothèque ZIP introuvable (connexion internet ?)'; return rapport; }
   const idx = indexEcrituresParExercice(ecrParEx);
   const zip = new window.JSZip();
   const noms = new Set();
   const nomUnique = chemin => { let c = chemin, i = 2; const m = chemin.match(/^(.*?)(\.[^./]+)?$/); while(noms.has(c.toLowerCase())) c = `${m[1]} (${i++})${m[2] || ''}`; noms.add(c.toLowerCase()); return c; };
-  const lignesCsv = [['Espace', 'Exercice / classeurs', 'Date', 'Type', 'N° de pièce', 'Tampon', 'Écritures jointes', 'Titre', 'Fichier dans le ZIP', "Fichier d'origine", 'Version'].join(';')];
+  const lignesCsv = [['Espace', 'Exercice / classeurs', 'Date', 'Type', 'N° de pièce', 'Tampon', 'Écritures jointes', 'Titre', 'Original dans le ZIP', 'Copie tamponnée dans le ZIP', "Fichier d'origine", 'Version', 'Corbeille'].join(';')];
   const csv = v => { const s = String(v === undefined || v === null ? '' : v); return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   let fait = 0;
   const traiter = async p => {
@@ -17950,13 +17974,13 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
       const url = await window._fbFichierUrl(p.chemin);
       const brut = await blobDePiece(url);
       if(!brut) throw new Error('téléchargement impossible (réglage CORS du stockage ?)');
-      const tampon = texteTamponSauvegarde(p, idx);
-      let blob = brut, tamponne = false;
+      const tampon = p.corbeille ? '' : texteTamponSauvegarde(p, idx); // V111 : pas de copie tamponnée pour la corbeille
+      let copie = null;
       if(tampon && (genrePiece(p) === 'pdf' || genrePiece(p) === 'image')) {
-        try { blob = await blobTamponne(p, brut, tampon); tamponne = !!blob; if(!blob) blob = brut; }
-        catch(e) { blob = brut; rapport.nonTamponnes.push(`${p.titre || p.nomFichier} (${e.message || e})`); }
+        try { copie = await blobTamponne(p, brut, tampon); }
+        catch(e) { copie = null; rapport.nonTamponnes.push(`${p.titre || p.nomFichier} (${e.message || e})`); }
       }
-      const ext = tamponne ? 'pdf' : extensionDe(p.nomFichier, p.mime);
+      const ext = extensionDe(p.nomFichier, p.mime); // V111 : l'original, toujours
       let dossier, base;
       if(p.espace === 'permanent') {
         dossier = `Dossier permanent/${nomZipSur(classeursDe(p).length ? libRubrique(classeursDe(p)[0]) : 'Sans classeur', 60)}${p.sousDossier ? '/' + nomZipSur(p.sousDossier, 40) : ''}`; // V107 : 1er classeur, V110 : sous-dossier
@@ -17966,13 +17990,18 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
         base = [p.dateDoc || '', tampon || p.numDoc || '', p.titre || titreDepuisNom(p.nomFichier)].filter(Boolean).join(' - ');
       }
       base = String(base).replace(new RegExp('\\.' + extensionDe(p.nomFichier, p.mime) + '$', 'i'), ''); // pas de double extension
+      if(p.corbeille) dossier = 'Corbeille/' + dossier; // V111
       const chemin = nomUnique(`${dossier}/${nomZipSur(base)}.${ext}`);
-      zip.file(chemin, blob, { binary: true, date: p.depose ? new Date(p.depose) : new Date() });
+      const dateZip = p.depose ? new Date(p.depose) : new Date();
+      zip.file(chemin, brut, { binary: true, date: dateZip });
+      let cheminCopie = '';
+      if(copie) { cheminCopie = nomUnique(`Copies tamponnées/${dossier}/${nomZipSur(base)}.pdf`); zip.file(cheminCopie, copie, { binary: true, date: dateZip }); } // V111
       const ecrs = (p.liens || []).map(l => { const e = idx[l.ex] && idx[l.ex].get(l.io); return e ? `${l.ex} #${e.num}` : ''; }).filter(Boolean).join(', ');
       lignesCsv.push([p.espace === 'permanent' ? 'Dossier permanent' : 'Pièce comptable', p.espace === 'permanent' ? classeursDe(p).map(libRubrique).join(' | ') : p.exercice + (p.test ? ' TEST' : ''),
-        p.dateDoc ? fmtDateFr(p.dateDoc) : '', (p.espace === 'permanent' ? p.typeDP : p.typePiece) || '', p.numDoc || '', tamponne ? tampon : '', ecrs, p.titre || '', chemin, p.nomFichier || '', p.espace === 'permanent' ? (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : '') : ''].map(csv).join(';'));
-      rapport.nb++; if(tamponne) rapport.tamponnes++;
-      rapport.taille += blob.size;
+        p.dateDoc ? fmtDateFr(p.dateDoc) : '', (p.espace === 'permanent' ? p.typeDP : p.typePiece) || '', p.numDoc || '', copie ? tampon : '', ecrs, p.titre || '', chemin, cheminCopie, p.nomFichier || '', p.espace === 'permanent' ? (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : '') : '',
+        p.corbeille ? `oui, depuis le ${fmtDateFr(String(p.corbeille.date || '').slice(0, 10))}` : ''].map(csv).join(';'));
+      rapport.nb++; if(copie) rapport.tamponnes++;
+      rapport.taille += brut.size + (copie ? copie.size : 0);
     } catch(e) { console.error(e); rapport.echecs.push(`${p.titre || p.nomFichier} — ${e.message || messageErreurStorage(e)}`); }
     fait++;
     afficherProgressionSauvegarde(`Documents de la GED : ${fait.toLocaleString('fr-FR')} / ${pieces.length.toLocaleString('fr-FR')}`, fait / pieces.length * 0.9);
@@ -18294,7 +18323,7 @@ function htmlPiecesComptablesV107() {
     const depotActif = !!window._fbStorageActif && ouverts.length > 0;
     return `<div style="display:flex;align-items:center;gap:10px;">
         <span style="font-size:11px;color:var(--text2);">Classeurs des pièces comptables — nombre de pièces de l'exercice <strong style="color:var(--cyan);">${esc(cible === 'tous' ? 'tous exercices' : cible)}</strong></span>
-        <span style="margin-left:auto;">${htmlCoutStockage()}</span><button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')">⚙ GÉRER LES CLASSEURS</button>
+        <span style="margin-left:auto;">${htmlCoutStockage()}</span><button class="btn btn-sm" onclick="ouvrirLiensCroises()" title="Contrôle : documents d'un locataire joints aux écritures d'un autre (exercice affiché)">🔎 LIENS ENTRE LOCATAIRES</button><button class="btn btn-sm" onclick="ouvrirGestionClasseurs('compta')">⚙ GÉRER LES CLASSEURS</button>
       </div>
       ${htmlZoneDepot('compta', null, depotActif, !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré' : 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée')}
       <div class="docs-scroll" style="${GRILLE_CLASSEURS}align-content:start;">${tuiles.join('')}</div>`;
@@ -18907,8 +18936,10 @@ function htmlPiecesComptablesV109() {
   const info = id ? infoClasseurCompta(id) : null;
   if(!info) {
     const n = piecesSansEcritureExercice().length;
-    const alerte = n ? `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${n.toLocaleString('fr-FR')} pièce(s) de ${esc(CURRENT_YEAR)} rattachée(s) à aucune écriture</strong> — à rattacher (ou à supprimer) avant la clôture.</span><button class="btn btn-sm" onclick="allerPiecesSansEcriture()">VOIR</button></div>` : '';
-    return alerte + htmlPiecesComptablesV107();
+    const alerte = n ? `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${n.toLocaleString('fr-FR')} pièce(s) de ${esc(CURRENT_YEAR)} rattachée(s) à aucune écriture</strong> — à rattacher avant la clôture.</span><button class="btn btn-sm" onclick="allerPiecesSansEcriture()">VOIR</button></div>` : '';
+    let nx = 0; try { nx = liensCroisesLocataires().length; } catch(e) { console.warn(e); } // V111
+    const alerteX = nx ? `<div class="alert alert-danger" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${nx} document(s) locatif(s) joint(s) aux écritures d'un autre locataire</strong> (même n° de pièce) — à détacher.</span><button class="btn btn-sm" onclick="ouvrirLiensCroises()">VOIR</button></div>` : '';
+    return alerte + alerteX + htmlPiecesComptablesV107();
   }
   const ouverts = exercicesOuverts();
   const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
@@ -19002,7 +19033,10 @@ function majAlerteNavGED() {
   let orph = 0, nc = 0;
   try { orph = piecesSansEcritureExercice().length; nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')).length; } catch(e) {}
   const cout = (() => { try { return coutStockageMensuel(); } catch(e) { return 0; } })();
-  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : '', cout > 1 ? `stockage estimé à ${cout.toFixed(2).replace('.', ',')} €/mois (au-dessus de 1 €)` : ''].filter(Boolean).join(' · ');
+  let vieux = 0, croises = 0, introuv = 0; // V111
+  try { vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30).length; croises = liensCroisesLocataires().length; introuv = (PIECES || []).filter(p => _sourcesIntrouvables.has(p.id)).length; } catch(e) {}
+  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : '', cout > 1 ? `stockage estimé à ${cout.toFixed(2).replace('.', ',')} €/mois (au-dessus de 1 €)` : '',
+    croises ? `${croises} lien(s) entre un document et les écritures d'un autre locataire` : '', introuv ? `${introuv} document(s) de module dont la source est introuvable` : '', vieux ? `${vieux} document(s) dans la corbeille depuis plus de 30 jours` : ''].filter(Boolean).join(' · ');
   z.style.display = msg ? '' : 'none'; z.title = msg;
 }
 
@@ -19108,6 +19142,210 @@ function htmlJourKm(p, mois, valeur) {
       <input type="number" id="${p}jour" min="1" max="${dern}" value="${valeur || ''}" placeholder="jj" style="width:52px;font-family:var(--mono);font-size:10px;text-align:right;"
         onkeydown="if(event.key==='Enter'){event.preventDefault();${p === 'km-new-' ? 'addKmTrajet()' : `saveKmTrajetEdit('${p.slice(8, -1)}')`};}">
       <span style="color:var(--text2);">/${mm}/${yy}</span></div>`;
+}
+
+// ══════════════════════════════════════════════
+// V111 — SÉCURITÉ DE LA GED (lot 1 de l'audit)
+// ══════════════════════════════════════════════
+// - Plus aucun effacement direct : toute suppression met la fiche « à la corbeille » (fichier conservé), restaurable
+//   avec ses liens ; seul le vidage de la corbeille (mot de passe) efface la fiche, puis le fichier.
+// - Documents des modules figés dès leur première copie PDF ; un document supprimé ou annulé dans son module part à
+//   la corbeille (après un enregistrement réussi uniquement) ; « ⟳ Documents des modules » ne fait que signaler.
+// - Contrôle des liens entre locataires ; index de la GED dans la sauvegarde JSON ; ZIP : originaux + copies tamponnées.
+const _sourcesIntrouvables = new Set();
+function ageCorbeilleJours(p) { const d = Date.parse((p && p.corbeille && p.corbeille.date) || ''); return isNaN(d) ? 0 : (Date.now() - d) / 864e5; }
+
+async function mettreEnCorbeille(p, motif, auto) {
+  if(!p || p.corbeille) return false;
+  if(!(await majPiece(p, { corbeille: { date: new Date().toISOString(), motif: motif || '', auto: !!auto } }))) return false;
+  PIECES = (PIECES || []).filter(x => x.id !== p.id);
+  CORBEILLE = (CORBEILLE || []).filter(x => x.id !== p.id).concat([p]);
+  _sourcesIntrouvables.delete(p.id);
+  // Dossier permanent : la version en vigueur part → la plus récente restante prend le relais
+  if(p.espace === 'permanent' && p.enVigueur) {
+    const restantes = PIECES.filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)).sort((a, b) => (b.version || 1) - (a.version || 1));
+    if(restantes.length) await mettreEnVigueur(restantes[0].id, true);
+  }
+  return true;
+}
+// Sort une fiche de la corbeille (sans contrôle : réservé aux restaurations vérifiées et aux retours automatiques)
+async function retirerDeCorbeille(p) {
+  const avant = JSON.parse(JSON.stringify(p));
+  delete p.corbeille;
+  if(p.espace === 'permanent' && p.enVigueur && (PIECES || []).some(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id) && x.enVigueur)) p.enVigueur = false;
+  try { await window._fbPieceSave(p); }
+  catch(e) { Object.keys(p).forEach(k => delete p[k]); Object.assign(p, avant); toast("Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e), 'error', 6000); return false; }
+  CORBEILLE = (CORBEILLE || []).filter(x => x.id !== p.id);
+  PIECES = (PIECES || []).filter(x => x.id !== p.id).concat([p]);
+  return true;
+}
+async function restaurerPiece(id) {
+  const p = (CORBEILLE || []).find(x => x.id === id); if(!p) return;
+  if(p.espace === 'compta') {
+    if(!exercicesConnus().map(String).includes(String(p.exercice))) { toast(`L'exercice ${p.exercice} n'existe plus : ce document ne peut pas être restauré (il reste dans la corbeille et dans vos sauvegardes)`, 'error', 7000); return; }
+    if(exerciceClos(p.exercice)) { toast(`Exercice ${p.exercice} clôturé : déverrouillez-le pour restaurer cette pièce`, 'error', 6000); return; }
+  }
+  if(p.origine) p.conserve = true; // restauré à la main : il ne repart jamais seul à la corbeille, même si sa source a disparu
+  if(!(await retirerDeCorbeille(p))) return;
+  toast('Document restauré, avec ses liens', 'success');
+  updateNavCounts(); renderDocumentsVue(); apresChangementJustifs();
+}
+// Vidage : la fiche d'abord (plus rien ne pointe vers le fichier), puis le fichier
+async function effacerDeCorbeille(p) {
+  try { await window._fbPieceDelete(p.id); } catch(e) { console.error(e); return false; }
+  CORBEILLE = (CORBEILLE || []).filter(x => x.id !== p.id);
+  try { await window._fbFichierSupprimer(p.chemin); } catch(e) { console.warn('Fichier non effacé du stockage (sans conséquence : plus aucune fiche ne le référence)', p.chemin, e); }
+  return true;
+}
+function askEffacerDeCorbeille(id) {
+  const p = (CORBEILLE || []).find(x => x.id === id); if(!p) return;
+  demanderMotDePasse('EFFACER DÉFINITIVEMENT', `Effacer définitivement <strong>${esc(p.titre || p.nomFichier)}</strong> ?<br><span style="color:var(--red);">Le fichier sera effacé du stockage : action irréversible.</span> `,
+    '🗑 EFFACER DÉFINITIVEMENT', async () => { if(await effacerDeCorbeille(p)) toast('Document effacé définitivement', 'success'); else toast('Effacement impossible (connexion ?)', 'error'); updateNavCounts(); renderDocumentsVue(); });
+}
+function askViderCorbeille(seulementVieux) {
+  const liste = (CORBEILLE || []).filter(p => !seulementVieux || ageCorbeilleJours(p) > 30);
+  if(!liste.length) return;
+  demanderMotDePasse('VIDER LA CORBEILLE', `Effacer définitivement <strong>${liste.length.toLocaleString('fr-FR')} document(s)</strong>${seulementVieux ? ' présents dans la corbeille depuis plus de 30 jours' : ''} ?<br><span style="color:var(--red);">Les fichiers seront effacés du stockage : action irréversible.</span> Pensez à faire une sauvegarde (EXPORT) avant.`,
+    '🗑 VIDER', async () => {
+      let ok = 0, ko = 0;
+      for(const p of liste) { if(await effacerDeCorbeille(p)) ok++; else ko++; }
+      toast(ko ? `${ok} document(s) effacé(s), ${ko} en échec (réessayez)` : `${ok} document(s) effacé(s) définitivement`, ko ? 'error' : 'success', 6000);
+      updateNavCounts(); renderDocumentsVue();
+    });
+}
+function askCorbeilleIntrouvable(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  demanderMotDePasse('METTRE À LA CORBEILLE', `<strong>${esc(p.titre || p.nomFichier)}</strong> n'existe plus dans son module (${esc(LIB_MODULE_ORIGINE[p.module] || 'module')}). Le mettre à la corbeille ?<br><span style="color:var(--text2);">Il reste restaurable depuis GED › 🗑 Corbeille.</span>`,
+    '🗑 METTRE À LA CORBEILLE', () => mettrePieceEnCorbeille(id, 'Source introuvable dans son module'));
+}
+function lieuPiece(p) {
+  if(p.espace === 'permanent') return `Dossier permanent — ${classeursDe(p).map(libRubrique).join(', ') || 'sans classeur'}${p.sousDossier ? ' › ' + p.sousDossier : ''}`;
+  return `Pièce comptable — exercice ${p.exercice}${p.test ? ' (TEST)' : ''}`;
+}
+function htmlCorbeille() {
+  const liste = (CORBEILLE || []).slice().sort((a, b) => String(b.corbeille.date || '').localeCompare(String(a.corbeille.date || '')));
+  const vieux = liste.filter(p => ageCorbeilleJours(p) > 30).length;
+  const b = (lib, act, tit, cls) => `<button class="btn btn-sm ${cls || ''}" onclick="${act}" title="${tit}" style="padding:1px 8px;font-size:9px;">${lib}</button>`;
+  const lignes = liste.map(p => `<tr>
+      <td style="font-family:var(--mono);white-space:nowrap;">${fmtDateFr(String(p.corbeille.date || '').slice(0, 10))}${ageCorbeilleJours(p) > 30 ? ' <span title="Plus de 30 jours" style="color:var(--amber);">⏳</span>' : ''}</td>
+      <td style="font-size:10px;color:var(--text2);">${esc(lieuPiece(p))}</td>
+      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}</td>
+      <td style="font-size:10px;color:var(--text2);">${esc(p.corbeille.motif || '')}${p.corbeille.auto ? ' <span class="npill" style="font-size:9px;">auto</span>' : ''}</td>
+      <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
+      <td class="td-act">${b('👁', `voirPiece('${p.id}')`, 'Voir')}${b('↩ RESTAURER', `restaurerPiece('${p.id}')`, 'Remettre le document à sa place, avec ses liens', 'btn-primary')}${b('🗑', `askEffacerDeCorbeille('${p.id}')`, 'Effacer définitivement (mot de passe)', 'btn-danger')}</td>
+    </tr>`).join('');
+  const taille = liste.reduce((s, p) => s + (+p.taille || 0), 0);
+  return `${vieux ? `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px;">⏳ <span style="flex:1;"><strong>${vieux.toLocaleString('fr-FR')} document(s) dans la corbeille depuis plus de 30 jours.</strong> Vérifiez-les, puis videz-les si vous n'en avez plus besoin.</span><button class="btn btn-sm" onclick="askViderCorbeille(true)">VIDER CEUX-LÀ</button></div>` : ''}
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="font-size:11px;color:var(--text2);flex:1;">Les documents supprimés restent ici, restaurables avec leurs liens, tant que vous ne videz pas la corbeille. Rien ne s'efface tout seul. ${liste.length ? '(' + tailleLisible(taille) + ')' : ''}</span>
+      ${liste.length ? `<button class="btn btn-sm btn-danger" onclick="askViderCorbeille(false)">🗑 VIDER LA CORBEILLE (${liste.length.toLocaleString('fr-FR')})</button>` : ''}
+    </div>
+    <div class="tbl-wrap docs-scroll">
+      <table>
+        <thead><tr><th style="width:90px;">Mis à la corbeille</th><th style="width:210px;">Emplacement d'origine</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:200px;">Motif</th><th style="width:64px;">Taille</th><th style="width:210px;"></th></tr></thead>
+        <tbody>${lignes || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">La corbeille est vide.</td></tr>`}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── Liens entre locataires : document d'un locataire joint aux écritures d'un autre (même n° de pièce) ──
+function liensCroisesLocataires() {
+  if(!PIECES || !DB || !Array.isArray(DB.locataires)) return [];
+  preparerJustifs();
+  const ex = String(CURRENT_YEAR), res = [];
+  const nom = l => l ? [l.prenom1, l.nom1].filter(Boolean).join(' ') : '?';
+  PIECES.filter(p => p.module === 'loc' && String(p.origine || '').startsWith('loc:')).forEach(p => {
+    const hid = String(p.origine).slice(4);
+    const loc = DB.locataires.find(l => (l.historique || []).some(h => h.id === hid));
+    if(!loc) return;
+    const siens = new Set((loc.mouvements || []).map(m => m.id));
+    (p.liens || []).filter(l => l.ex === ex && _justifs.has(l.io)).forEach(l => {
+      const j = _justifs.get(l.io);
+      const ids = j.lignes.flatMap(e => e._mvtLocataireIds || (e._mvtLocataireId ? [e._mvtLocataireId] : []));
+      if(!ids.length || ids.some(id => siens.has(id))) return;
+      const autre = DB.locataires.find(lc => (lc.mouvements || []).some(m => ids.includes(m.id)));
+      res.push({ p, io: l.io, j, de: nom(loc), vers: nom(autre) });
+    });
+  });
+  return res;
+}
+function ouvrirLiensCroises() {
+  if(!PIECES) { toast('Index de la GED illisible', 'error'); return; }
+  const liste = liensCroisesLocataires();
+  let el = document.getElementById('liens-croises-modal');
+  if(!el) { el = document.createElement('div'); el.id = 'liens-croises-modal'; el.className = 'modal-overlay'; el.style.zIndex = '1060'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="modal" style="width:720px;max-width:95vw;">
+      <div class="modal-title">🔎 LIENS ENTRE LOCATAIRES — EXERCICE ${esc(CURRENT_YEAR)}</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Documents locatifs (appels, quittances) joints aux écritures d'un autre locataire, en général parce que deux locataires partagent le même n° de pièce. Pour un autre exercice, sélectionnez-le puis relancez le contrôle.</div>
+      ${liste.length ? `<div style="max-height:50vh;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${liste.map((x, i) => `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;">
+          <span style="flex:1;min-width:0;">${iconePiece(x.p)} ${esc(x.p.titre || x.p.nomFichier)} <span style="color:var(--text2);">(${esc(x.de)})</span><br>
+          <span style="color:var(--red);">→ joint à l'écriture <span style="font-family:var(--mono);">#${x.j.num} ${esc(x.j.numDoc)}</span> de ${esc(x.vers)} — ${esc(x.j.libelle)}</span></span>
+          <button class="btn btn-sm" onclick="voirPiece('${x.p.id}')" style="padding:1px 6px;font-size:10px;">👁</button>
+          <button class="btn btn-sm btn-danger" onclick="detacherLiensCroises([${i}])" style="padding:1px 8px;font-size:9px;">DÉTACHER</button></div>`).join('')}</div>`
+        : `<div style="padding:14px;text-align:center;color:var(--green);font-size:12px;">✓ Aucun lien croisé sur l'exercice ${esc(CURRENT_YEAR)}.</div>`}
+      <div class="flex gap8" style="margin-top:12px;">
+        ${liste.length > 1 ? `<button class="btn btn-danger" onclick="detacherLiensCroises(null)">DÉTACHER TOUT (${liste.length})</button>` : ''}
+        <button class="btn ml-auto" onclick="document.getElementById('liens-croises-modal').style.display='none'">FERMER</button></div>
+    </div>`;
+  el.style.display = 'flex';
+}
+async function detacherLiensCroises(indices) {
+  const tous = liensCroisesLocataires();
+  const choisis = indices ? indices.map(i => tous[i]).filter(Boolean) : tous;
+  if(!choisis.length) return;
+  const ouvert = EXERCISE_STATUS !== 'closed', ex = String(CURRENT_YEAR);
+  let n = 0;
+  for(const x of choisis) {
+    const liens = (x.p.liens || []).filter(l => !(l.ex === ex && l.io === x.io));
+    // la liaison automatique ne doit pas le rejoindre (exercice ouvert ; un exercice clôturé ne reçoit plus de liaison par n°)
+    if(ouvert) { const cle = x.io + '|' + (x.p.groupe || x.p.id); if(!ensureLiensRefuses().includes(cle)) DB.liensRefuses.push(cle); }
+    if(await majPiece(x.p, { liens })) n++;
+  }
+  if(ouvert) saveDB();
+  toast(`${n} lien(s) détaché(s)`, 'success');
+  apresChangementJustifs(); updateNavCounts(); ouvrirLiensCroises();
+}
+
+// ── Sauvegarde : index de la GED ──
+async function contenuSauvegardeGED() {
+  if(!window._fbStorageActif && !(PIECES && PIECES.length)) return null;
+  if(PIECES === null) await chargerPieces();
+  if(PIECES === null) return null;
+  if(!DOCS_CONFIG) await chargerDocsConfig();
+  const fiches = PIECES.concat(CORBEILLE || []);
+  const content = JSON.stringify({ _backupGED: { dateExport: new Date().toISOString(), version: 1, nbFiches: fiches.length, collection: window.ATRIUM_INSTALL.collection }, fiches, config: DOCS_CONFIG || null }, null, 0);
+  return { y: 'GED', ged: true, nbFiches: fiches.length, name: `Fichier JSON de sauvegarde GED - index et classeurs - ${todayTime()}.json`, content };
+}
+
+// ── Paramètres : UID et règles d'accès ──
+function reglesFirebase(uid) {
+  const u = uid || 'VOTRE_UID';
+  return {
+    firestore: `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null\n        && request.auth.uid == '${u}';\n    }\n  }\n}`,
+    storage: `rules_version = '2';\nservice firebase.storage {\n  match /b/{bucket}/o {\n    match /documents/{allPaths=**} {\n      allow read, delete: if request.auth != null && request.auth.uid == '${u}';\n      allow create, update: if request.auth != null && request.auth.uid == '${u}'\n        && request.resource.size < 25 * 1024 * 1024;\n    }\n  }\n}`
+  };
+}
+function copierTexte(id) {
+  const t = document.getElementById(id); if(!t) return;
+  const ok = () => toast('Copié dans le presse-papiers', 'success');
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t.textContent).then(ok, () => toast('Copie impossible : sélectionnez le texte à la main', 'error'));
+}
+function renderParamsSecurite() {
+  const z = document.getElementById('params-securite'); if(!z) return;
+  const u = window._fbUser && window._fbUser();
+  const uid = u ? u.uid : '';
+  const r = reglesFirebase(uid);
+  const pre = (id, t) => `<pre id="${id}" style="background:var(--bg2);border:1px solid var(--line2);border-radius:4px;padding:8px 10px;font-family:var(--mono);font-size:10px;line-height:1.5;white-space:pre-wrap;margin:6px 0 0;color:var(--text0);">${esc(t)}</pre>`;
+  z.innerHTML = `<div style="font-size:12px;line-height:1.6;color:var(--text1);">
+      Compte connecté : <strong>${esc(u && u.email || '?')}</strong> — UID : <span style="font-family:var(--mono);color:var(--cyan);">${esc(uid || 'inconnu')}</span>
+      ${uid ? `<button class="btn btn-sm" onclick="navigator.clipboard&&navigator.clipboard.writeText('${esc(uid)}').then(()=>toast('UID copié','success'))" style="margin-left:6px;padding:1px 8px;font-size:9px;">COPIER</button>` : ''}
+    </div>
+    <div class="alert alert-warn" style="margin:10px 0;font-size:11px;display:block;line-height:1.5;">Collez ces règles telles quelles : elles contiennent déjà votre UID. Après publication, rechargez Atrium et vérifiez que tout s'affiche (GED comprise). En cas d'erreur d'accès, recollez les anciennes règles dans la console : rien n'est perdu.</div>
+    <div style="font-size:11px;font-weight:600;margin-top:6px;">1. Console Firebase › Firestore Database › Règles <button class="btn btn-sm" onclick="copierTexte('regles-firestore')" style="margin-left:6px;padding:1px 8px;font-size:9px;">COPIER</button></div>${pre('regles-firestore', r.firestore)}
+    <div style="font-size:11px;font-weight:600;margin-top:12px;">2. Console Firebase › Storage › Règles <button class="btn btn-sm" onclick="copierTexte('regles-storage')" style="margin-left:6px;padding:1px 8px;font-size:9px;">COPIER</button></div>${pre('regles-storage', r.storage)}
+    <div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6;">3. Authentication › Settings › User actions : décochez la création de comptes si l'option est proposée.<br>
+      4. Console Google Cloud › Cloud Storage › Buckets › votre bucket › Protection : « Suppression réversible » (soft delete) à 30 jours ou plus.</div>`;
 }
 
 </script>
