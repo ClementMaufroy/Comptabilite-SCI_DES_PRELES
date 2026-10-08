@@ -4321,7 +4321,7 @@ function updateNavCounts() {
   if(ncEmp) ncEmp.textContent = (DB.emprunts||[]).length;
   // V98/V99 : pièces de l'exercice affiché
   const ncDoc = document.getElementById('nc-documents');
-  if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === String(CURRENT_YEAR)).length.toLocaleString('fr-FR') : '–';
+  if(ncDoc) ncDoc.textContent = (typeof PIECES !== 'undefined' && PIECES) ? PIECES.length.toLocaleString('fr-FR') : '–'; // V114 : tous les documents de la GED (pièces comptables de tous les exercices + dossier permanent, hors corbeille)
   try { majAlerteNavGED(); } catch(e) {} // V109
 }
 function renderEditions() {
@@ -16686,7 +16686,7 @@ function descripteurDocument(module, x, exercice, loc, data) {
   const base = { exercice: String(exercice), test: isTestExercise(exercice), x, module };
   if(module === 'loc' && x.type === 'quittance' && !base.test) { // V113 : la quittance n'est pas une pièce comptable
     const nom = [loc && loc.prenom1, loc && loc.nom1].filter(Boolean).join(' ');
-    return Object.assign(base, { cle: 'loc:' + x.id, espace: 'permanent', rubrique: CODE_LOCATAIRES, sousDossier: nom || 'Locataire', typeDP: 'QUIT',
+    return Object.assign(base, { cle: 'loc:' + x.id, espace: 'permanent', rubrique: CODE_LOCATAIRES, sousDossier: nom || 'Locataire', typeDP: '',
       titre: `Quittance${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''} — ${nom}`, date: x.dateEmission || dateLocale(new Date()), nom: x.docTitle || 'Quittance', paysage: false, typePiece: '', numDoc: '' });
   }
   if(module === 'loc') {
@@ -18677,7 +18677,6 @@ async function assurerClasseursSysteme() {
   if(!r.some(x => x.code === CODE_ETATS_FINANCIERS)) ajoutsR.push(classeurEtatsFinanciers());
   if(!r.some(x => x.code === CODE_LOCATAIRES)) ajoutsR.push({ code: CODE_LOCATAIRES, label: 'Locataires', couleur: '#f472b6' }); // V113
   if(!t.some(x => x.code === 'EF')) ajoutsT.push({ code: 'EF', label: 'États financiers' });
-  if(!t.some(x => x.code === 'QUIT')) ajoutsT.push({ code: 'QUIT', label: 'Quittance de loyer' }); // V113
   if(!ajoutsR.length && !ajoutsT.length) return;
   try { await enregistrerDocsConfig({ rubriques: r.concat(ajoutsR), typesDP: t.concat(ajoutsT) }); }
   catch(e) { console.warn('Classeurs système non créés', e); }
@@ -19095,10 +19094,16 @@ function migrerV113() {
     const quittances = PIECES.filter(p => p.module === 'loc' && String(p.origine || '').startsWith('loc:') && p.espace === 'compta' && !p.test && /^Quittance/i.test(p.titre || ''));
     for(const p of quittances) {
       const nom = String(p.titre || '').split(' — ').slice(1).join(' — ').trim() || 'Locataire';
-      const nouveau = Object.assign({}, p, { espace: 'permanent', rubrique: CODE_LOCATAIRES, classeurs: [CODE_LOCATAIRES], sousDossier: nom, typeDP: 'QUIT',
+      const nouveau = Object.assign({}, p, { espace: 'permanent', rubrique: CODE_LOCATAIRES, classeurs: [CODE_LOCATAIRES], sousDossier: nom, typeDP: '',
         groupe: p.id, version: 1, enVigueur: true, numDoc: '', liens: [], origineExercice: p.origineExercice || p.exercice, test: false });
       delete nouveau.exercice; delete nouveau.typePiece;
       try { await window._fbPieceSave(nouveau); Object.keys(p).forEach(k => delete p[k]); Object.assign(p, nouveau); n++; } catch(e) { console.warn(e); }
+    }
+    for(const p of PIECES.filter(p => p.espace === 'permanent' && p.typeDP === 'QUIT' && String(p.origine || '').startsWith('loc:'))) { // V114
+      try { await majPiece(p, { typeDP: '' }); } catch(e) {}
+    }
+    if(typesDP().some(t => t.code === 'QUIT' && t.label === 'Quittance de loyer') && !PIECES.concat(CORBEILLE || []).some(p => p.typeDP === 'QUIT')) {
+      try { await enregistrerDocsConfig({ typesDP: typesDP().filter(t => t.code !== 'QUIT') }); } catch(e) {}
     }
     for(const p of PIECES.filter(p => p.espace === 'permanent' && Array.isArray(p.classeurs) && p.classeurs.length > 1)) {
       try { await majPiece(p, { classeurs: p.classeurs.slice(0, 1), rubrique: p.classeurs[0] }); } catch(e) {}
