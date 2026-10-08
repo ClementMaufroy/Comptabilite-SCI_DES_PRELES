@@ -17037,7 +17037,7 @@ function controleRattachement() {
 }
 async function lierPiece(p, ios, ex) {
   const liens = (p.liens || []).slice();
-  if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => k === cleIo(io) + '|' + (p.groupe || p.id))); if(DB.liensRefuses.length !== av) saveDB(); }
+  if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => { const b = cleIo(io) + '|' + (p.groupe || p.id); return k === b || k.startsWith(b + '|'); })); /* V116 */ if(DB.liensRefuses.length !== av) saveDB(); }
   ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
   return majPiece(p, { liens });
 }
@@ -17052,8 +17052,7 @@ async function detacherPiece(id) {
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
   const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
   // V104 : une pièce détachée à la main n'est plus jamais rejointe automatiquement à cette écriture
-  const cleRefus = _pjIo + '|' + (p.groupe || p.id);
-  if(!ensureLiensRefuses().includes(cleRefus)) { DB.liensRefuses.push(cleRefus); saveDB(); }
+  if(noterRefus(_pjIo, p, true)) saveDB(); // V116 : le refus de suggestion ne vaut que pour le n° actuel de l'écriture
   if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
 }
 function deposerPourEcriture(io) {
@@ -17456,9 +17455,18 @@ function nomFichierTamponne(p) { return genrePiece(p) === 'image' ? String(p.nom
 // automatiquement : pièce comptable de l'exercice affiché, ou document du dossier permanent (version en vigueur,
 // valable pour tous les exercices — ex. un contrat référencé par les écritures d'un échéancier).
 // Fonctionne dans les deux sens : écriture saisie après le dépôt du document, ou document déposé après l'écriture.
-// Une pièce détachée à la main n'est plus rejointe automatiquement (DB.liensRefuses = ['io|groupe']).
+// Une pièce détachée à la main n'est plus rejointe automatiquement (DB.liensRefuses = ['io|groupe']) ; refus de suggestion : 'io|groupe|N°' (V116).
 function normRef(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
 function ensureLiensRefuses() { if(!Array.isArray(DB.liensRefuses)) DB.liensRefuses = []; return DB.liensRefuses; }
+// V116 : deux sortes de refus. 'io|pièce' = lien automatique d'un document de module à ne pas refaire.
+// 'io|pièce|N° DE PIÈCE' = suggestion par n° refusée POUR CE N° : si le n° de l'écriture change, la suggestion peut revenir.
+function cleRefusNumero(io, p, numDoc) { return cleIo(io) + '|' + (p.groupe || p.id) + '|' + normRef(numDoc); }
+function noterRefus(io, p, avecAuto) {
+  const r = ensureLiensRefuses(), j = justifDe(io), cles = [cleRefusNumero(io, p, (j || {}).numDoc || '')];
+  if(avecAuto) cles.push(cleIo(io) + '|' + (p.groupe || p.id));
+  let ajout = false; cles.forEach(k => { if(!r.includes(k)) { r.push(k); ajout = true; } });
+  return ajout;
+}
 const _ioEnDepot = new Set();
 function piecesParReference() {
   const ex = String(CURRENT_YEAR), m = new Map();
@@ -18855,7 +18863,7 @@ async function detacherLiensCroises(indices) {
   for(const x of choisis) {
     const liens = (x.p.liens || []).filter(l => !(l.ex === ex && l.io === x.io));
     // la liaison automatique ne doit pas le rejoindre (exercice ouvert ; un exercice clôturé ne reçoit plus de liaison par n°)
-    if(ouvert) { const cle = x.io + '|' + (x.p.groupe || x.p.id); if(!ensureLiensRefuses().includes(cle)) DB.liensRefuses.push(cle); }
+    if(ouvert) noterRefus(x.io, x.p, true); // V116
     if(await majPiece(x.p, { liens })) n++;
   }
   if(ouvert) saveDB();
@@ -18998,7 +19006,7 @@ function suggestionsParNumero() {
   _justifs.forEach(j => {
     if(!j.numDoc || j.statut === 'sans' || j.statut === 'exempt') return;
     (refs.get(normRef(j.numDoc)) || []).forEach(p => {
-      if(p.origine || refus.has(j.io + '|' + (p.groupe || p.id))) return;
+      if(p.origine || refus.has(cleRefusNumero(j.io, p, j.numDoc))) return; // V116 : un refus ne vaut que pour le n° de l'époque
       if((p.liens || []).some(l => l.ex === ex && l.io === j.io)) return;
       out.push({ p, j });
     });
@@ -19019,8 +19027,7 @@ async function joindreSuggestions(liste) {
 }
 function ignorerSuggestions(liste) {
   if(!liste || !liste.length || bloqueSiCloture()) return;
-  const r = ensureLiensRefuses();
-  liste.forEach(x => { const k = x.j.io + '|' + (x.p.groupe || x.p.id); if(!r.includes(k)) r.push(k); });
+  liste.forEach(x => noterRefus(x.j.io, x.p, false)); // V116 : refus pour ce n° de pièce seulement
   saveDB();
   toast('Suggestion ignorée : elle ne reviendra pas', 'success');
   apresChangementJustifs(); updateNavCounts();
