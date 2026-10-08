@@ -2187,7 +2187,7 @@ applyTheme();
           <label>Format n° de pièce</label>
           <select id="type-format-piece" onchange="updateTypePreview()">
             <option value="prefixe">Préfixe seul (ex. QUIT)</option>
-            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT_09/26)</option>
+            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT/09/26)</option>
           </select>
         </div>
       </div>
@@ -2621,14 +2621,14 @@ applyTheme();
             <input type="checkbox" id="emp-num-auto" style="width:14px;height:14px;">
             <span>Numéro auto (incrémenté)</span>
           </label>
-          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Sinon format PREFIXE_MM/AA</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Sinon format PREFIXE/MM/AA</div>
         </div>
       </div>
       <div class="form-row mb8">
         <div class="form-field">
           <label>Nom de pièce personnalisé (optionnel)</label>
           <input type="text" id="emp-nom-piece" placeholder="Laisser vide pour utiliser le format standard">
-          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Si renseigné, remplace la génération automatique. Sinon : PREFIXE_MM/AA (ou incrémenté).</div>
+          <div style="font-size:9px;color:var(--text2);margin-top:4px;">Si renseigné, remplace la génération automatique. Sinon : PREFIXE/MM/AA (ou incrémenté).</div>
         </div>
       </div>
     </div>
@@ -2784,7 +2784,7 @@ applyTheme();
             <input type="text" id="km-compte-credit2" maxlength="6" onchange="saveKmConfig()" oninput="genAcSearch('km-compte-credit2')" onkeydown="genAcKey(event,'km-compte-credit2')" onblur="genAcBlur('km-compte-credit2');saveKmConfig()" autocomplete="off" style="font-family:var(--mono);">
           </div>
         </div>
-        <div style="font-size:10px;color:var(--text2);">Écriture passée au journal HA, datée du dernier jour du mois, pièce KM_MM/AA.</div>
+        <div style="font-size:10px;color:var(--text2);">Écriture passée au journal HA, datée du dernier jour du mois, pièce KM/MM/AA.</div>
       </div>
     </div>
     <div class="flex gap8" style="margin-top:18px;">
@@ -9619,13 +9619,13 @@ function moisImpliques(loc) {
 
 // Génère le n° de pièce d'un mouvement selon le format du type.
 // - 'prefixe'          -> "RB"
-// - 'prefixe_mois'     -> "RB_09/26"  (MM/AA du mois d'affectation)
+// - 'prefixe_mois'     -> "RB/09/26"  (MM/AA du mois d'affectation) — V117 : « / » comme la saisie et la GED
 function genererNumeroPiece(type, moisAffectation) {
   if(!type) return '';
   const prefix = type.prefixePiece || '';
   if(type.formatPiece === 'prefixe_mois' && moisAffectation) {
     const [y, m] = moisAffectation.split('-');
-    return prefix + '_' + m + '/' + y.slice(-2);
+    return prefix + '/' + m + '/' + y.slice(-2);
   }
   return prefix;
 }
@@ -12511,7 +12511,7 @@ function comptabiliserKmMois(mois) {
   const [yy, mm] = mois.split('-');
   const dateEcr = mois + '-' + String(dernierJourMois(mois)).padStart(2,'0');
   const libelleEcriture = `Kilomètres - ${MOIS_LABELS[parseInt(mm,10)-1]} ${yy}`;
-  const numDoc = 'KM_' + mm + '/' + yy.slice(-2);
+  const numDoc = 'KM/' + mm + '/' + yy.slice(-2); // V117
   const io = Date.now();
   const total = fiche.total;
   // V97 : une seule écriture, montants additionnés compte par compte sur tous les véhicules du mois
@@ -13359,13 +13359,13 @@ function postEcheancierMois(ech, mois) {
   const dateEcr = dateEcheancePourMois(ech, mois);
   // Format n° pièce (mêmes règles que le module Emprunts) :
   //   1) type + numeroAuto  → PREFIXE/NNN
-  //   2) type + nomPiece    → PREFIXE_nomPiece
-  //   3) type seul          → PREFIXE_MM/AA (même format que la gestion locative)
+  //   2) type + nomPiece    → PREFIXE/nomPiece
+  //   3) type seul          → PREFIXE/MM/AA (même format que la gestion locative)
   //   4) nomPiece seul      → nomPiece
   let numDoc;
   if(ech.typePiece && ech.numeroAuto) numDoc = getNextAutoPieceNumber(ech.typePiece);
-  else if(ech.typePiece && ech.nomPiece) numDoc = `${ech.typePiece}_${ech.nomPiece}`;
-  else if(ech.typePiece) numDoc = `${ech.typePiece}_${mm}/${yy.slice(-2)}`;
+  else if(ech.typePiece && ech.nomPiece) numDoc = `${ech.typePiece}/${ech.nomPiece}`; // V117
+  else if(ech.typePiece) numDoc = `${ech.typePiece}/${mm}/${yy.slice(-2)}`;
   else if(ech.nomPiece) numDoc = ech.nomPiece;
   else numDoc = '';
   const libelleEcriture = buildLibelleEcheance(ech, mois);
@@ -14080,10 +14080,10 @@ function comptabiliserEmpruntMois(id, mois) {
     const journal = emp.journal || 'OD';
     let numDocEmp;
     if(emp.typePiece && emp.numeroAuto) numDocEmp = getNextAutoPieceNumber(emp.typePiece);
-    else if(emp.typePiece && emp.nomPiece) numDocEmp = `${emp.typePiece}_${emp.nomPiece}`;
-    else if(emp.typePiece) numDocEmp = `${emp.typePiece}_${empMM}/${empYY.slice(-2)}`;
+    else if(emp.typePiece && emp.nomPiece) numDocEmp = `${emp.typePiece}/${emp.nomPiece}`; // V117
+    else if(emp.typePiece) numDocEmp = `${emp.typePiece}/${empMM}/${empYY.slice(-2)}`;
     else if(emp.nomPiece) numDocEmp = emp.nomPiece;
-    else numDocEmp = `EMP_${empMM}/${empYY.slice(-2)}`;
+    else numDocEmp = `EMP/${empMM}/${empYY.slice(-2)}`;
 
     // V84 (M9) : écriture équilibrée obligatoire
     if(Math.abs((+row.capitalRembourse || 0) + (+row.interets || 0) - (+row.mensualite || 0)) > 0.005) { toast(`${moisLabelFromYYYYMM(mois)} : capital remboursé + intérêts ≠ mensualité dans le tableau importé — écriture refusée. Réimportez un tableau corrigé.`, 'error', 8000); return; }
@@ -16699,7 +16699,7 @@ function descripteurDocument(module, x, exercice, loc, data) {
   }
   if(module === 'km') return Object.assign(base, { cle: 'km:' + x.id, espace: 'compta',
       titre: `Fiche kilométrique${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''}${x.vehiculeNom ? ' — ' + x.vehiculeNom : ''}`,
-      date: x.dateEmission || (x.mois ? x.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), numDoc: x.mois ? 'KM_' + x.mois.slice(5, 7) + '/' + x.mois.slice(2, 4) : '', nom: x.docTitle || 'Fiche_KM', paysage: true });
+      date: x.dateEmission || (x.mois ? x.mois + '-01' : dateLocale(new Date())), typePiece: typeSiConnu('KM'), numDoc: x.mois ? 'KM/' + x.mois.slice(5, 7) + '/' + x.mois.slice(2, 4) : '', nom: x.docTitle || 'Fiche_KM', paysage: true });
   // PV d'AGO : dossier permanent (rubrique « PV d'AG et décisions »), sauf exercice test (reste dans ses pièces)
   return Object.assign(base, { cle: 'pv:' + x.id, espace: base.test ? 'compta' : 'permanent', rubrique: rubriquePourPV(),
       titre: `PV d'AGO — Affectation du résultat ${x.anneeConcernee || ''}`.trim(),
@@ -16929,6 +16929,19 @@ function ensureSansJustif() { if(!Array.isArray(DB.sansJustificatif)) DB.sansJus
 let _justifs = null;
 // V112 : « écriture de calcul » et « sans justificatif » fusionnés en « pas de pièce » (DB.sansJustificatif) ;
 // l'ancien post-it (DB.piecesAFormaliser) est retiré. Exercices clôturés : non modifiés, lus tels quels.
+// V117 : n° de pièce des modules au format TYPE/… (comme la saisie et la GED). Écritures de modules d'un exercice ouvert,
+// une seule fois par exercice (DB._sepV117). Exercices clôturés et écritures saisies à la main : inchangés.
+function migrerSeparateursV117() {
+  if(!DB || !Array.isArray(DB.ecritures) || DB._sepV117 || EXERCISE_STATUS === 'closed' || getExerciseStatus(CURRENT_YEAR) === 'closed' || window._saveSuspended || window._fbBloque) return;
+  const conv = nd => { const m = String(nd || '').match(/^([^_\/\s]+)_(.+)$/); return m ? m[1] + '/' + m[2] : nd; };
+  const cibles = DB.ecritures.filter(e => e.numDoc && ['locative', 'echeancier', 'emprunt', 'km'].includes(moduleDeLaLigne(e)));
+  let n = 0;
+  cibles.forEach(e => { const v = conv(e.numDoc); if(v !== e.numDoc) { e.numDoc = v; n++; } });
+  if(Array.isArray(DB.liensRefuses)) DB.liensRefuses = DB.liensRefuses.map(k => { const p = String(k).split('|'); return p.length >= 3 ? p[0] + '|' + p[1] + '|' + normRef(p.slice(2).join('|')) : k; });
+  DB._sepV117 = true;
+  if(n) console.info(`V117 : ${n} ligne(s) d'écriture de modules renumérotée(s) au format TYPE/…`);
+  setTimeout(() => saveDB(), 0);
+}
 function migrerMarquagesV112() {
   if(!DB || EXERCISE_STATUS === 'closed' || window._saveSuspended || window._fbBloque) return;
   if(!Array.isArray(DB.ecrituresCalcul) && DB.piecesAFormaliser === undefined) return;
@@ -16938,6 +16951,7 @@ function migrerMarquagesV112() {
 }
 function preparerJustifs() {
   try { migrerMarquagesV112(); } catch(e) { console.error(e); }
+  try { migrerSeparateursV117(); } catch(e) { console.error(e); }
   const groupes = new Map();
   (DB.ecritures || []).forEach(e => { const k = cleIo(e._io); if(!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(e); });
   const liensParIo = new Map(), ex = String(CURRENT_YEAR);
@@ -17456,7 +17470,7 @@ function nomFichierTamponne(p) { return genrePiece(p) === 'image' ? String(p.nom
 // valable pour tous les exercices — ex. un contrat référencé par les écritures d'un échéancier).
 // Fonctionne dans les deux sens : écriture saisie après le dépôt du document, ou document déposé après l'écriture.
 // Une pièce détachée à la main n'est plus rejointe automatiquement (DB.liensRefuses = ['io|groupe']) ; refus de suggestion : 'io|groupe|N°' (V116).
-function normRef(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' '); }
+function normRef(s) { return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ').replace(/_/g, '/'); } // V117 : « _ » = « / »
 function ensureLiensRefuses() { if(!Array.isArray(DB.liensRefuses)) DB.liensRefuses = []; return DB.liensRefuses; }
 // V116 : deux sortes de refus. 'io|pièce' = lien automatique d'un document de module à ne pas refaire.
 // 'io|pièce|N° DE PIÈCE' = suggestion par n° refusée POUR CE N° : si le n° de l'écriture change, la suggestion peut revenir.
