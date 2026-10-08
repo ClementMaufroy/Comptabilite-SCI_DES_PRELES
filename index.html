@@ -980,8 +980,8 @@ applyTheme();
       <span id="btn-areporter-label">📮 À REPORTER EN N+1</span>
       <span id="btn-areporter-badge" style="background:var(--amber);color:#332200;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
     </button>
-    <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" title="Écritures de l'exercice auxquelles il manque un justificatif" style="letter-spacing:0.05em;">
-      <span>📎 PIÈCES À JOINDRE</span>
+    <button class="btn btn-sm" onclick="togglePostItPieces()" id="btn-postit-toggle" title="Tout ce qui demande votre attention : écritures sans pièce, pièces sans écriture, pièces non classées…" style="letter-spacing:0.05em;">
+      <span>📋 À TRAITER</span>
       <span id="btn-postit-badge" style="display:none;background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:6px;">0</span>
     </button>
     <button class="btn btn-sm btn-gold btn-readonly-ok" onclick="exportData()">EXPORT</button>
@@ -1026,7 +1026,7 @@ applyTheme();
     <div class="nav-sep"></div>
     <div class="nav-section">Base documentaire</div>
     <div class="nav-item" onclick="showTab('documents')" id="nav-documents">
-      <span class="ni-icon">🗄</span> GED <span id="nav-ged-alerte" style="display:none;color:#ffd000;font-size:13px;margin-left:4px;">⚠</span>
+      <span class="ni-icon">🗄</span> GED 
       <span class="ni-count" id="nc-documents">–</span>
     </div>
     <div class="nav-sep"></div>
@@ -3620,224 +3620,29 @@ let EXERCISE_STATUS = 'open'; // 'open' | 'closed'
 let _unsubscribeListen = null;
 
 // ══════════════════════════════════════════════
-// POST-IT PIÈCES À FORMALISER
+// PANNEAU « À TRAITER » (V112 — remplace les post-it « Pièces à formaliser » puis « Pièces à joindre »)
 // ══════════════════════════════════════════════
-// Liste des pièces générées par les 5 modules (Gestion Locative, Échéanciers, Emprunts,
-// Écritures d'inventaires, Approbation du résultat) que l'utilisateur doit encore
-// classer physiquement dans son dossier papier. Cochage = pièce classée.
-// Purge auto : 10 jours après cochage. Uniquement les pièces générées à partir de
-// l'implémentation (pas de rétroactif).
-
-function ensurePiecesAFormaliser() {
-  if(!Array.isArray(DB.piecesAFormaliser)) DB.piecesAFormaliser = [];
-  return DB.piecesAFormaliser;
-}
-
-// À appeler à chaque fois qu'un des 5 modules concernés génère une écriture comptable.
-// module : 'locative' | 'echeanciers' | 'emprunts' | 'inventaires' | 'approbation'
-// numDoc : n° de pièce de l'écriture (ex. QUIT_09/26)
-// libelle : libellé lisible (ex. "Loyer 16 rue de la Concorde septembre 2026")
-// date : date de l'écriture (YYYY-MM-DD)
-function notifierPieceGeneree(module, numDoc, libelle, date) {
-  if(!numDoc) return; // pas de pièce sans n° → rien à formaliser
-  const list = ensurePiecesAFormaliser();
-  // Évite les doublons si un même triplet (module+numDoc+date) est notifié deux fois
-  if(list.some(p => p.module === module && p.numDoc === numDoc && p.date === date)) return;
-  list.push({
-    id: crypto.randomUUID(),
-    module, numDoc, libelle: libelle || '',
-    date: date || '',
-    dateAjout: new Date().toISOString(),
-    coche: false,
-    dateCochage: null
-  });
-  saveDB();
-  renderPostItPieces();
-}
-
-// Purge auto : retire les pièces cochées il y a plus de 10 jours
-function purgerPostItPieces() {
-  if(EXERCISE_STATUS === 'closed') return;
-  const list = ensurePiecesAFormaliser();
-  const seuil = Date.now() - 10 * 24 * 3600 * 1000;
-  const avant = list.length;
-  DB.piecesAFormaliser = list.filter(p => !p.coche || !p.dateCochage || new Date(p.dateCochage).getTime() > seuil);
-  if(DB.piecesAFormaliser.length !== avant) saveDB();
-}
-
-const POSTIT_MODULE_LABELS = {
-  locative: 'Gestion locative',
-  echeanciers: 'Échéanciers',
-  emprunts: 'Emprunts',
-  inventaires: 'Écritures d\'inventaires',
-  approbation: 'Approbation du résultat',
-  saisie: 'Saisie manuelle',
-  km: 'Frais kilométriques'
-};
-
-let _postItFilterModule = 'all';
+// V112 : l'ancien post-it « Pièces à formaliser » (DB.piecesAFormaliser) est retiré ; ces deux fonctions ne font plus rien
+// (elles restent appelées par les modules, sans effet).
+function notifierPieceGeneree() {}
 let _postItOpen = false; // le panneau est fermé au démarrage
-
 // Clic à l'extérieur du panneau ou du bouton → ferme
 document.addEventListener('click', (e) => {
   if(!_postItOpen) return;
   const btn = document.getElementById('btn-postit-toggle');
   const panel = document.getElementById('postit-pieces');
-  if(btn && btn.contains(e.target)) return; // clic sur le bouton d'ouverture
-  if(panel && panel.contains(e.target)) return; // clic dans le panneau lui-même
+  if(btn && btn.contains(e.target)) return;
+  if(panel && panel.contains(e.target)) return;
+  if(e.target && e.target.closest && e.target.closest('.modal-overlay')) return; // fenêtre ouverte depuis le panneau
   closePostItPieces();
 });
 window.addEventListener('resize', () => { if(_postItOpen) renderPostItPieces(); });
-
 function togglePostItPieces() {
   _postItOpen = !_postItOpen;
-  if(_postItOpen && typeof _pajFiltre !== 'undefined') { _pajFiltre = 'all'; _pajSel = new Set(); } // V110 : filtre remis à zéro
+  if(_postItOpen) { _pajFiltre = 'all'; _pajSel = new Set(); }
   renderPostItPieces();
 }
-
-function closePostItPieces() {
-  _postItOpen = false;
-  renderPostItPieces();
-}
-
-function setPostItFilter(v) {
-  _postItFilterModule = v;
-  renderPostItPieces();
-}
-
-// Coche/décoche une pièce
-// Regroupe les entrées du post-it par n° de pièce : une même pièce papier
-// (ex. RBANQUE_09/26) peut être liée à plusieurs écritures → une seule ligne.
-function grouperPostItParPiece(list) {
-  const map = new Map();
-  list.forEach(p => {
-    const k = p.numDoc || ('__' + p.id);
-    if(!map.has(k)) map.set(k, []);
-    map.get(k).push(p);
-  });
-  return [...map.values()].map(items => {
-    const first = items.slice().sort((a,b) => (b.dateAjout||'').localeCompare(a.dateAjout||''))[0];
-    // Nombre d'écritures distinctes portant ce n° de pièce dans le journal
-    const ios = new Set((DB.ecritures||[]).filter(e => e.numDoc && e.numDoc === first.numDoc).map(e => e._io ?? e.num));
-    return {
-      ref: first,
-      items,
-      coche: items.every(x => x.coche),
-      dateAjout: first.dateAjout || '',
-      nbEcritures: Math.max(items.length, ios.size)
-    };
-  });
-}
-
-function togglePieceFormalisee(id) {
-  if(bloqueSiCloture()) return; // V81 (M3)
-  const list = ensurePiecesAFormaliser();
-  const p = list.find(x => x.id === id);
-  if(!p) return;
-  // Toutes les entrées de la même pièce sont cochées / décochées ensemble
-  const freres = p.numDoc ? list.filter(x => x.numDoc === p.numDoc) : [p];
-  const nouvelEtat = !freres.every(x => x.coche);
-  const now = new Date().toISOString();
-  freres.forEach(x => { x.coche = nouvelEtat; x.dateCochage = nouvelEtat ? now : null; });
-  saveDB();
-  renderPostItPieces();
-}
-
-// Montant de l'opération liée à une pièce du post-it : total des débits des écritures
-// portant ce n° de pièce à cette date (à défaut de date correspondante : ce n° de pièce seul).
-// Calculé à l'affichage → fonctionne aussi pour les pièces déjà présentes dans le post-it.
-function montantPiecePostIt(p) {
-  if(!p || !p.numDoc) return null;
-  const ecr = DB.ecritures || [];
-  let lignes = ecr.filter(e => e.numDoc === p.numDoc && (!p.date || e.date === p.date));
-  if(!lignes.length) lignes = ecr.filter(e => e.numDoc === p.numDoc);
-  if(!lignes.length) return null;
-  return Math.round(lignes.reduce((s, e) => s + (parseFloat(e.debit) || 0), 0) * 100) / 100;
-}
-
-// V102 : ancien post-it « Pièces à formaliser », remplacé par « Pièces à joindre » (renderPostItPieces du module documents)
-function renderPostItPiecesV101() {
-  purgerPostItPieces();
-  const list = ensurePiecesAFormaliser();
-  const filtered = list.filter(p => _postItFilterModule === 'all' || p.module === _postItFilterModule);
-  const groupesTous = grouperPostItParPiece(list);
-  const groupes = grouperPostItParPiece(filtered);
-  const nbNonCocheesToutes = groupesTous.filter(g => !g.coche).length;
-  const nbNonCochees = groupes.filter(g => !g.coche).length;
-
-  // 1) Mise à jour du badge du bouton d'entête (compteur toutes pièces, indépendant du filtre)
-  const badge = document.getElementById('btn-postit-badge');
-  if(badge) {
-    if(nbNonCocheesToutes > 0) { badge.textContent = nbNonCocheesToutes; badge.style.display = ''; }
-    else badge.style.display = 'none';
-  }
-
-  // 2) Panneau : créé à la volée et positionné sous le bouton d'entête
-  let el = document.getElementById('postit-pieces');
-  if(!_postItOpen) {
-    if(el) el.style.display = 'none';
-    return;
-  }
-  if(!el) {
-    el = document.createElement('div');
-    el.id = 'postit-pieces';
-    document.body.appendChild(el);
-  }
-  const btn = document.getElementById('btn-postit-toggle');
-  const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
-  const top = rect.bottom + 6;
-  // Ancré à droite pour rester visible même si le bouton est à droite de l'écran
-  const right = Math.max(10, window.innerWidth - rect.right);
-  el.style.cssText = `position:fixed;top:${top}px;right:${right}px;width:360px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);font-size:11px;border:1px solid var(--cyan);display:block;`;
-
-  const options = ['<option value="all">Tous modules</option>']
-    .concat(Object.keys(POSTIT_MODULE_LABELS).map(k => `<option value="${k}" ${_postItFilterModule===k?'selected':''}>${POSTIT_MODULE_LABELS[k]}</option>`))
-    .join('');
-
-  const headerHtml = `<div style="padding:8px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
-    <span style="font-size:14px;">📌</span>
-    <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">Pièces à formaliser${nbNonCochees > 0 ? ` <span style="background:var(--red);color:#fff;border-radius:8px;padding:1px 6px;font-size:9px;margin-left:4px;letter-spacing:0;">${nbNonCochees}</span>` : ''}</strong>
-    <span style="cursor:pointer;font-size:16px;padding:0 4px;color:var(--text2);" onclick="closePostItPieces()" title="Fermer">✕</span>
-  </div>`;
-
-  const filterHtml = `<div style="padding:6px 10px;border-bottom:1px solid var(--line2);background:var(--bg2);">
-    <select onchange="setPostItFilter(this.value)" style="width:100%;font-size:10px;padding:4px;border:1px solid var(--line2);border-radius:3px;background:var(--bg0);color:var(--text0);">${options}</select>
-  </div>`;
-
-  let bodyHtml;
-  if(!filtered.length) {
-    bodyHtml = '<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à formaliser.</div>';
-  } else {
-    // Non cochées d'abord (par date décroissante), puis cochées
-    const sorted = groupes.slice().sort((a,b) => {
-      if(a.coche !== b.coche) return a.coche ? 1 : -1;
-      return (b.dateAjout||'').localeCompare(a.dateAjout||'');
-    });
-    bodyHtml = `<div style="max-height:400px;overflow-y:auto;padding:4px 6px;">
-      ${sorted.map(g => {
-        const p = g.ref;
-        const multi = g.nbEcritures > 1;
-        const barre = g.coche ? 'text-decoration:line-through;' : '';
-        const m = multi ? null : montantPiecePostIt(p);
-        const droite = m !== null ? `<span style="white-space:nowrap;">${fmt(m)} €</span>` : '';
-        const details = multi
-          ? `<div style="color:${g.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;font-style:italic;${barre}">${g.nbEcritures} écritures liées à cette pièce</div>`
-          : `<div style="color:${g.coche?'var(--text2)':'var(--text1)'};font-size:10px;margin-top:2px;${barre}">${esc(p.libelle||'')}</div>
-          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${POSTIT_MODULE_LABELS[p.module]||p.module} • ${p.date||''}</div>`;
-        return `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;cursor:pointer;background:${g.coche?'rgba(0,229,160,0.10)':'transparent'};margin-bottom:2px;border-bottom:1px solid var(--line1);">
-        <input type="checkbox" ${g.coche?'checked':''} onchange="togglePieceFormalisee('${p.id}')" style="width:14px;height:14px;margin-top:2px;cursor:pointer;flex-shrink:0;">
-        <div style="flex:1;font-size:11px;line-height:1.35;min-width:0;">
-          <div style="font-family:var(--mono);font-weight:600;color:${g.coche?'var(--text2)':'var(--amber)'};${barre}display:flex;justify-content:space-between;gap:8px;"><span>${esc(p.numDoc)}</span>${droite}</div>
-          ${details}
-        </div>
-      </label>`;
-      }).join('')}
-    </div>`;
-  }
-
-  el.innerHTML = headerHtml + filterHtml + bodyHtml;
-}
-
+function closePostItPieces() { _postItOpen = false; renderPostItPieces(); }
 
 // ══════════════════════════════════════════════
 // PERSISTENCE — V79 : Firebase seule source de vérité (plus aucune copie locale des données)
@@ -5077,37 +4882,6 @@ function saveEcriture() {
     DB.ecritures.push(entry);
   });
 
-  // ── Synchronisation post-it à la modification d'écriture ──
-  // Règle : seul un changement de n° de pièce impacte le post-it. Un changement de date ou de
-  // libellé sur la même pièce ne change rien côté papier — on laisse la ligne du post-it intacte.
-  if(isEditing) {
-    const numDocChanged = editingOrigNumDoc !== newNumDoc;
-    if(numDocChanged && newNumDoc) {
-      const list = ensurePiecesAFormaliser();
-      // Cherche l'entrée pré-existante correspondant à l'ancien n° (mise à jour "en place")
-      const anciennePiece = editingOrigNumDoc
-        ? list.find(p => p.numDoc === editingOrigNumDoc && p.date === editingOrigDate)
-        : null;
-      if(anciennePiece) {
-        // Le numéro a changé → cette pièce papier est à refaire, on décoche et met à jour ses champs
-        anciennePiece.numDoc = newNumDoc;
-        anciennePiece.date = date;
-        anciennePiece.libelle = lines[0]?.libelleEcriture || anciennePiece.libelle;
-        anciennePiece.coche = false;
-        anciennePiece.dateCochage = null;
-      } else {
-        // Aucune pièce pré-existante (ex. vieille écriture sans entrée post-it) : on en crée une nouvelle
-        // Module 'saisie' pour les écritures modifiées manuellement (distinct des 5 modules automatiques)
-        notifierPieceGeneree('saisie', newNumDoc, lines[0]?.libelleEcriture || '', date);
-      }
-      renderPostItPieces();
-    }
-    // Si le numDoc n'a pas changé, on ne touche à rien (changements de date/libellé neutres pour le post-it)
-  } else {
-    // Nouvelle écriture saisie manuellement → la pièce rejoint le post-it "Pièces à formaliser"
-    notifierPieceGeneree('saisie', newNumDoc, lines[0]?.libelleEcriture || '', date);
-  }
-
   renum(); saveDB(); updateNavCounts();
   const avaitPJ = _saisiePJ.length > 0; // V110
   deposerPJSaisie(io, journal, date, newNumDoc, lines[0]?.libelleEcriture || ''); // V102 : justificatif joint à la saisie
@@ -5247,18 +5021,6 @@ function confirmDelete() {
   });
   // (V72 : l'historique Annuler/Rétablir est désormais global, géré par saveDB)
   DB.ecritures=DB.ecritures.filter(x=>!memeEcriture(x));
-  // Synchronisation post-it : si plus aucune écriture ne partage un triplet, on retire la pièce
-  piecesCandidates.forEach(key => {
-    const [journal, date, numDoc] = key.split('||');
-    const encoreUtilisee = DB.ecritures.some(x => x.journal === journal && x.date === date && x.numDoc === numDoc);
-    if(!encoreUtilisee) {
-      // On ne connaît pas le module d'origine → on retire toute pièce avec ce (numDoc, date) quel que soit le module
-      const list = ensurePiecesAFormaliser();
-      const avant = list.length;
-      DB.piecesAFormaliser = list.filter(p => !(p.numDoc === numDoc && p.date === date));
-      if(DB.piecesAFormaliser.length !== avant) renderPostItPieces();
-    }
-  });
   renum(); saveDB(); closeDeleteModal(); updateNavCounts();
   toast(`Écriture #${numToDelete} supprimée (toutes les lignes)`, 'warn');
   renderGL(); renderBalance();
@@ -5707,11 +5469,6 @@ function supprimerEcrituresParModule(filtre) {
   if(!cibles.length) return 0;
   const pieces = new Set(cibles.filter(e => e.numDoc).map(e => e.numDoc + '||' + e.date));
   DB.ecritures = DB.ecritures.filter(e => !filtre(e));
-  pieces.forEach(k => {
-    const [numDoc, date] = k.split('||');
-    if(!DB.ecritures.some(e => e.numDoc === numDoc && e.date === date))
-      DB.piecesAFormaliser = ensurePiecesAFormaliser().filter(p => !(p.numDoc === numDoc && p.date === date));
-  });
   return cibles.length;
 }
 
@@ -7381,7 +7138,7 @@ function controlesAvantCloture() {
 
   // 1. Pièces à joindre (V102) : toute écriture doit avoir son justificatif ou être marquée « sans justificatif »
   const pieces = ecrituresManquantes();
-  if(pieces.length) blocages.push({ module: 'Pièces à joindre', detail: `${pieces.length} écriture(s) sans pièce, ni désignée(s) « écriture de calcul » ou « sans justificatif » : ${liste(pieces.map(j => '#' + j.num + (j.numDoc ? ' ' + j.numDoc : '')))}`, action: { label: '📎 VOIR LA LISTE', fn: "_postItOpen=true;renderPostItPieces()" } });
+  if(pieces.length) blocages.push({ module: 'Pièces à joindre', detail: `${pieces.length} écriture(s) sans pièce ni marquée(s) « pas de pièce » : ${liste(pieces.map(j => '#' + j.num + (j.numDoc ? ' ' + j.numDoc : '')))}`, action: { label: '📎 VOIR LA LISTE', fn: "_postItOpen=true;renderPostItPieces()" } });
   // V109 : pièces comptables de l'exercice rattachées à aucune écriture
   if(window._fbStorageActif) {
     if(PIECES === null) blocages.push({ module: 'GED', detail: "L'index de la GED n'a pas pu être lu : impossible de vérifier les pièces sans écriture (rouvrez l'onglet GED)" });
@@ -7688,7 +7445,6 @@ function construireReprisesModules(src, newLabel) {
 
   const out = {
     immobilisations, locataires, echeanciers, emprunts, km, ccInterets,
-    piecesAFormaliser: [], // la clôture est impossible tant qu'il reste des pièces à formaliser
     tauxAMettreAJour: { km: vehicules.map(v => v.id), cc: comptesCC }
   };
   if(Array.isArray(src.piecesTypes) && src.piecesTypes.length) out.piecesTypes = clone(src.piecesTypes);
@@ -7697,7 +7453,7 @@ function construireReprisesModules(src, newLabel) {
 // Applique les reprises sur un exercice existant : on ne remplace que les modules encore vides.
 function appliquerReprisesSurExercice(reprises) {
   const vide = v => !v || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length);
-  ['immobilisations','locataires','echeanciers','emprunts','piecesAFormaliser','piecesTypes','ccInterets'].forEach(k => {
+  ['immobilisations','locataires','echeanciers','emprunts','piecesTypes','ccInterets'].forEach(k => {
     if(reprises[k] !== undefined && vide(DB[k])) DB[k] = reprises[k];
   });
   const kmVide = !DB.km || !(DB.km.vehicules || []).length;
@@ -10910,17 +10666,7 @@ function supprimerEcrituresDuMouvement(mvt) {
   });
 }
 
-// Retire une pièce du post-it (miroir de notifierPieceGeneree). Silencieux si introuvable.
-function retirerPieceDuPostIt(module, numDoc, date) {
-  if(!numDoc) return;
-  const list = ensurePiecesAFormaliser();
-  const avant = list.length;
-  DB.piecesAFormaliser = list.filter(p => !(p.module === module && p.numDoc === numDoc && p.date === date));
-  if(DB.piecesAFormaliser.length !== avant) {
-    saveDB();
-    renderPostItPieces();
-  }
-}
+function retirerPieceDuPostIt() {} // V112 : sans effet (ancien post-it retiré)
 
 // Suppression d'un mouvement (avec confirmation)
 let _mvtDeleteTarget = null;
@@ -16432,7 +16178,7 @@ function htmlActionsPiece(p) {
   let h = b('👁', `voirPiece('${p.id}')`, 'Voir / imprimer') + b('⬇', `telechargerPiece('${p.id}')`, 'Télécharger');
   if(pieceGeneree(p) && _sourcesIntrouvables.has(p.id)) h += b('🗑', `askCorbeilleIntrouvable('${p.id}')`, 'Source introuvable dans son module : mettre à la corbeille', 'btn-danger'); // V111
   else if(pieceGeneree(p)) h += `<span title="Document généré par le module ${esc(LIB_MODULE_ORIGINE[p.module] || '')} : il se gère depuis ce module" style="font-size:11px;padding:0 4px;">⚙</span>`;
-  else if(pieceModifiable(p)) h += b('🏷', `modifierReferencePiece('${p.id}')`, 'Modifier la référence (n° de pièce)') + b('🗑', `askSupprimerPiece('${p.id}')`, 'Mettre à la corbeille (restaurable)', 'btn-danger');
+  else if(pieceModifiable(p)) h += b('✎', `ouvrirModifPiece('${p.id}')`, 'Modifier (titre, date, type, n° de pièce, exercice, déplacement vers le DP)') + b('🗑', `askSupprimerPiece('${p.id}')`, 'Mettre à la corbeille (restaurable)', 'btn-danger');
   else h += `<span title="Exercice clôturé : consultation uniquement" style="font-size:11px;padding:0 4px;">🔒</span>`;
   return h;
 }
@@ -16441,56 +16187,6 @@ function badgeOrigine(p) {
 }
 
 // ── Pièces comptables ──
-function htmlPiecesComptables() {
-  const f = _docsFiltres;
-  const exercices = exercicesConnus();
-  const cible = filtreExerciceDocs();
-  const types = getTypedocList();
-  const q = (f.q || '').trim().toLowerCase();
-  let liste = (PIECES || []).filter(p => p.espace === 'compta');
-  if(cible !== 'tous') liste = liste.filter(p => String(p.exercice) === String(cible));
-  if(f.type) liste = liste.filter(p => p.typePiece === f.type);
-  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier, libTypePiece(p.typePiece), p.exercice].join(' ').toLowerCase().includes(q));
-  liste.sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
-
-  const optEx = `<option value="tous" ${cible === 'tous' ? 'selected' : ''}>Tous les exercices</option>
-    ${exercices.map(y => `<option value="${esc(y)}" ${cible === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}${exerciceClos(y) ? ' (clôturé)' : ''}</option>`).join('')}`;
-  const optTypes = `<option value="">Tous les types</option>` + types.map(t => `<option value="${esc(t.code)}" ${f.type === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
-
-  const ouverts = exercicesOuverts();
-  const depotActif = !!window._fbStorageActif && ouverts.length > 0 && (cible === 'tous' || !exerciceClos(cible));
-  const msgInactif = !window._fbStorageActif ? 'Dépôt impossible : stockage non configuré'
-    : !ouverts.length ? 'Aucun exercice ouvert : aucune pièce ne peut être ajoutée'
-    : `Exercice ${esc(cible)} clôturé : aucune pièce ne peut y être ajoutée`;
-
-  preparerJustifs(); // V102 : écritures rattachées
-  const lignes = liste.map(p => `<tr>
-      <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
-      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
-      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
-      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
-      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}</td>
-      <td style="font-size:10px;white-space:nowrap;">${htmlEcrituresDePiece(p)}</td>
-      <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
-      <td class="td-act">${htmlActionsPiece(p)}</td>
-    </tr>`).join('');
-
-  return `<div class="card">
-      <div class="gl-filters">
-        <div class="ff"><label>Exercice</label><select onchange="docsFiltre('exercice', this.value)">${optEx}</select></div>
-        <div class="ff"><label>Type de pièce</label><select onchange="docsFiltre('type', this.value)">${optTypes}</select></div>
-        <div class="ff" style="flex:1;min-width:180px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(f.q)}" placeholder="Titre, n° de pièce, fichier…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
-        <span class="chip" style="align-self:flex-end;">${liste.length} document${liste.length > 1 ? 's' : ''}</span>
-      </div>
-    </div>
-    ${htmlZoneDepot('compta', null, depotActif, msgInactif)}
-    <div class="tbl-wrap docs-scroll">
-      <table>
-        <thead><tr><th style="width:80px;">Date</th><th style="width:80px;">Exercice</th><th style="width:70px;">Type</th><th style="width:120px;">N° pièce</th><th>Titre</th><th style="width:110px;" title="Écritures auxquelles la pièce est jointe">Écritures</th><th style="width:70px;">Taille</th><th style="width:130px;"></th></tr></thead>
-        <tbody>${lignes || `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${cible !== 'tous' ? ' pour cet exercice' : ''}${f.type || q ? ' avec ces critères' : ''}.</td></tr>`}</tbody>
-      </table>
-    </div>`;
-}
 
 // ── Dossier permanent ──
 // Les versions d'un même document partagent un « groupe » ; une seule est « en vigueur ».
@@ -16502,59 +16198,6 @@ function groupesDP() {
     const courante = versions.find(v => v.enVigueur) || versions[0];
     return { courante, anciennes: versions.filter(v => v !== courante) };
   });
-}
-function htmlDossierPermanent() {
-  const q = (_docsFiltres.q || '').trim().toLowerCase();
-  let groupes = groupesDP();
-  if(q) groupes = groupes.filter(g => [g.courante.titre, g.courante.nomFichier, libRubrique(g.courante.rubrique)].join(' ').toLowerCase().includes(q));
-  const rubriques = rubriquesDP();
-  const codes = new Set(rubriques.map(r => r.code));
-  const orphelins = groupes.filter(g => !codes.has(g.courante.rubrique));
-  const actif = !!window._fbStorageActif;
-  preparerJustifs(); // V104 : écritures jointes
-  const blocs = rubriques.map(r => htmlRubriqueDP(r.code, r.label, groupes.filter(g => g.courante.rubrique === r.code), actif));
-  if(orphelins.length) blocs.push(htmlRubriqueDP('', 'Sans rubrique', orphelins, false));
-  return `<div class="card">
-      <div class="gl-filters">
-        <div class="ff" style="flex:1;min-width:220px;"><label>Rechercher</label><input type="text" id="docs-q" value="${esc(_docsFiltres.q)}" placeholder="Titre, fichier, rubrique…" oninput="_docsFiltres.q=this.value;clearTimeout(window._docsQT);window._docsQT=setTimeout(()=>{renderDocumentsVue();const i=document.getElementById('docs-q');if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},300)"></div>
-        <span style="align-self:flex-end;font-size:10px;color:var(--text2);">Commun à tous les exercices — toujours modifiable. Rubriques : Paramètres › Dossier permanent.</span>
-      </div>
-    </div>
-    ${htmlZoneDepot('permanent', null, actif, 'Dépôt impossible : stockage non configuré')}
-    <div class="docs-scroll" style="display:flex;flex-direction:column;gap:10px;">${blocs.join('')}</div>`;
-}
-function htmlRubriqueDP(code, label, groupes, actif) {
-  groupes.sort((a, b) => (b.courante.dateDoc || '').localeCompare(a.courante.dateDoc || '') || (a.courante.titre || '').localeCompare(b.courante.titre || ''));
-  const btnAjout = (actif && code) ? `<button class="btn btn-sm" onclick="ouvrirDepot('permanent','${code}')" style="margin-left:auto;padding:1px 8px;font-size:9px;">+ AJOUTER</button>` : '';
-  const lignes = groupes.map(g => {
-    const p = g.courante;
-    const nbAnc = g.anciennes.length;
-    const ouvert = !!_dpVersionsOuvertes[p.groupe || p.id];
-    const btnVersion = (actif && !pieceGeneree(p)) ? `<button class="btn btn-sm btn-icon" onclick="ouvrirDepot('permanent','${p.rubrique}',null,'${p.id}')" title="Déposer une nouvelle version" style="padding:1px 6px;font-size:10px;">⊕ v${(maxVersion(p.groupe || p.id) + 1)}</button>` : '';
-    const anciennes = ouvert ? g.anciennes.map(v => `<div style="display:flex;align-items:center;gap:8px;padding:4px 12px 4px 34px;font-size:11px;color:var(--text2);">
-        <span style="font-family:var(--mono);">v${v.version || 1}</span>
-        <span style="flex:1;min-width:0;">${iconePiece(v)} ${esc(v.titre || v.nomFichier)} — ${v.dateDoc ? fmtDateFr(v.dateDoc) : ''}</span>
-        <button class="btn btn-sm" onclick="remettreEnVigueur('${v.id}')" style="padding:0 6px;font-size:9px;">REMETTRE EN VIGUEUR</button>
-        ${htmlActionsPiece(v)}
-      </div>`).join('') : '';
-    return `<div style="border-top:1px solid var(--line);">
-        <div style="display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12px;">
-          <a href="#" onclick="voirPiece('${p.id}');return false;" style="flex:1;min-width:0;color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${badgeOrigine(p)}
-          ${p.numDoc ? `<span class="npill" style="font-family:var(--mono);" title="Référence : les écritures portant ce n° de pièce y sont jointes automatiquement">${esc(p.numDoc)}</span>` : ''}
-          <span style="font-size:10px;">${htmlEcrituresDePiece(p)}</span>
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text2);">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span>
-          <span class="npill">v${p.version || 1}</span>
-          ${nbAnc ? `<span class="jbadge" style="color:var(--green);border:1px solid rgba(68,232,122,.35);">EN VIGUEUR</span>` : ''}
-          ${nbAnc ? `<button class="btn btn-sm" onclick="_dpVersionsOuvertes['${p.groupe || p.id}']=!_dpVersionsOuvertes['${p.groupe || p.id}'];renderDocumentsVue();" style="padding:0 6px;font-size:9px;">${ouvert ? '▾' : '▸'} ${nbAnc} version${nbAnc > 1 ? 's' : ''} antérieure${nbAnc > 1 ? 's' : ''}</button>` : ''}
-          ${btnVersion}
-          ${htmlActionsPiece(p)}
-        </div>${anciennes}
-      </div>`;
-  }).join('');
-  return `<div class="rappel-group" style="flex-shrink:0;margin-bottom:0;">
-      <div class="rappel-group-hdr">${esc(label)} <span class="chip">${groupes.length}</span>${btnAjout}</div>
-      ${lignes || `<div style="padding:8px 14px;font-size:11px;color:var(--text2);font-style:italic;">Aucun document.</div>`}
-    </div>`;
 }
 function maxVersion(groupe) {
   return Math.max(0, ...(PIECES || []).filter(p => p.espace === 'permanent' && (p.groupe || p.id) === groupe).map(p => p.version || 1));
@@ -16912,60 +16555,6 @@ function suppressionExerciceAutorisee(y) {
 // ══════════════════════════════════════════════
 // PARAMÈTRES : RUBRIQUES DU DOSSIER PERMANENT (communes à tous les exercices)
 // ══════════════════════════════════════════════
-async function renderRubriquesDP() {
-  const z = document.getElementById('params-dp-rubriques'); if(!z) return;
-  if(!DOCS_CONFIG) await chargerDocsConfig();
-  if(PIECES === null) await chargerPieces();
-  const liste = rubriquesDP();
-  z.innerHTML = `<table style="width:100%;font-size:11px;border-collapse:collapse;">
-      <tbody>${liste.map((r, i) => {
-        const n = (PIECES || []).filter(p => p.espace === 'permanent' && p.rubrique === r.code).length;
-        return `<tr>
-          <td style="padding:5px 14px;">${esc(r.label)}</td>
-          <td style="padding:5px 14px;width:110px;color:var(--text2);font-size:10px;">${n} document${n > 1 ? 's' : ''}</td>
-          <td style="padding:5px 14px;width:150px;text-align:center;white-space:nowrap;">
-            <button class="btn btn-sm btn-icon" onclick="deplacerRubriqueDP(${i},-1)" ${i === 0 ? 'disabled' : ''} title="Monter" style="padding:1px 6px;font-size:10px;">▲</button>
-            <button class="btn btn-sm btn-icon" onclick="deplacerRubriqueDP(${i},1)" ${i === liste.length - 1 ? 'disabled' : ''} title="Descendre" style="padding:1px 6px;font-size:10px;">▼</button>
-            <button class="btn btn-sm btn-icon" onclick="renommerRubriqueDP('${r.code}')" title="Renommer" style="padding:1px 6px;font-size:10px;">✎</button>
-            <button class="btn btn-sm btn-danger btn-icon" onclick="supprimerRubriqueDP('${r.code}')" title="Supprimer" style="padding:1px 6px;font-size:10px;">✕</button>
-          </td></tr>`;
-      }).join('')}</tbody></table>`;
-}
-async function enregistrerRubriquesDP(liste) {
-  const cfg = Object.assign({}, DOCS_CONFIG || {}, { rubriques: liste });
-  try { await window._fbDocsConfigSave(cfg); DOCS_CONFIG = cfg; renderRubriquesDP(); return true; }
-  catch(e) { toast("Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e), 'error', 6000); return false; }
-}
-function ajouterRubriqueDP() {
-  const lib = (prompt('Nom de la nouvelle rubrique du dossier permanent :') || '').trim(); if(!lib) return;
-  const liste = rubriquesDP().map(r => Object.assign({}, r));
-  if(liste.some(r => r.label.toLowerCase() === lib.toLowerCase())) { toast('Cette rubrique existe déjà', 'error'); return; }
-  const code = nomFichierSur(lib).toLowerCase().slice(0, 20) + '_' + Math.random().toString(36).slice(2, 6);
-  liste.push({ code, label: lib });
-  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique ajoutée', 'success'));
-}
-function renommerRubriqueDP(code) {
-  const liste = rubriquesDP().map(r => Object.assign({}, r));
-  const r = liste.find(x => x.code === code); if(!r) return;
-  const lib = (prompt('Nouveau nom de la rubrique :', r.label) || '').trim(); if(!lib || lib === r.label) return;
-  r.label = lib;
-  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique renommée', 'success'));
-}
-function deplacerRubriqueDP(i, sens) {
-  const liste = rubriquesDP().map(r => Object.assign({}, r));
-  const j = i + sens; if(j < 0 || j >= liste.length) return;
-  [liste[i], liste[j]] = [liste[j], liste[i]];
-  enregistrerRubriquesDP(liste);
-}
-function supprimerRubriqueDP(code) {
-  if(PIECES === null) { toast("Index des documents illisible : suppression impossible pour l'instant", 'error'); return; }
-  const n = PIECES.filter(p => p.espace === 'permanent' && p.rubrique === code).length;
-  if(n) { toast(`Impossible : cette rubrique contient ${n} document(s)`, 'error', 5000); return; }
-  const liste = rubriquesDP().filter(r => r.code !== code);
-  if(!liste.length) { toast('Il doit rester au moins une rubrique', 'error'); return; }
-  if(!confirm(`Supprimer la rubrique « ${libRubrique(code)} » ?`)) return;
-  enregistrerRubriquesDP(liste).then(ok => ok && toast('Rubrique supprimée', 'success'));
-}
 
 // ══════════════════════════════════════════════
 // V99 — DOCUMENTS GÉNÉRÉS PAR LES MODULES → PDF DANS LA GED
@@ -17320,12 +16909,22 @@ function allegerAnciensDocuments() {
 //  - toute autre écriture doit avoir une pièce, ou être marquée « sans justificatif » (DB.sansJustificatif) ;
 //  - « Pièces à joindre » non vide = clôture impossible ; exercice clôturé = consultation seule.
 const MODULES_SANS_PIECE = ['bao', 'constatation', 'ccInterets', 'dotation'];
-const LIB_STATUT_JUSTIF = { joint: 'Justifiée', auto: 'Justifiée par le document du module', exempt: 'Écriture de calcul : pas de justificatif nécessaire', sans: 'Marquée « sans justificatif »', manquant: 'Pièce à joindre' };
+const LIB_STATUT_JUSTIF = { joint: 'Justifiée', exempt: 'Écriture calculée par Atrium : pas de pièce nécessaire', sans: 'Marquée « pas de pièce »', manquant: 'Pièce à joindre' }; // V112
 function cleIo(io) { return String(io === undefined || io === null ? '' : io); }
 function ensureSansJustif() { if(!Array.isArray(DB.sansJustificatif)) DB.sansJustificatif = []; return DB.sansJustificatif; }
 // Index des écritures de l'exercice affiché : io → { lignes, num, date, libelle, montant, numDoc, module }
 let _justifs = null;
+// V112 : « écriture de calcul » et « sans justificatif » fusionnés en « pas de pièce » (DB.sansJustificatif) ;
+// l'ancien post-it (DB.piecesAFormaliser) est retiré. Exercices clôturés : non modifiés, lus tels quels.
+function migrerMarquagesV112() {
+  if(!DB || EXERCISE_STATUS === 'closed' || window._saveSuspended || window._fbBloque) return;
+  if(!Array.isArray(DB.ecrituresCalcul) && DB.piecesAFormaliser === undefined) return;
+  if(Array.isArray(DB.ecrituresCalcul)) { DB.sansJustificatif = [...new Set(ensureSansJustif().map(cleIo).concat(DB.ecrituresCalcul.map(cleIo)))]; delete DB.ecrituresCalcul; }
+  delete DB.piecesAFormaliser;
+  setTimeout(() => saveDB(), 0);
+}
 function preparerJustifs() {
+  try { migrerMarquagesV112(); } catch(e) { console.error(e); }
   const groupes = new Map();
   (DB.ecritures || []).forEach(e => { const k = cleIo(e._io); if(!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(e); });
   const liensParIo = new Map(), ex = String(CURRENT_YEAR);
@@ -17337,9 +16936,9 @@ function preparerJustifs() {
     let module = ''; for(const l of lignes) { module = moduleDeLaLigne(l); if(module) break; }
     const pieces = liensParIo.get(io) || [];
     const auto = null; // V108 : plus de justification « automatique » — la fiche km / le PV est réellement joint
-    const statut = pieces.length ? 'joint' : (MODULES_SANS_PIECE.includes(module) || calc.has(io)) ? 'exempt' : auto ? 'auto' : sans.has(io) ? 'sans' : 'manquant';
+    const statut = pieces.length ? 'joint' : MODULES_SANS_PIECE.includes(module) ? 'exempt' : (sans.has(io) || calc.has(io)) ? 'sans' : 'manquant'; // V112
     const l0 = lignes[0];
-    res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module, calcManuel: calc.has(io),
+    res.set(io, { io, lignes, num: l0.num, date: l0.date, libelle: l0.libelleEcriture || '', numDoc: l0.numDoc || '', journal: l0.journal, module, calcManuel: false,
       montant: Math.round(lignes.reduce((s, x) => s + (parseFloat(x.debit) || 0), 0) * 100) / 100, pieces, auto, statut });
   });
   _justifs = res;
@@ -17399,71 +16998,17 @@ function renderPiecesEcriture() {
   if(j.pieces.length) h += `<div style="border:1px solid var(--line2);border-radius:var(--radius);margin-bottom:10px;">${j.pieces.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;">
       <span style="flex:1;min-width:0;">${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${badgeOrigine(p)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}${(p.liens || []).some(l => l.ex === String(CURRENT_YEAR) && l.io === _pjIo && l.auto) ? ' · <span style="color:var(--green);">jointe automatiquement (même n° de pièce)</span>' : ''}</span></span>
       ${b('👁 VOIR', `voirPiece('${p.id}')`)}${ouvert ? b('DÉTACHER', `detacherPiece('${p.id}')`) : ''}</div>`).join('')}</div>`;
-  if(j.auto) h += `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border:1px solid var(--line2);border-radius:var(--radius);font-size:11px;margin-bottom:10px;">
-      <span style="flex:1;">⚙ ${esc(j.auto.libelle)} <span style="color:var(--text2);font-size:10px;">(justification automatique)</span></span>${b('👁 VOIR', `voirJustifAuto('${esc(_pjIo)}')`)}</div>`;
   if(j.statut === 'exempt') h += `<div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Écriture calculée par Atrium : aucune pièce n'est demandée (vous pouvez tout de même en joindre une).</div>`;
   if(actif) {
     const lie = (j.module === 'echeancier' || j.module === 'emprunt');
     h += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-        ${(j.statut === 'sans' || j.calcManuel) ? '' : b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
-        ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « SANS JUSTIFICATIF »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ MARQUER SANS JUSTIFICATIF', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
-        ${!j.pieces.length && j.statut === 'manquant' ? b('⚙ ÉCRITURE DE CALCUL', `basculerCalcul(['${esc(_pjIo)}'], true)`) : ''}${j.calcManuel ? b('ANNULER « ÉCRITURE DE CALCUL »', `basculerCalcul(['${esc(_pjIo)}'], false)`) : ''}
+        ${j.statut === 'sans' ? '' : b('⬆ DÉPOSER UN FICHIER', `deposerPourEcriture('${esc(_pjIo)}')`, 'btn-primary')}
+        ${!j.pieces.length && j.statut !== 'exempt' ? (j.statut === 'sans' ? b('ANNULER « PAS DE PIÈCE »', `basculerSansJustif(['${esc(_pjIo)}'], false)`) : b('∅ PAS DE PIÈCE', `basculerSansJustif(['${esc(_pjIo)}'], true)`)) : ''}
       </div>
       ${lie ? `<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;text-transform:none;letter-spacing:0;font-size:11px;cursor:pointer;"><input type="checkbox" ${_pjTout ? 'checked' : ''} onchange="_pjTout=this.checked" style="width:14px;height:14px;"> Rattacher aussi à toutes les écritures de ce${j.module === 'emprunt' ? 't emprunt' : ' échéancier'} sur l'exercice</label>` : ''}
-      ${(j.statut === 'sans' || j.calcManuel) ? `<div style="font-size:11px;color:var(--text2);font-style:italic;">${j.statut === 'sans' ? 'Écriture marquée « sans justificatif »' : 'Écriture désignée « de calcul »'} : aucune pièce à joindre. Annulez ce marquage pour en joindre une.</div>` : htmlSelecteurPieces(j)}`;
+      ${j.statut === 'sans' ? `<div style="font-size:11px;color:var(--text2);font-style:italic;">Écriture marquée « pas de pièce » : aucune pièce à joindre. Annulez ce marquage pour en joindre une.</div>` : htmlSelecteurPieces(j)}`;
   }
   corps.innerHTML = h;
-}
-function htmlPiecesCandidates(j) {
-  const q = _pjRecherche.trim().toLowerCase(), ex = String(CURRENT_YEAR);
-  const deja = new Set(j.pieces.map(p => p.id));
-  const dpEnVigueur = new Set(groupesDP().map(g => g.courante.id)); // V104 : documents du dossier permanent (version en vigueur)
-  let liste = (PIECES || []).filter(p => !deja.has(p.id) && ((p.espace === 'compta' && String(p.exercice) === ex) || (p.espace === 'permanent' && dpEnVigueur.has(p.id))));
-  if(q) liste = liste.filter(p => [p.titre, p.numDoc, p.nomFichier].join(' ').toLowerCase().includes(q));
-  // Même n° de pièce en premier, puis les plus récentes
-  const memeRef = p => !!(p.numDoc && j.numDoc && normRef(p.numDoc) === normRef(j.numDoc));
-  liste.sort((a, b) => (memeRef(b) - memeRef(a)) || (b.dateDoc || '').localeCompare(a.dateDoc || ''));
-  if(!liste.length) return `<div style="padding:10px;font-size:11px;color:var(--text2);font-style:italic;">Aucune pièce de l'exercice ${esc(ex)} ni du dossier permanent${q ? ' pour cette recherche' : ''}.</div>`;
-  return liste.slice(0, 60).map(p => `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;">
-      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${memeRef(p) ? '★ ' : ''}${p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(p)} ${esc(p.titre || p.nomFichier)} <span style="color:var(--text2);font-size:10px;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}</span></span>
-      <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" style="padding:1px 6px;font-size:10px;">👁</button>
-      <button class="btn btn-sm btn-primary" onclick="joindrePieceExistante('${p.id}')" style="padding:1px 8px;font-size:9px;">JOINDRE</button>
-    </div>`).join('');
-}
-// Écritures visées : celle ouverte, et si demandé toutes celles du même échéancier / emprunt
-function iosCibles(io) {
-  const j = justifDe(io); if(!j) return [];
-  if(!_pjTout || !(j.module === 'echeancier' || j.module === 'emprunt')) return [cleIo(io)];
-  const cle = j.module === 'echeancier' ? '_echId' : '_empId';
-  const ref = (j.lignes.find(l => l[cle]) || {})[cle];
-  if(!ref) return [cleIo(io)];
-  return [...new Set((DB.ecritures || []).filter(e => e[cle] === ref).map(e => cleIo(e._io)))];
-}
-function controleRattachement() {
-  if(EXERCISE_STATUS === 'closed') { bloqueSiCloture(); return false; }
-  if(!window._fbStorageActif || PIECES === null) { toast('GED indisponible', 'error'); return false; }
-  return true;
-}
-async function lierPiece(p, ios, ex) {
-  const liens = (p.liens || []).slice();
-  if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => k === cleIo(io) + '|' + (p.groupe || p.id))); if(DB.liensRefuses.length !== av) saveDB(); }
-  ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
-  return majPiece(p, { liens });
-}
-async function joindrePieceExistante(id) {
-  if(!controleRattachement()) return;
-  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
-  const ios = iosCibles(_pjIo);
-  if(await lierPiece(p, ios, CURRENT_YEAR)) { toast(`Pièce jointe à ${ios.length} écriture${ios.length > 1 ? 's' : ''}`, 'success'); apresChangementJustifs(); }
-}
-async function detacherPiece(id) {
-  if(!controleRattachement()) return;
-  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
-  const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
-  // V104 : une pièce détachée à la main n'est plus jamais rejointe automatiquement à cette écriture
-  const cleRefus = _pjIo + '|' + (p.groupe || p.id);
-  if(!ensureLiensRefuses().includes(cleRefus)) { DB.liensRefuses.push(cleRefus); saveDB(); }
-  if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
 }
 function deposerPourEcriture(io) {
   if(!controleRattachement()) return;
@@ -17475,13 +17020,12 @@ function deposerPourEcriture(io) {
     libelleEcritures: ios.length > 1 ? `(${ios.length})` : '#' + j.num, apres: apresChangementJustifs
   });
 }
-function voirJustifAuto(io) { const j = justifDe(io); if(j && j.auto) ouvrirDocumentModule(j.auto.module, j.auto.x); }
 function basculerSansJustif(ios, marquer) {
   if(bloqueSiCloture()) return;
   const liste = ensureSansJustif().map(cleIo);
   DB.sansJustificatif = marquer ? [...new Set(liste.concat(ios.map(cleIo)))] : liste.filter(x => !ios.map(cleIo).includes(x));
   saveDB();
-  toast(marquer ? `${ios.length} écriture${ios.length > 1 ? 's' : ''} marquée${ios.length > 1 ? 's' : ''} « sans justificatif »` : '« Sans justificatif » retiré', 'success');
+  toast(marquer ? `${ios.length} écriture${ios.length > 1 ? 's' : ''} marquée${ios.length > 1 ? 's' : ''} « pas de pièce »` : '« Pas de pièce » retiré', 'success');
   apresChangementJustifs();
 }
 function apresChangementJustifs() {
@@ -17497,44 +17041,95 @@ function apresChangementJustifs() {
 // ── Post-it « Pièces à joindre » (remplace « Pièces à formaliser ») ──
 let _pajSel = new Set(), _pajFiltre = 'all';
 const PAJ_MODULES = { '': 'Saisie manuelle', locative: 'Gestion locative', echeancier: 'Échéanciers', emprunt: 'Emprunts', km: 'Frais kilométriques', approbation: 'Approbation du résultat' };
+// V112 : tout ce qui demande attention, au même endroit ; un seul compteur dans l'en-tête
+let _atOnglet = 'ecr';
+function elementsATraiter() {
+  const r = { ecr: [], orph: [], nc: [], croises: [], introuv: [], vieux: [], cout: 0 };
+  try { r.ecr = ecrituresManquantes(); } catch(e) { console.error(e); }
+  if(typeof PIECES !== 'undefined' && PIECES) {
+    try { r.orph = piecesSansEcritureExercice(); } catch(e) { console.warn(e); }
+    try { r.nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')); } catch(e) { console.warn(e); }
+    try { r.croises = liensCroisesLocataires(); } catch(e) { console.warn(e); }
+    try { r.introuv = PIECES.filter(p => _sourcesIntrouvables.has(p.id)); } catch(e) {}
+    try { r.vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30); } catch(e) {}
+    try { r.cout = coutStockageMensuel(); } catch(e) {}
+  }
+  r.total = r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
+  return r;
+}
+function majBadgeATraiter(r) {
+  const badge = document.getElementById('btn-postit-badge'); if(!badge) return;
+  if(r.total) { badge.textContent = r.total.toLocaleString('fr-FR'); badge.style.display = ''; } else badge.style.display = 'none';
+}
+function allerGEDDepuisATraiter(fn) { closePostItPieces(); showTab('documents'); fn(); }
 function renderPostItPieces() {
-  let manq = [];
-  try { manq = ecrituresManquantes(); } catch(e) { console.error(e); }
-  const badge = document.getElementById('btn-postit-badge');
-  if(badge) { if(manq.length) { badge.textContent = manq.length.toLocaleString('fr-FR'); badge.style.display = ''; } else badge.style.display = 'none'; }
+  const r = elementsATraiter();
+  majBadgeATraiter(r);
   let el = document.getElementById('postit-pieces');
   if(!_postItOpen) { if(el) el.style.display = 'none'; return; }
   if(!el) { el = document.createElement('div'); el.id = 'postit-pieces'; document.body.appendChild(el); }
   const btn = document.getElementById('btn-postit-toggle');
   const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
-  el.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${Math.max(10, window.innerWidth - rect.right)}px;width:420px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);border:1px solid var(--line2);display:block;`;
+  el.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${Math.max(10, window.innerWidth - rect.right)}px;width:460px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);border:1px solid var(--line2);display:block;`;
+  const onglets = [
+    { k: 'ecr', lib: 'Écritures sans pièce', n: r.ecr.length },
+    { k: 'orph', lib: 'Pièces sans écriture', n: r.orph.length },
+    { k: 'nc', lib: 'Pièces non classées', n: r.nc.length },
+    { k: 'croises', lib: 'Liens entre locataires', n: r.croises.length },
+    { k: 'introuv', lib: 'Sources introuvables', n: r.introuv.length },
+    { k: 'vieux', lib: 'Corbeille > 30 jours', n: r.vieux.length },
+    { k: 'cout', lib: 'Stockage', n: r.cout > 1 ? 1 : 0 }
+  ].filter(o => o.k === 'ecr' || o.n);
+  if(!onglets.some(o => o.k === _atOnglet)) _atOnglet = 'ecr';
   const ouvert = EXERCISE_STATUS !== 'closed';
-  const modulesPresents = [...new Set(manq.map(j => j.module))];
-  const liste = manq.filter(j => _pajFiltre === 'all' || j.module === _pajFiltre);
-  _pajSel = new Set([..._pajSel].filter(io => liste.some(j => j.io === io)));
-  const opts = `<option value="all">Tous (${manq.length})</option>` + modulesPresents.map(m => `<option value="${m}" ${_pajFiltre === m ? 'selected' : ''}>${esc(PAJ_MODULES[m] || m)} (${manq.filter(j => j.module === m).length})</option>`).join('');
+  const b = (lib, act, cls) => `<button class="btn btn-sm ${cls || ''}" onclick="${act}" style="padding:1px 8px;font-size:9px;">${lib}</button>`;
+  const ligne = (contenu, act) => `<div style="padding:6px 8px;border-radius:3px;margin-bottom:2px;font-size:11px;line-height:1.35;${act ? 'cursor:pointer;' : ''}" ${act ? `onclick="event.stopPropagation();${act}"` : ''}>${contenu}</div>`;
+  let corps = '', pied = '';
+  if(_atOnglet === 'ecr') {
+    const modulesPresents = [...new Set(r.ecr.map(j => j.module))];
+    const liste = r.ecr.filter(j => _pajFiltre === 'all' || j.module === _pajFiltre);
+    _pajSel = new Set([..._pajSel].filter(io => liste.some(j => j.io === io)));
+    const opts = `<option value="all">Tous (${r.ecr.length})</option>` + modulesPresents.map(m => `<option value="${m}" ${_pajFiltre === m ? 'selected' : ''}>${esc(PAJ_MODULES[m] || m)} (${r.ecr.filter(j => j.module === m).length})</option>`).join('');
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);line-height:1.4;">Cliquez une écriture pour joindre sa pièce, ou cochez-les pour les marquer « pas de pièce ». La clôture est impossible tant que la liste n'est pas vide.
+        ${r.ecr.length ? `<select onchange="_pajFiltre=this.value;renderPostItPieces()" style="width:100%;font-size:10px;padding:4px;margin-top:6px;height:26px;">${opts}</select>` : ''}</div>`
+      + (liste.length ? liste.map(j => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;margin-bottom:2px;">
+          ${ouvert ? `<input type="checkbox" ${_pajSel.has(j.io) ? 'checked' : ''} onchange="this.checked?_pajSel.add('${esc(j.io)}'):_pajSel.delete('${esc(j.io)}');renderPostItPieces()" style="width:14px;height:14px;margin-top:2px;flex-shrink:0;">` : ''}
+          <div style="flex:1;min-width:0;font-size:11px;line-height:1.35;cursor:pointer;" onclick="event.stopPropagation();ouvrirPiecesEcriture('${esc(j.io)}', true)">
+            <div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-weight:600;color:var(--amber);"><span>#${j.num} ${esc(j.numDoc)}</span><span style="white-space:nowrap;">${fmt(j.montant)} €</span></div>
+            <div style="color:var(--text1);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(j.libelle)}</div>
+            <div style="color:var(--text2);font-size:9px;margin-top:2px;">${esc(PAJ_MODULES[j.module] || j.module)} • ${j.date ? fmtDateFr(j.date) : ''}</div>
+          </div></div>`).join('') : `<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune écriture sans pièce.</div>`);
+    if(ouvert && liste.length) pied = `${b('TOUT COCHER', `_pajSel=new Set(${JSON.stringify(liste.map(j => j.io)).replace(/"/g, '&quot;')});renderPostItPieces()`)}
+        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;">∅ PAS DE PIÈCE (${_pajSel.size})</button>`;
+  } else if(_atOnglet === 'orph') {
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Pièces de ${esc(CURRENT_YEAR)} jointes à aucune écriture : à rattacher avant la clôture.</div>`
+      + r.orph.map(p => ligne(`${iconePiece(p)} <strong>${esc(p.titre || p.nomFichier)}</strong><div style="color:var(--text2);font-size:9px;">${esc(p.numDoc || '')}${p.dateDoc ? ' • ' + fmtDateFr(p.dateDoc) : ''}</div>`, `voirPiece('${p.id}')`)).join('');
+    pied = b('VOIR DANS LA GED', "allerGEDDepuisATraiter(allerPiecesSansEcriture)", 'btn-primary');
+  } else if(_atOnglet === 'nc') {
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Pièces sans type, ou dont le type n'est rangé dans aucun classeur (tous exercices).</div>`
+      + r.nc.map(p => ligne(`${iconePiece(p)} <strong>${esc(p.titre || p.nomFichier)}</strong><div style="color:var(--text2);font-size:9px;">Exercice ${esc(p.exercice)}${p.typePiece ? ' • type ' + esc(p.typePiece) : ' • sans type'}</div>`, `voirPiece('${p.id}')`)).join('');
+    pied = b('OUVRIR « NON CLASSÉS »', "allerGEDDepuisATraiter(()=>{_docsVue='compta';ouvrirClasseur('compta','__nc');})", 'btn-primary') + b('⚙ GÉRER LES CLASSEURS', "allerGEDDepuisATraiter(()=>ouvrirGestionClasseurs('compta'))");
+  } else if(_atOnglet === 'croises') {
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Documents d'un locataire joints aux écritures d'un autre (exercice ${esc(CURRENT_YEAR)}).</div>`
+      + r.croises.map(x => ligne(`${iconePiece(x.p)} <strong>${esc(x.p.titre || x.p.nomFichier)}</strong><div style="color:var(--red);font-size:9px;">→ écriture #${x.j.num} de ${esc(x.vers)}</div>`)).join('');
+    pied = b('OUVRIR LE CONTRÔLE', "closePostItPieces();ouvrirLiensCroises()", 'btn-primary');
+  } else if(_atOnglet === 'introuv') {
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Documents de module dont la source n'existe plus dans son module.</div>`
+      + r.introuv.map(p => `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:11px;"><span style="flex:1;min-width:0;cursor:pointer;" onclick="voirPiece('${p.id}')">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</span>${b('🗑', `askCorbeilleIntrouvable('${p.id}')`, 'btn-danger')}</div>`).join('');
+  } else if(_atOnglet === 'vieux') {
+    corps = `<div style="padding:10px;font-size:11px;color:var(--text1);line-height:1.5;">${r.vieux.length.toLocaleString('fr-FR')} document(s) dans la corbeille depuis plus de 30 jours. Vérifiez-les, puis videz-les si vous n'en avez plus besoin.</div>`;
+    pied = b('OUVRIR LA CORBEILLE', "allerGEDDepuisATraiter(()=>docsChangerVue('corbeille'))", 'btn-primary');
+  } else if(_atOnglet === 'cout') {
+    corps = `<div style="padding:10px;font-size:11px;color:var(--text1);line-height:1.5;">${htmlCoutStockage()}<br><br>Le coût estimé du stockage dépasse 1 € par mois : videz la corbeille ou vérifiez l'alerte de budget de la console Google Cloud.</div>`;
+  }
   el.innerHTML = `<div style="padding:8px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line2);background:var(--bg2);border-radius:6px 6px 0 0;">
-      <span style="font-size:14px;">📎</span>
-      <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">Pièces à joindre — ${esc(CURRENT_YEAR)}</strong>
+      <span style="font-size:14px;">📋</span>
+      <strong style="flex:1;font-size:11px;color:var(--cyan);letter-spacing:0.05em;text-transform:uppercase;">À traiter — ${esc(CURRENT_YEAR)}</strong>
       <span style="cursor:pointer;font-size:16px;padding:0 4px;color:var(--text2);" onclick="closePostItPieces()" title="Fermer">✕</span>
     </div>
-    <div style="padding:6px 10px;border-bottom:1px solid var(--line2);background:var(--bg2);font-size:10px;color:var(--text2);line-height:1.4;">
-      Écritures sans justificatif. Cliquez une écriture pour joindre sa pièce. La clôture est impossible tant que la liste n'est pas vide.
-      <select onchange="_pajFiltre=this.value;renderPostItPieces()" style="width:100%;font-size:10px;padding:4px;margin-top:6px;height:26px;">${opts}</select>
-    </div>
-    ${liste.length ? `<div style="max-height:380px;overflow-y:auto;padding:4px 6px;">${liste.map(j => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;margin-bottom:2px;">
-        ${ouvert ? `<input type="checkbox" ${_pajSel.has(j.io) ? 'checked' : ''} onchange="this.checked?_pajSel.add('${esc(j.io)}'):_pajSel.delete('${esc(j.io)}');renderPostItPieces()" style="width:14px;height:14px;margin-top:2px;flex-shrink:0;">` : ''}
-        <div style="flex:1;min-width:0;font-size:11px;line-height:1.35;cursor:pointer;" onclick="event.stopPropagation();ouvrirPiecesEcriture('${esc(j.io)}', true)">
-          <div style="display:flex;justify-content:space-between;gap:8px;font-family:var(--mono);font-weight:600;color:var(--amber);"><span>#${j.num} ${esc(j.numDoc)}</span><span style="white-space:nowrap;">${fmt(j.montant)} €</span></div>
-          <div style="color:var(--text1);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(j.libelle)}</div>
-          <div style="color:var(--text2);font-size:9px;margin-top:2px;">${esc(PAJ_MODULES[j.module] || j.module)} • ${j.date ? fmtDateFr(j.date) : ''}</div>
-        </div></div>`).join('')}</div>`
-      : `<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune pièce à joindre.</div>`}
-    ${ouvert && liste.length ? `<div style="padding:6px 10px;border-top:1px solid var(--line2);display:flex;gap:6px;align-items:center;background:var(--bg2);border-radius:0 0 6px 6px;">
-        <button class="btn btn-sm" onclick="_pajSel=new Set(${JSON.stringify(liste.map(j => j.io)).replace(/"/g, '&quot;')});renderPostItPieces()" style="padding:1px 8px;font-size:9px;">TOUT COCHER</button>
-        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerCalcul([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;" title="Désigner comme écritures de calcul (aucune pièce demandée)">⚙ CALCUL (${_pajSel.size})</button>
-        <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;">∅ SANS JUSTIFICATIF (${_pajSel.size})</button>
-      </div>` : ''}`;
+    <div style="display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border-bottom:1px solid var(--line2);background:var(--bg2);">${onglets.map(o => `<button class="btn btn-sm ${_atOnglet === o.k ? 'btn-primary' : ''}" onclick="_atOnglet='${o.k}';renderPostItPieces()" style="padding:1px 7px;font-size:9px;">${o.lib}${o.k === 'cout' ? '' : ` <span style="${o.n ? 'color:var(--red);font-weight:700;' : ''}">${o.n}</span>`}</button>`).join('')}</div>
+    <div style="max-height:380px;overflow-y:auto;padding:4px 6px;">${corps}</div>
+    ${pied ? `<div style="padding:6px 10px;border-top:1px solid var(--line2);display:flex;gap:6px;align-items:center;flex-wrap:wrap;background:var(--bg2);border-radius:0 0 6px 6px;">${pied}</div>` : ''}`;
 }
 
 // ── Appel de loyer : proposition de rattachement aux écritures des mouvements « + » du mois ──
@@ -17888,12 +17483,6 @@ async function autoLierParReference() {
   }
 }
 // Modifier la référence (n° de pièce) d'un document déposé
-async function modifierReferencePiece(id) {
-  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
-  const v = prompt("Référence (n° de pièce) du document.\nLes écritures sans pièce portant ce n° de pièce y seront jointes automatiquement.", p.numDoc || '');
-  if(v === null) return;
-  if(await majPiece(p, { numDoc: v.trim() }, 'Référence enregistrée')) { renderDocumentsVue(); programmerAutoLiaison(); }
-}
 
 
 // ══════════════════════════════════════════════
@@ -18574,7 +18163,7 @@ async function enregistrerGestionClasseurs() {
   } catch(e) { err.textContent = "Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e); return; }
   toast('Classeurs enregistrés', 'success');
   fermerGestionClasseurs(); renderDocumentsVue();
-  try { renderRubriquesDP(); } catch(e) {}
+  try { renderRubriquesDPV107(); } catch(e) {}
 }
 
 // ── Paramètres : rappel des classeurs du DP (la gestion se fait dans la GED) ──
@@ -18595,19 +18184,17 @@ function allerGestionClasseursDP() { showTab('documents'); _docsVue = 'permanent
 function htmlNumDocLien(e) {
   const nd = esc(e.numDoc || '');
   const j = justifDe(e._io);
-  if(!j || (j.statut === 'exempt' && !j.calcManuel)) return nd;
-  if(j.statut === 'exempt') return `<a href="#" onclick="ouvrirPiecesEcriture('${esc(cleIo(e._io))}');return false;" title="Désignée « écriture de calcul » : cliquer pour modifier" style="color:var(--text2);text-decoration:underline dotted;">${nd || '⚙'}</a>`;
+  if(!j || j.statut === 'exempt') return nd;
   const io = esc(cleIo(e._io));
   const st = j.statut;
-  const couleur = st === 'joint' || st === 'auto' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
-  const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'auto' ? 'Voir le document du module (justificatif)' : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « sans justificatif » : cliquer pour modifier';
+  const couleur = st === 'joint' ? 'var(--green)' : st === 'manquant' ? '#ff9f40' : 'var(--text2)';
+  const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « pas de pièce » : cliquer pour modifier';
   const txt = nd || (st === 'manquant' ? '📎 à joindre' : st === 'sans' ? '∅' : '📎');
   return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'underline dotted' : 'underline'};text-underline-offset:2px;font-weight:${st === 'sans' ? 400 : 600};">${txt}</a>`;
 }
 function clicNumDoc(io) {
   const j = justifDe(io); if(!j) return;
   if(j.statut === 'joint' && j.pieces.length === 1) return voirPiece(j.pieces[0].id, { io });
-  if(j.statut === 'auto') return voirJustifAuto(io);
   ouvrirPiecesEcriture(io);
 }
 
@@ -18627,15 +18214,6 @@ function reinitialiserVueGED() {
   fcReset('gedc'); fcReset('gedp'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); _gedSansEcriture = false; // V109
 }
 // Type des appels de loyer : celui des mouvements « + » du mois (préfixe du n° de pièce, ex. QUIT), sinon QUIT
-function typeAppelLoyer(loc, x) {
-  const prefixes = [];
-  (loc && loc.mouvements || []).filter(m => m.sens === '+' && (m.affectations || []).some(a => a.mois === x.mois)).forEach(m => {
-    const t = (loc.types || []).find(y => y.id === m.typeId);
-    if(t && t.prefixePiece) prefixes.push(String(t.prefixePiece).trim());
-  });
-  for(const p of prefixes) { const c = typeSiConnu(p); if(c) return c; }
-  return typeSiConnu('QUIT');
-}
 // Pièce sans écriture : aucun rattachement valable (écritures de l'exercice affiché vérifiées)
 function pieceSansEcriture(p) {
   const ex = String(CURRENT_YEAR);
@@ -18882,8 +18460,8 @@ function renderGL() {
   let nbSans = 0; _justifs.forEach(j => { if(j.statut === 'manquant' || j.statut === 'sans') nbSans++; });
   const outils = document.getElementById('gl-outils');
   if(outils) outils.innerHTML = `
-      <button class="btn btn-sm" onclick="_glSansPJ=!_glSansPJ;renderGL()" title="Afficher uniquement les écritures sans pièce jointe (à joindre, ou marquées « sans justificatif »)"
-        style="${_glSansPJ ? 'background:rgba(255,159,64,.2);border-color:#ff9f40;color:#ff9f40;' : (nbSans ? 'color:#ff9f40;border-color:rgba(255,159,64,.5);' : '')}">📎 ÉCRITURES SANS PIÈCE JOINTE (${nbSans.toLocaleString('fr-FR')})${_glSansPJ ? ' ✓' : ''}</button>
+      <button class="btn btn-sm" onclick="_glSansPJ=!_glSansPJ;renderGL()" title="Afficher uniquement les écritures sans pièce jointe (à joindre, ou marquées « pas de pièce »)"
+        style="${_glSansPJ ? 'background:rgba(255,159,64,.2);border-color:#ff9f40;color:#ff9f40;' : ''}">📎 ÉCRITURES SANS PIÈCE JOINTE (${nbSans.toLocaleString('fr-FR')})${_glSansPJ ? ' ✓' : ''}</button>
       ${fcNb('gl') || _glSansPJ ? `<button class="btn btn-sm" onclick="resetGLFilters()">✕ EFFACER LES FILTRES (${fcNb('gl') + (_glSansPJ ? 1 : 0)})</button>` : ''}
       <span style="font-size:10px;color:var(--text2);">Filtrez chaque colonne avec ▾ ; dès qu'un filtre est actif, cochez / décochez les lignes pour suivre le solde (lettrage).</span>
       <span id="gl-solde-chip" style="display:${filtre ? 'inline-flex' : 'none'};margin-left:auto;font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 10px;border-radius:4px;background:rgba(68,232,122,0.12);color:var(--green);border:1px solid rgba(68,232,122,0.3);"></span>`;
@@ -18925,21 +18503,15 @@ FC_TABLES.gedp = {
   rendre: () => renderDocumentsVue()
 };
 function filtreExerciceParDefautGED() { fcEtat('gedc').filtres.ex = new Set([String(CURRENT_YEAR), String(CURRENT_YEAR) + ' TEST']); }
-function htmlBoutonSansEcriture() {
-  const n = piecesSansEcritureExercice().length;
-  return `<button class="btn btn-sm" onclick="_gedSansEcriture=!_gedSansEcriture;renderDocumentsVue()" title="Pièces comptables rattachées à aucune écriture (bloque la clôture)"
-      style="${_gedSansEcriture ? 'background:rgba(255,200,64,.2);border-color:var(--amber);color:var(--amber);' : n ? 'color:var(--amber);border-color:rgba(255,200,64,.5);' : ''}">⚠ PIÈCES SANS ÉCRITURE ${esc(CURRENT_YEAR)} (${n.toLocaleString('fr-FR')})${_gedSansEcriture ? ' ✓' : ''}</button>`;
+function htmlBoutonSansEcriture() { // V112 : simple rappel du filtre quand il est actif (ouvert depuis « À TRAITER »)
+  return _gedSansEcriture ? `<button class="btn btn-sm" onclick="_gedSansEcriture=false;renderDocumentsVue()" style="background:rgba(255,200,64,.2);border-color:var(--amber);color:var(--amber);">Pièces sans écriture ${esc(CURRENT_YEAR)} ✕</button>` : '';
 }
 function htmlPiecesComptablesV109() {
   if(fcEtat('gedc').pourEx !== String(CURRENT_YEAR)) { fcReset('gedc'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); } // l'exercice affiché par défaut
   const id = _docsClasseur.compta;
   const info = id ? infoClasseurCompta(id) : null;
   if(!info) {
-    const n = piecesSansEcritureExercice().length;
-    const alerte = n ? `<div class="alert alert-warn" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${n.toLocaleString('fr-FR')} pièce(s) de ${esc(CURRENT_YEAR)} rattachée(s) à aucune écriture</strong> — à rattacher avant la clôture.</span><button class="btn btn-sm" onclick="allerPiecesSansEcriture()">VOIR</button></div>` : '';
-    let nx = 0; try { nx = liensCroisesLocataires().length; } catch(e) { console.warn(e); } // V111
-    const alerteX = nx ? `<div class="alert alert-danger" style="display:flex;align-items:center;gap:10px;">⚠ <span style="flex:1;"><strong>${nx} document(s) locatif(s) joint(s) aux écritures d'un autre locataire</strong> (même n° de pièce) — à détacher.</span><button class="btn btn-sm" onclick="ouvrirLiensCroises()">VOIR</button></div>` : '';
-    return alerte + alerteX + htmlPiecesComptablesV107();
+    return htmlPiecesComptablesV107(); // V112 : alertes regroupées dans « À TRAITER »
   }
   const ouverts = exercicesOuverts();
   const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
@@ -19027,29 +18599,11 @@ function allerPiecesSansEcriture() {
 }
 
 // ── 4. Alerte jaune dans le menu, à côté de GED ──
-function majAlerteNavGED() {
-  const z = document.getElementById('nav-ged-alerte'); if(!z) return;
-  if(typeof PIECES === 'undefined' || !PIECES || !DB || !DB.ecritures) { z.style.display = 'none'; return; }
-  let orph = 0, nc = 0;
-  try { orph = piecesSansEcritureExercice().length; nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')).length; } catch(e) {}
-  const cout = (() => { try { return coutStockageMensuel(); } catch(e) { return 0; } })();
-  let vieux = 0, croises = 0, introuv = 0; // V111
-  try { vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30).length; croises = liensCroisesLocataires().length; introuv = (PIECES || []).filter(p => _sourcesIntrouvables.has(p.id)).length; } catch(e) {}
-  const msg = [orph ? `${orph} pièce(s) de ${CURRENT_YEAR} sans écriture (ou dont l'écriture a été supprimée)` : '', nc ? `${nc} pièce(s) non classée(s)` : '', cout > 1 ? `stockage estimé à ${cout.toFixed(2).replace('.', ',')} €/mois (au-dessus de 1 €)` : '',
-    croises ? `${croises} lien(s) entre un document et les écritures d'un autre locataire` : '', introuv ? `${introuv} document(s) de module dont la source est introuvable` : '', vieux ? `${vieux} document(s) dans la corbeille depuis plus de 30 jours` : ''].filter(Boolean).join(' · ');
-  z.style.display = msg ? '' : 'none'; z.title = msg;
+function majAlerteNavGED() { // V112 : seul le compteur « À TRAITER » de l'en-tête signale ce qui reste à faire
+  try { majBadgeATraiter(elementsATraiter()); } catch(e) {}
 }
 
 // ── 5. Écritures « de calcul » désignées à la main ──
-function ensureEcrituresCalcul() { if(!Array.isArray(DB.ecrituresCalcul)) DB.ecrituresCalcul = []; return DB.ecrituresCalcul; }
-function basculerCalcul(ios, marquer) {
-  if(bloqueSiCloture()) return;
-  const liste = ensureEcrituresCalcul().map(cleIo), cibles = ios.map(cleIo);
-  DB.ecrituresCalcul = marquer ? [...new Set(liste.concat(cibles))] : liste.filter(x => !cibles.includes(x));
-  saveDB();
-  toast(marquer ? `${cibles.length} écriture${cibles.length > 1 ? 's' : ''} désignée${cibles.length > 1 ? 's' : ''} « écriture de calcul »` : '« Écriture de calcul » retiré', 'success');
-  apresChangementJustifs();
-}
 
 // ── 6. Référence des appels de loyer et quittances : celle des écritures des mouvements « + » du mois ──
 function refPieceLoyer(loc, x, data) {
@@ -19078,7 +18632,7 @@ function anomaliesApresLiaison(ajoutsParIo) {
   ajoutsParIo.forEach((a, io) => {
     const j = justifDe(io); if(!j) return;
     const deposees = a.avant.concat(a.nouvelles).filter(p => !pieceGeneree(p));
-    if(a.sans) msgs.push(`#${j.num} était marquée « sans justificatif » : « ${a.nouvelles.map(p => p.titre || p.nomFichier).join(', ')} » (même n°) y a été jointe`);
+    if(a.sans) msgs.push(`#${j.num} était marquée « pas de pièce » : « ${a.nouvelles.map(p => p.titre || p.nomFichier).join(', ')} » (même n°) y a été jointe`);
     else if(deposees.length > 1) msgs.push(`#${j.num} (${j.numDoc}) a maintenant ${deposees.length} pièces déposées de même n° : ${deposees.map(p => '« ' + (p.titre || p.nomFichier) + ' »').join(', ')}`);
   });
   if(msgs.length) toast(`⚠ Anomalie de rattachement — vérifiez : ${msgs.join(' ; ')}`, 'warn', 15000);
@@ -19346,6 +18900,73 @@ function renderParamsSecurite() {
     <div style="font-size:11px;font-weight:600;margin-top:12px;">2. Console Firebase › Storage › Règles <button class="btn btn-sm" onclick="copierTexte('regles-storage')" style="margin-left:6px;padding:1px 8px;font-size:9px;">COPIER</button></div>${pre('regles-storage', r.storage)}
     <div style="font-size:11px;color:var(--text2);margin-top:12px;line-height:1.6;">3. Authentication › Settings › User actions : décochez la création de comptes si l'option est proposée.<br>
       4. Console Google Cloud › Cloud Storage › Buckets › votre bucket › Protection : « Suppression réversible » (soft delete) à 30 jours ou plus.</div>`;
+}
+
+// ══════════════════════════════════════════════
+// V112 — MODIFIER UNE PIÈCE DÉPOSÉE (et la déplacer vers le dossier permanent)
+// ══════════════════════════════════════════════
+let _modPiece = null;
+function ouvrirModifPiece(id) {
+  const p = (PIECES || []).find(x => x.id === id); if(!p || !controleModifiable(p)) return;
+  _modPiece = id;
+  const dp = p.espace === 'permanent';
+  let el = document.getElementById('mod-piece-modal');
+  if(!el) { el = document.createElement('div'); el.id = 'mod-piece-modal'; el.className = 'modal-overlay'; el.style.zIndex = '1065'; document.body.appendChild(el); }
+  const ouverts = exercicesOuverts();
+  const optEx = ouverts.map(y => `<option value="${esc(y)}" ${String(p.exercice) === y ? 'selected' : ''}>${isTestExercise(y) ? '🧪 ' : ''}${esc(y)}</option>`).join('');
+  const optType = `<option value="">—</option>` + getTypedocList().map(t => `<option value="${esc(t.code)}" ${p.typePiece === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  const optCls = rubriquesDP().map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
+  const optTypeDP = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
+  el.innerHTML = `<div class="modal" style="width:560px;max-width:95vw;">
+      <div class="modal-title">✎ MODIFIER LA PIÈCE</div>
+      <div class="form-row c2 mb8"><div class="form-field" style="grid-column:1/-1;"><label>Titre *</label><input type="text" id="mp-titre" value="${esc(p.titre || '')}"></div></div>
+      <div class="form-row c2 mb8"><div class="form-field"><label>Date du document *</label><input type="date" id="mp-date" value="${esc(p.dateDoc || '')}"></div>
+        <div class="form-field"><label>${dp ? 'Référence (n° de pièce)' : 'N° de pièce'}</label><input type="text" id="mp-numdoc" value="${esc(p.numDoc || '')}" style="font-family:var(--mono);"></div></div>
+      ${dp ? '' : `<div class="form-row c2 mb8"><div class="form-field"><label>Type de pièce</label><select id="mp-type" style="font-family:var(--mono);">${optType}</select></div>
+        <div class="form-field"><label>Exercice (ouverts)</label><select id="mp-ex">${optEx}</select></div></div>
+      <label style="display:flex;align-items:center;gap:8px;margin:10px 0 6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="mp-vers-dp" onchange="document.getElementById('mp-bloc-dp').style.display=this.checked?'':'none'" style="width:14px;height:14px;"> Déplacer vers le dossier permanent</label>
+      <div id="mp-bloc-dp" style="display:none;"><div class="form-row c2 mb8"><div class="form-field"><label>Classeur</label><select id="mp-cls">${optCls}</select></div>
+        <div class="form-field"><label>Type de document</label><select id="mp-typedp" style="font-family:var(--mono);">${optTypeDP}</select></div></div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">La pièce quitte les pièces comptables ; ses liens avec les écritures sont conservés.</div></div>`}
+      ${dp ? '<div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Classeur et type : bouton 🗂 de la ligne.</div>' : ''}
+      <div id="mp-err" style="font-size:11px;color:var(--red);min-height:14px;margin:6px 0;line-height:1.5;"></div>
+      <div class="flex gap8"><button class="btn btn-primary" onclick="enregistrerModifPiece()">✓ ENREGISTRER</button><button class="btn ml-auto" onclick="fermerModifPiece()">ANNULER</button></div>
+    </div>`;
+  el.style.display = 'flex';
+}
+function fermerModifPiece() { const el = document.getElementById('mod-piece-modal'); if(el) el.style.display = 'none'; _modPiece = null; }
+async function enregistrerModifPiece() {
+  const p = (PIECES || []).find(x => x.id === _modPiece); if(!p) return fermerModifPiece();
+  const v = id => { const e = document.getElementById(id); return e ? (e.type === 'checkbox' ? e.checked : e.value.trim()) : ''; };
+  const err = document.getElementById('mp-err');
+  const titre = v('mp-titre'), date = v('mp-date');
+  if(!titre) { err.textContent = 'Le titre est obligatoire.'; return; }
+  if(!date) { err.textContent = 'La date est obligatoire.'; return; }
+  const nouveau = Object.assign({}, p, { titre, dateDoc: date, numDoc: v('mp-numdoc') });
+  if(p.espace === 'compta') {
+    const ex = v('mp-ex') || String(p.exercice);
+    if(v('mp-vers-dp')) {
+      const cls = v('mp-cls'); if(!cls) { err.textContent = 'Choisissez un classeur.'; return; }
+      Object.assign(nouveau, { espace: 'permanent', rubrique: cls, classeurs: [cls], typeDP: v('mp-typedp'), groupe: p.id, version: 1, enVigueur: true });
+      delete nouveau.exercice; delete nouveau.typePiece; delete nouveau.test;
+    } else {
+      nouveau.typePiece = v('mp-type');
+      if(ex !== String(p.exercice)) {
+        if(!exercicesOuverts().includes(ex)) { err.textContent = `L'exercice ${ex} n'est pas ouvert.`; return; }
+        const n = (p.liens || []).filter(l => l.ex === String(p.exercice)).length;
+        if(n && !confirm(`La pièce change d'exercice : elle sera détachée de ${n} écriture(s) de l'exercice ${p.exercice}. Continuer ?`)) return;
+        nouveau.liens = (p.liens || []).filter(l => l.ex !== String(p.exercice));
+        nouveau.exercice = ex; nouveau.test = isTestExercise(ex);
+      }
+    }
+  }
+  try { await window._fbPieceSave(nouveau); }
+  catch(e) { err.textContent = "Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e); return; }
+  Object.keys(p).forEach(k => delete p[k]); Object.assign(p, nouveau);
+  fermerModifPiece();
+  toast(p.espace === 'permanent' && nouveau.groupe === p.id && nouveau.version === 1 && !p.exercice ? 'Pièce déplacée vers le dossier permanent' : 'Pièce modifiée', 'success');
+  updateNavCounts(); renderDocumentsVue(); apresChangementJustifs(); programmerAutoLiaison();
 }
 
 </script>
