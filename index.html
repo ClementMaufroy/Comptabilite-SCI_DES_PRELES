@@ -2923,7 +2923,7 @@ applyTheme();
     </div>
     <div id="dep-bloc-permanent">
       <select id="dep-rubrique" style="display:none;"></select>
-      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:4px;">CLASSEURS * (un ou plusieurs)</div>
+      <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:4px;">CLASSEUR *</div>
       <div id="dep-classeurs" style="display:flex;flex-wrap:wrap;gap:4px 14px;margin-bottom:10px;max-height:110px;overflow-y:auto;"></div>
       <div class="form-row c2 mb8"><div class="form-field"><label>Type de document</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
         <div class="form-field"><label title="Les écritures portant ce n° de pièce seront jointes automatiquement à ce document">Référence (n° de pièce)</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div></div>
@@ -2970,7 +2970,7 @@ applyTheme();
   <div class="modal" style="width:460px;max-width:94vw;">
     <div class="modal-title">🗂 CLASSEMENT DU DOCUMENT</div>
     <div id="cls-doc-titre" style="font-size:12px;color:var(--text1);margin-bottom:12px;"></div>
-    <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:6px;">CLASSEURS (un ou plusieurs)</div>
+    <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:6px;">CLASSEUR</div>
     <div id="cls-doc-classeurs" style="max-height:240px;overflow-y:auto;margin-bottom:12px;"></div>
     <div class="form-field" style="margin-bottom:10px;"><label>Type de document</label><select id="cls-doc-type" style="font-family:var(--mono);"></select></div>
     <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">S'applique à toutes les versions du document.</div>
@@ -3633,6 +3633,7 @@ document.addEventListener('click', (e) => {
   const panel = document.getElementById('postit-pieces');
   if(btn && btn.contains(e.target)) return;
   if(panel && panel.contains(e.target)) return;
+  if(e.target && e.target.isConnected === false) return; // V113 : élément redessiné entre-temps (changement d'onglet du panneau)
   if(e.target && e.target.closest && e.target.closest('.modal-overlay')) return; // fenêtre ouverte depuis le panneau
   closePostItPieces();
 });
@@ -4885,10 +4886,11 @@ function saveEcriture() {
   renum(); saveDB(); updateNavCounts();
   const avaitPJ = _saisiePJ.length > 0; // V110
   deposerPJSaisie(io, journal, date, newNumDoc, lines[0]?.libelleEcriture || ''); // V102 : justificatif joint à la saisie
-  if(!avaitPJ) setTimeout(() => { try { // V110 : avertir (sans bloquer) si l'écriture reste sans pièce
+  if(!avaitPJ) setTimeout(() => { try { // V110 : avertir (sans bloquer) si l'écriture reste sans pièce ; V113 : ou proposer la pièce de même n°
     preparerJustifs(); const jj = justifDe(io);
-    const ref = newNumDoc && piecesParReference().has(normRef(newNumDoc));
-    if(jj && jj.statut === 'manquant' && !ref) toast(`⚠ Écriture #${jj.num} enregistrée sans justificatif : pensez à joindre la pièce (clic sur son n° de pièce, en orange)`, 'warn', 7000);
+    const sugg = suggestionsParNumero().filter(x => x.j.io === cleIo(io));
+    if(sugg.length) proposerSuggestions(sugg, `Une pièce de la GED porte le n° ${newNumDoc} : la joindre à l'écriture #${jj ? jj.num : ''} ?`);
+    else if(jj && jj.statut === 'manquant') toast(`⚠ Écriture #${jj.num} enregistrée sans justificatif : pensez à joindre la pièce (clic sur son n° de pièce, en orange)`, 'warn', 7000);
   } catch(e) {} }, 300);
 
   if(isEditing) {
@@ -16006,6 +16008,7 @@ function repartirPieces(liste) { PIECES = (liste || []).filter(p => !p.corbeille
 function trouverPiece(id) { return (PIECES || []).find(x => x.id === id) || (CORBEILLE || []).find(x => x.id === id) || null; }
 let _piecesErreur = null;
 let DOCS_CONFIG = null;       // { rubriques: [{code, label}] } — null = rubriques par défaut
+let _docsConfigLu = false;    // V113 : la configuration a bien été lue dans Firebase (jamais écrasée sans l'avoir lue)
 let _docsVue = 'compta';      // 'compta' | 'permanent'
 const _docsFiltres = { exercice: null, pourExercice: null, type: '', q: '' };
 // V99 : le filtre « exercice » suit l'exercice affiché ; un choix manuel ne vaut que tant qu'on reste sur le même exercice
@@ -16042,7 +16045,7 @@ function indexerPiece(meta) {
 }
 async function chargerDocsConfig() {
   if(!window._fbDocsConfigLoad) return;
-  try { DOCS_CONFIG = (await window._fbDocsConfigLoad()) || null; } catch(e) { console.error(e); }
+  try { DOCS_CONFIG = (await window._fbDocsConfigLoad()) || null; _docsConfigLu = true; } catch(e) { console.error(e); }
 }
 function rubriquesDP() {
   return (DOCS_CONFIG && Array.isArray(DOCS_CONFIG.rubriques) && DOCS_CONFIG.rubriques.length) ? DOCS_CONFIG.rubriques : DP_RUBRIQUES_DEFAUT;
@@ -16134,6 +16137,7 @@ async function renderDocuments(recharger) {
   }
   if(DOCS_CONFIG && !rubriquesDP().some(r => r.code === 'etats_financiers')) assurerClasseursSysteme().then(() => renderDocumentsVue()); // V110
   migrerEditionsVersDP(); // V110
+  migrerV113().then(n => { if(n) renderDocumentsVue(); }); // V113
   renderDocumentsVue();
 }
 function docsChangerVue(v) { if(v === _docsVue && typeof _docsClasseur !== 'undefined') _docsClasseur[v] = null; _docsVue = v; renderDocumentsVue(); } // V107 : re-clic = retour aux classeurs
@@ -16227,9 +16231,9 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-numdoc').value = '';
   el('dep-numdoc-dp').value = source ? (source.numDoc || '') : ''; // V104
   // V107 : classeurs (plusieurs possibles) et type du dossier permanent
-  const clsCoches = new Set(source ? classeursDe(source) : (rubrique ? [rubrique] : []));
+  const clsCoches = new Set(source ? classeursDe(source).slice(0, 1) : (rubrique ? [rubrique] : [])); // V113 : un seul classeur
   el('dep-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:6px;margin:0;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-      <input type="checkbox" value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+      <input type="radio" name="dep-cls" value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
   el('dep-type-dp').innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('');
   el('dep-type-dp').value = source ? (source.typeDP || '') : '';
   el('dep-date').value = dateLocale(new Date());
@@ -16323,13 +16327,13 @@ async function enregistrerDepot() {
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
     const classeurs = Array.from(document.querySelectorAll('#dep-classeurs input:checked')).map(i => i.value); // V107
-    if(!classeurs.length) { err.textContent = 'Choisissez au moins un classeur.'; return; }
+    if(!classeurs.length) { err.textContent = 'Choisissez un classeur.'; return; }
     base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
   const barre = el('dep-progress-barre');
-  let nbOk = 0; const echecs = [];
+  let nbOk = 0; const echecs = [], idsCrees = []; // V113
   for(let i = 0; i < d.fichiers.length; i++) {
     const f = d.fichiers[i];
     const etat = el('dep-etat-' + i);
@@ -16355,7 +16359,7 @@ async function enregistrerDepot() {
       }
       try { await window._fbPieceSave(meta); }
       catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
-      indexerPiece(meta);
+      indexerPiece(meta); idsCrees.push(meta.id);
       if(source) await mettreEnVigueur(meta.id, true); // les versions antérieures ne sont plus « en vigueur »
       nbOk++;
       if(etat) { etat.textContent = '✓'; etat.style.color = 'var(--green)'; }
@@ -16373,6 +16377,7 @@ async function enregistrerDepot() {
     fermerDepot();
     if(apres) apres();
     toast(`${nbOk} document${nbOk > 1 ? 's' : ''} enregistré${nbOk > 1 ? 's' : ''}`, 'success');
+    setTimeout(() => { try { proposerSuggestionsPieces(idsCrees); } catch(e) { console.warn(e); } }, 400); // V113
   } else {
     el('dep-btn').disabled = false;
     // Les fichiers déjà envoyés sont retirés de la liste : un nouvel essai ne les renverra pas
@@ -16537,7 +16542,7 @@ function supprimerPieceDepuisVue() { if(_vue) { const id = _vue.id; askSupprimer
 // ── Exercices test : leurs pièces sont supprimées avec eux ──
 async function supprimerPiecesExercice(y) {
   if(PIECES === null) await chargerPieces();
-  const liste = piecesDeLExercice(y);
+  const liste = piecesDeLExercice(y).concat((PIECES || []).filter(p => p.espace === 'permanent' && p.origine && p.test && String(p.origineExercice) === String(y))); // V113
   let echecs = 0;
   for(const p of liste) { if(!(await mettrePieceEnCorbeille(p.id, `Exercice test « ${y} » supprimé`, true))) echecs++; } // V111 : corbeille
   if(liste.length) toast(echecs ? `${echecs} pièce(s) de l'exercice test « ${y} » n'ont pas pu être mises à la corbeille` : `${liste.length} pièce(s) de l'exercice test « ${y} » mise(s) à la corbeille de la GED`, echecs ? 'error' : 'success', 6000);
@@ -16679,6 +16684,11 @@ function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) 
 // Description, pour la GED, d'un document généré par un module
 function descripteurDocument(module, x, exercice, loc, data) {
   const base = { exercice: String(exercice), test: isTestExercise(exercice), x, module };
+  if(module === 'loc' && x.type === 'quittance' && !base.test) { // V113 : la quittance n'est pas une pièce comptable
+    const nom = [loc && loc.prenom1, loc && loc.nom1].filter(Boolean).join(' ');
+    return Object.assign(base, { cle: 'loc:' + x.id, espace: 'permanent', rubrique: CODE_LOCATAIRES, sousDossier: nom || 'Locataire', typeDP: 'QUIT',
+      titre: `Quittance${x.mois ? ' ' + moisLabelFromYYYYMM(x.mois) : ''} — ${nom}`, date: x.dateEmission || dateLocale(new Date()), nom: x.docTitle || 'Quittance', paysage: false, typePiece: '', numDoc: '' });
+  }
   if(module === 'loc') {
     const quoi = x.type === 'quittance' ? 'Quittance' : x.type === 'appel' ? 'Appel de loyer' : 'Document locatif';
     return Object.assign(base, { cle: 'loc:' + x.id, espace: 'compta',
@@ -16730,7 +16740,7 @@ function deposerDocumentGenere(d) {
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
       classeurs: existant && classeursDe(existant).length ? classeursDe(existant) : [d.rubrique], typeDP: (existant && existant.typeDP) || d.typeDP || (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '',
-      sousDossier: d.sousDossier || (existant && existant.sousDossier) || '' }); // V107 : classement conservé, V110 : sous-dossier
+      sousDossier: d.sousDossier || (existant && existant.sousDossier) || '', origineExercice: d.exercice, test: !!d.test }); // V107 : classement conservé, V110 : sous-dossier
     else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: d.numDoc || (existant && existant.numDoc) || '' }); // V109 : n° de pièce des écritures
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
@@ -16766,6 +16776,8 @@ async function synchroniserGED(sources, opts) {
   opts = opts || {};
   if(!window._fbStorageActif || _syncGEDEnCours) return null;
   if(PIECES === null && !(await chargerPieces())) return null;
+  if(!_docsConfigLu) await chargerDocsConfig();
+  try { await assurerClasseursSysteme(); await migrerV113(); } catch(e) { console.warn(e); } // V113
   _syncGEDEnCours = true;
   const res = { crees: 0, maj: 0, ajour: 0, supprimes: 0, corbeille: 0, introuvables: 0, echecs: 0, total: 0 };
   try {
@@ -17010,6 +17022,41 @@ function renderPiecesEcriture() {
   }
   corps.innerHTML = h;
 }
+// Écritures visées : celle ouverte, et si demandé toutes celles du même échéancier / emprunt
+function iosCibles(io) {
+  const j = justifDe(io); if(!j) return [];
+  if(!_pjTout || !(j.module === 'echeancier' || j.module === 'emprunt')) return [cleIo(io)];
+  const cle = j.module === 'echeancier' ? '_echId' : '_empId';
+  const ref = (j.lignes.find(l => l[cle]) || {})[cle];
+  if(!ref) return [cleIo(io)];
+  return [...new Set((DB.ecritures || []).filter(e => e[cle] === ref).map(e => cleIo(e._io)))];
+}
+function controleRattachement() {
+  if(EXERCISE_STATUS === 'closed') { bloqueSiCloture(); return false; }
+  if(!window._fbStorageActif || PIECES === null) { toast('GED indisponible', 'error'); return false; }
+  return true;
+}
+async function lierPiece(p, ios, ex) {
+  const liens = (p.liens || []).slice();
+  if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => k === cleIo(io) + '|' + (p.groupe || p.id))); if(DB.liensRefuses.length !== av) saveDB(); }
+  ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
+  return majPiece(p, { liens });
+}
+async function joindrePieceExistante(id) {
+  if(!controleRattachement()) return;
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const ios = iosCibles(_pjIo);
+  if(await lierPiece(p, ios, CURRENT_YEAR)) { toast(`Pièce jointe à ${ios.length} écriture${ios.length > 1 ? 's' : ''}`, 'success'); apresChangementJustifs(); }
+}
+async function detacherPiece(id) {
+  if(!controleRattachement()) return;
+  const p = (PIECES || []).find(x => x.id === id); if(!p) return;
+  const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
+  // V104 : une pièce détachée à la main n'est plus jamais rejointe automatiquement à cette écriture
+  const cleRefus = _pjIo + '|' + (p.groupe || p.id);
+  if(!ensureLiensRefuses().includes(cleRefus)) { DB.liensRefuses.push(cleRefus); saveDB(); }
+  if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
+}
 function deposerPourEcriture(io) {
   if(!controleRattachement()) return;
   const j = justifDe(io); if(!j) return;
@@ -17044,9 +17091,10 @@ const PAJ_MODULES = { '': 'Saisie manuelle', locative: 'Gestion locative', echea
 // V112 : tout ce qui demande attention, au même endroit ; un seul compteur dans l'en-tête
 let _atOnglet = 'ecr';
 function elementsATraiter() {
-  const r = { ecr: [], orph: [], nc: [], croises: [], introuv: [], vieux: [], cout: 0 };
+  const r = { sugg: [], ecr: [], orph: [], nc: [], croises: [], introuv: [], vieux: [], cout: 0 };
   try { r.ecr = ecrituresManquantes(); } catch(e) { console.error(e); }
   if(typeof PIECES !== 'undefined' && PIECES) {
+    try { r.sugg = suggestionsParNumero(); } catch(e) { console.warn(e); }
     try { r.orph = piecesSansEcritureExercice(); } catch(e) { console.warn(e); }
     try { r.nc = piecesDuClasseurCompta('__nc', PIECES.filter(p => p.espace === 'compta')); } catch(e) { console.warn(e); }
     try { r.croises = liensCroisesLocataires(); } catch(e) { console.warn(e); }
@@ -17054,7 +17102,7 @@ function elementsATraiter() {
     try { r.vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30); } catch(e) {}
     try { r.cout = coutStockageMensuel(); } catch(e) {}
   }
-  r.total = r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
+  r.total = r.sugg.length + r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
   return r;
 }
 function majBadgeATraiter(r) {
@@ -17072,6 +17120,7 @@ function renderPostItPieces() {
   const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
   el.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${Math.max(10, window.innerWidth - rect.right)}px;width:460px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);border:1px solid var(--line2);display:block;`;
   const onglets = [
+    { k: 'sugg', lib: 'Suggestions', n: r.sugg.length },
     { k: 'ecr', lib: 'Écritures sans pièce', n: r.ecr.length },
     { k: 'orph', lib: 'Pièces sans écriture', n: r.orph.length },
     { k: 'nc', lib: 'Pièces non classées', n: r.nc.length },
@@ -17080,7 +17129,7 @@ function renderPostItPieces() {
     { k: 'vieux', lib: 'Corbeille > 30 jours', n: r.vieux.length },
     { k: 'cout', lib: 'Stockage', n: r.cout > 1 ? 1 : 0 }
   ].filter(o => o.k === 'ecr' || o.n);
-  if(!onglets.some(o => o.k === _atOnglet)) _atOnglet = 'ecr';
+  if(!onglets.some(o => o.k === _atOnglet)) _atOnglet = r.sugg.length ? 'sugg' : 'ecr';
   const ouvert = EXERCISE_STATUS !== 'closed';
   const b = (lib, act, cls) => `<button class="btn btn-sm ${cls || ''}" onclick="${act}" style="padding:1px 8px;font-size:9px;">${lib}</button>`;
   const ligne = (contenu, act) => `<div style="padding:6px 8px;border-radius:3px;margin-bottom:2px;font-size:11px;line-height:1.35;${act ? 'cursor:pointer;' : ''}" ${act ? `onclick="event.stopPropagation();${act}"` : ''}>${contenu}</div>`;
@@ -17101,6 +17150,14 @@ function renderPostItPieces() {
           </div></div>`).join('') : `<div style="padding:14px 10px;text-align:center;color:var(--text2);font-style:italic;font-size:10px;">Aucune écriture sans pièce.</div>`);
     if(ouvert && liste.length) pied = `${b('TOUT COCHER', `_pajSel=new Set(${JSON.stringify(liste.map(j => j.io)).replace(/"/g, '&quot;')});renderPostItPieces()`)}
         <button class="btn btn-sm" ${_pajSel.size ? '' : 'disabled'} onclick="basculerSansJustif([..._pajSel], true);_pajSel=new Set();" style="padding:1px 8px;font-size:9px;margin-left:auto;">∅ PAS DE PIÈCE (${_pajSel.size})</button>`;
+  } else if(_atOnglet === 'sugg') {
+    const groupes = grouperSuggestions(r.sugg);
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);line-height:1.4;">Pièces de la GED qui portent le même n° de pièce que des écritures. Joignez-les, ou ignorez la suggestion : elle ne reviendra pas.</div>`
+      + groupes.map((g, i) => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px;">
+          <div style="flex:1;min-width:0;"><span style="cursor:pointer;" onclick="voirPiece('${g.p.id}')">${g.p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(g.p)} <strong>${esc(g.p.titre || g.p.nomFichier)}</strong></span>
+            <div style="color:var(--text2);font-size:9px;margin-top:2px;">n° ${esc(g.p.numDoc)} → ${g.js.map(j => '#' + j.num).join(', ')}${g.js.length === 1 ? ' — ' + esc(g.js[0].libelle) : ''}</div></div>
+          ${ouvert ? b('JOINDRE', `validerGroupeSuggestion(${i})`, 'btn-primary') + b('IGNORER', `ignorerGroupeSuggestion(${i})`) : ''}</div>`).join('');
+    if(ouvert && groupes.length) pied = `<button class="btn btn-sm btn-primary" onclick="joindreSuggestions(suggestionsParNumero())" style="padding:1px 8px;font-size:9px;margin-left:auto;">✓ TOUT VALIDER (${r.sugg.length})</button>`;
   } else if(_atOnglet === 'orph') {
     corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Pièces de ${esc(CURRENT_YEAR)} jointes à aucune écriture : à rattacher avant la clôture.</div>`
       + r.orph.map(p => ligne(`${iconePiece(p)} <strong>${esc(p.titre || p.nomFichier)}</strong><div style="color:var(--text2);font-size:9px;">${esc(p.numDoc || '')}${p.dateDoc ? ' • ' + fmtDateFr(p.dateDoc) : ''}</div>`, `voirPiece('${p.id}')`)).join('');
@@ -17141,20 +17198,9 @@ function ecrituresAppelDuMois(loc, mois) {
   preparerJustifs();
   return [...ios].map(io => justifDe(io)).filter(Boolean).sort((a, b) => (a.num || 0) - (b.num || 0));
 }
-function proposerLiaisonAppel(loc, entree, ensuite) {
-  const fin = () => { if(ensuite) ensuite(); };
-  if(EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !entree || !entree.mois) return fin();
-  const ecr = ecrituresAppelDuMois(loc, entree.mois);
-  if(!ecr.length) return fin();
-  if(_postItOpen) closePostItPieces();
-  _pjAppel = { loc, entree, ensuite: fin, ios: new Set(ecr.map(j => j.io)) };
-  document.getElementById('pja-texte').innerHTML = `Joindre l'<strong>appel de loyer de ${esc(moisLabelFromYYYYMM(entree.mois))}</strong> (${esc([loc.prenom1, loc.nom1].filter(Boolean).join(' '))}) aux écritures de loyer et de provision de ce mois ?`;
-  document.getElementById('pja-liste').innerHTML = ecr.map(j => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;">
-      <input type="checkbox" checked onchange="this.checked?_pjAppel.ios.add('${esc(j.io)}'):_pjAppel.ios.delete('${esc(j.io)}')" style="width:14px;height:14px;">
-      <span style="font-family:var(--mono);color:var(--cyan);">#${j.num}</span>
-      <span style="flex:1;min-width:0;">${esc(j.libelle)} <span style="color:var(--text2);font-size:10px;">${j.date ? fmtDateFr(j.date) : ''}${j.pieces.length ? ' · déjà ' + j.pieces.length + ' pièce(s)' : ''}</span></span>
-      <span style="font-family:var(--mono);">${fmt(j.montant)} €</span></label>`).join('');
-  document.getElementById('pj-appel-modal').style.display = 'flex';
+function proposerLiaisonAppel(loc, entree, ensuite) { // V113 : l'appel est joint d'office à ses écritures (lien certain)
+  try { programmerAutoLiaison(); } catch(e) {}
+  if(ensuite) ensuite();
 }
 function refuserLiaisonAppel() { const s = _pjAppel && _pjAppel.ensuite; _pjAppel = null; document.getElementById('pj-appel-modal').style.display = 'none'; if(s) s(); }
 async function accepterLiaisonAppel() {
@@ -17283,6 +17329,8 @@ function texteTampon(p) {
 // Les liens de l'exercice affiché gardent en mémoire le n° de pièce de leur écriture (pour les autres exercices)
 let _ndAMettreAJour = new Map(), _ndTimer = null;
 function controlerNdLiens() {
+  // V113 : un lien ne bouge plus quand le n° de pièce de l'écriture change ; on met seulement à jour le n° mémorisé
+  // dans le lien (tampon des pièces consultées depuis un autre exercice).
   if(EXERCISE_STATUS === 'closed' || !window._fbStorageActif || !_justifs) return;
   const ex = String(CURRENT_YEAR);
   (PIECES || []).forEach(p => {
@@ -17294,24 +17342,8 @@ function controlerNdLiens() {
     const ids = [..._ndAMettreAJour.keys()]; _ndAMettreAJour = new Map();
     for(const id of ids) {
       const p = (PIECES || []).find(x => x.id === id); if(!p || String(CURRENT_YEAR) !== ex) continue;
-      // V109 : n° de pièce de l'écriture modifié depuis le rattachement → la pièce n'en est plus le justificatif,
-      // sauf si elle porte elle-même ce nouveau n° (ou si c'est le document du module de l'écriture)
-      const detachees = [];
-      const liens = p.liens.filter(l => {
-        if(!(l.ex === ex && _justifs.has(l.io))) return true;
-        const j = _justifs.get(l.io);
-        if(l.nd === undefined || normRef(l.nd) === normRef(j.numDoc)) return true;
-        const garde = (p.numDoc && normRef(p.numDoc) === normRef(j.numDoc)) || pieceDuModulePourEcriture(j) === p;
-        if(!garde) detachees.push(j);
-        return garde;
-      }).map(l => (l.ex === ex && _justifs.has(l.io)) ? Object.assign({}, l, { nd: _justifs.get(l.io).numDoc || '' }) : l);
+      const liens = p.liens.map(l => (l.ex === ex && _justifs.has(l.io)) ? Object.assign({}, l, { nd: _justifs.get(l.io).numDoc || '' }) : l);
       try { await majPiece(p, { liens }); } catch(e) { console.warn(e); }
-      if(detachees.length) {
-        // les refus mémorisés pour ces écritures ne valent plus (nouvelle référence)
-        if(Array.isArray(DB.liensRefuses)) { const ios = new Set(detachees.map(j => j.io)); const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.has(k.split('|')[0])); if(av !== DB.liensRefuses.length) saveDB(); }
-        toast(`📎 « ${p.titre || p.nomFichier} » détachée de l'écriture ${detachees.map(j => '#' + j.num).join(', ')} (n° de pièce modifié)`, 'warn', 6000);
-        apresChangementJustifs();
-      }
     }
   }, 1500);
 }
@@ -17440,47 +17472,40 @@ let _autoTimer = null, _autoEnCours = false;
 function programmerAutoLiaison() { if(_autoTimer || _autoEnCours) return; _autoTimer = setTimeout(autoLierParReference, 1200); }
 let _anomaliesEnAttente = new Map();
 async function autoLierParReference() {
+  // V113 : seuls les liens CERTAINS sont faits d'office — documents des modules à leurs écritures :
+  // appel de loyer ↔ écritures des mouvements « + » du mois du même locataire, fiche km ↔ écriture km du mois,
+  // PV d'AGO ↔ écriture d'affectation. Les rapprochements par n° de pièce sont des SUGGESTIONS (« À traiter »).
   _autoTimer = null;
   if(_autoEnCours || !window._fbStorageActif || !PIECES || !DB || !DB.ecritures) return;
-  const clos = EXERCISE_STATUS === 'closed'; // exercice clôturé : seuls les documents de ses modules sont joints
   _autoEnCours = true;
-  let nbEcr = 0; const exemples = []; _anomaliesEnAttente = new Map();
+  let nbEcr = 0;
   try {
     const ex = String(CURRENT_YEAR);
-    const refs = clos ? new Map() : piecesParReference();
     preparerJustifs();
     const refus = new Set(ensureLiensRefuses());
-    const ajouts = new Map(), iosLies = new Set(), parIo = new Map(); // V110 : anomalies signalées
-    _justifs.forEach(j => {
-      if(_ioEnDepot.has(j.io)) return; // V109 : toute écriture, même déjà justifiée ou marquée, reçoit les pièces de même n°
-      const pm = pieceDuModulePourEcriture(j); // V108 : fiche km du mois / PV d'AGO
-      (pm ? [pm] : []).concat(j.numDoc ? (refs.get(normRef(j.numDoc)) || []) : []).forEach(p => {
-        if(refus.has(j.io + '|' + (p.groupe || p.id))) return;
-        if((p.liens || []).some(l => l.ex === ex && l.io === j.io)) return; // déjà jointe
-        if(!ajouts.has(p.id)) ajouts.set(p.id, { p, js: [] });
-        ajouts.get(p.id).js.push(j);
-      });
-    });
+    const ajouts = new Map(), iosLies = new Set();
+    const ajouter = (p, j) => {
+      if(!p || !j || refus.has(j.io + '|' + (p.groupe || p.id))) return;
+      if((p.liens || []).some(l => l.ex === ex && l.io === j.io)) return;
+      if(!ajouts.has(p.id)) ajouts.set(p.id, { p, js: [] });
+      if(!ajouts.get(p.id).js.includes(j)) ajouts.get(p.id).js.push(j);
+    };
+    _justifs.forEach(j => ajouter(pieceDuModulePourEcriture(j), j)); // fiche km / PV
+    (DB.locataires || []).forEach(loc => (loc.historique || []).forEach(h => {
+      if(h.type !== 'appel' || h._exercicePrecedent || !h.mois) return;
+      const p = PIECES.find(q => q.origine === 'loc:' + h.id); if(!p) return;
+      ecrituresAppelDuMois(loc, h.mois).forEach(j => ajouter(p, j));
+    }));
     for(const { p, js } of ajouts.values()) {
-      if(String(CURRENT_YEAR) !== ex) break; // exercice changé entre-temps
+      if(String(CURRENT_YEAR) !== ex) break;
       const liens = (p.liens || []).slice();
       js.forEach(j => { if(!liens.some(l => l.ex === ex && l.io === j.io)) liens.push({ ex, io: j.io, nd: j.numDoc || '', auto: true }); });
-      if(await majPiece(p, { liens })) js.forEach(j => {
-        if(!parIo.has(j.io)) parIo.set(j.io, { avant: j.pieces.slice(), sans: j.statut === 'sans', nouvelles: [] });
-        parIo.get(j.io).nouvelles.push(p);
-        if(!iosLies.has(j.io)) { iosLies.add(j.io); if(exemples.length < 1) exemples.push({ j, p }); }
-      });
+      if(await majPiece(p, { liens })) js.forEach(j => iosLies.add(j.io));
     }
-    nbEcr = iosLies.size; _anomaliesEnAttente = parIo;
+    nbEcr = iosLies.size;
   } catch(e) { console.error('Liaison automatique', e); }
   finally { _autoEnCours = false; }
-  if(nbEcr) {
-    const e0 = exemples[0];
-    toast(nbEcr === 1 ? `📎 Écriture #${e0.j.num} jointe automatiquement à « ${e0.p.titre || e0.p.nomFichier} » (${e0.p.origine ? 'document du module' : 'même n° de pièce ' + e0.j.numDoc})`
-      : `📎 ${nbEcr} écritures jointes automatiquement à leur document (même n° de pièce, fiche km, PV d'AGO)`, 'success', 6000);
-    apresChangementJustifs();
-    try { anomaliesApresLiaison(_anomaliesEnAttente); } catch(e) { console.warn(e); }
-  }
+  if(nbEcr) { toast(`📎 ${nbEcr} écriture(s) jointe(s) à leur document de module (appel de loyer, fiche km, PV)`, 'success', 5000); apresChangementJustifs(); }
 }
 // Modifier la référence (n° de pièce) d'un document déposé
 
@@ -18049,10 +18074,10 @@ let _clsDoc = null;
 function ouvrirClassementDP(id) {
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
   _clsDoc = id;
-  const actuels = new Set(classeursDe(p));
+  const actuels = new Set(classeursDe(p).slice(0, 1)); // V113 : un seul classeur
   document.getElementById('cls-doc-titre').textContent = p.titre || p.nomFichier;
   document.getElementById('cls-doc-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:8px;margin:0 0 4px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-      <input type="checkbox" value="${esc(r.code)}" ${actuels.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+      <input type="radio" name="cls-doc-cls" value="${esc(r.code)}" ${actuels.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
   document.getElementById('cls-doc-type').innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}" ${p.typeDP === t.code ? 'selected' : ''}>${esc(t.code)} — ${esc(t.label)}</option>`).join('');
   document.getElementById('cls-doc-err').textContent = '';
   document.getElementById('cls-doc-modal').style.display = 'flex';
@@ -18061,7 +18086,7 @@ function fermerClassementDP() { document.getElementById('cls-doc-modal').style.d
 async function enregistrerClassementDP() {
   const p = (PIECES || []).find(x => x.id === _clsDoc); if(!p) return fermerClassementDP();
   const classeurs = Array.from(document.querySelectorAll('#cls-doc-classeurs input:checked')).map(i => i.value);
-  if(!classeurs.length) { document.getElementById('cls-doc-err').textContent = 'Choisissez au moins un classeur.'; return; }
+  if(!classeurs.length) { document.getElementById('cls-doc-err').textContent = 'Choisissez un classeur.'; return; }
   const typeDP = document.getElementById('cls-doc-type').value;
   const versions = (PIECES || []).filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id));
   let ok = true;
@@ -18083,7 +18108,10 @@ function ouvrirGestionClasseurs(espace) {
 }
 function fermerGestionClasseurs() { document.getElementById('gc-modal').style.display = 'none'; _gc = null; }
 function gcMaj(i, champ, val) { if(_gc) _gc.classeurs[i][champ] = val; }
-function gcType(i, code, on) { const t = _gc.classeurs[i].types; const k = t.indexOf(code); if(on && k < 0) t.push(code); if(!on && k >= 0) t.splice(k, 1); }
+function gcType(i, code, on) { // V113 : un type n'est rangé que dans un seul classeur
+  const t = _gc.classeurs[i].types; const k = t.indexOf(code); if(on && k < 0) t.push(code); if(!on && k >= 0) t.splice(k, 1);
+  if(on) { _gc.classeurs.forEach((c, j) => { if(j !== i && (c.types || []).includes(code)) c.types = c.types.filter(x => x !== code); }); renderGestionClasseurs(); }
+}
 function gcDeplacer(i, s) { const l = _gc.classeurs, j = i + s; if(j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; renderGestionClasseurs(); }
 function gcSupprimer(i) {
   const c = _gc.classeurs[i];
@@ -18092,6 +18120,7 @@ function gcSupprimer(i) {
     if(n && !confirm(`Le classeur « ${c.label} » contient ${n} document(s). Le supprimer ? Les documents restent dans leurs autres classeurs (ou passent dans « Sans classeur »).`)) return;
   }
   if(c.code === CODE_ETATS_FINANCIERS) { toast('Classeur « États financiers » : alimenté automatiquement à chaque clôture, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; }
+  if(c.code === CODE_LOCATAIRES) { toast('Classeur « Locataires » : il reçoit automatiquement les quittances, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; } // V113
   _gc.classeurs.splice(i, 1); renderGestionClasseurs();
 }
 function gcAjouter() {
@@ -18131,7 +18160,7 @@ function renderGestionClasseurs() {
       <button class="btn btn-sm" onclick="gcTypeAjouter()" style="margin-top:4px;">+ NOUVEAU TYPE</button>` : '';
   document.getElementById('gc-liste').innerHTML = (lignes || `<div style="font-size:11px;color:var(--text2);font-style:italic;margin-bottom:8px;">Aucun classeur : toutes les pièces sont dans « Non classés ».</div>`)
     + `<button class="btn btn-sm" onclick="gcAjouter()">+ NOUVEAU CLASSEUR</button>`
-    + (dp ? '' : `<div style="font-size:10px;color:var(--text2);margin-top:8px;">Cochez les types de pièces réunis dans chaque classeur. Un même type peut être rangé dans plusieurs classeurs ; une pièce dont le type n'est rangé nulle part (ou sans type) apparaît dans « Non classés ».</div>`)
+    + (dp ? '' : `<div style="font-size:10px;color:var(--text2);margin-top:8px;">Cochez les types de pièces réunis dans chaque classeur. Un type ne peut être rangé que dans un seul classeur ; une pièce dont le type n'est rangé nulle part (ou sans type) apparaît dans « Non classés ».</div>`)
     + typesDp;
 }
 async function enregistrerGestionClasseurs() {
@@ -18642,14 +18671,16 @@ function anomaliesApresLiaison(ajoutsParIo) {
 const CODE_ETATS_FINANCIERS = 'etats_financiers';
 function classeurEtatsFinanciers() { return { code: CODE_ETATS_FINANCIERS, label: 'États financiers', couleur: '#2dd4bf' }; }
 async function assurerClasseursSysteme() {
-  if(!window._fbStorageActif || !window._fbDocsConfigSave) return;
-  const r = rubriquesDP();
-  const manqueEF = !r.some(x => x.code === CODE_ETATS_FINANCIERS);
-  const manqueType = !typesDP().some(t => t.code === 'EF');
-  if(!manqueEF && !manqueType) return;
-  try {
-    await enregistrerDocsConfig({ rubriques: manqueEF ? r.concat([classeurEtatsFinanciers()]) : r, typesDP: manqueType ? typesDP().concat([{ code: 'EF', label: 'États financiers' }]) : typesDP() });
-  } catch(e) { console.warn('Classeur « États financiers » non créé', e); }
+  if(!window._fbStorageActif || !window._fbDocsConfigSave || !_docsConfigLu) return; // V113 : jamais sans avoir lu la configuration
+  let r = rubriquesDP(), t = typesDP();
+  const ajoutsR = [], ajoutsT = [];
+  if(!r.some(x => x.code === CODE_ETATS_FINANCIERS)) ajoutsR.push(classeurEtatsFinanciers());
+  if(!r.some(x => x.code === CODE_LOCATAIRES)) ajoutsR.push({ code: CODE_LOCATAIRES, label: 'Locataires', couleur: '#f472b6' }); // V113
+  if(!t.some(x => x.code === 'EF')) ajoutsT.push({ code: 'EF', label: 'États financiers' });
+  if(!t.some(x => x.code === 'QUIT')) ajoutsT.push({ code: 'QUIT', label: 'Quittance de loyer' }); // V113
+  if(!ajoutsR.length && !ajoutsT.length) return;
+  try { await enregistrerDocsConfig({ rubriques: r.concat(ajoutsR), typesDP: t.concat(ajoutsT) }); }
+  catch(e) { console.warn('Classeurs système non créés', e); }
 }
 // Éditions de clôture déjà déposées dans les pièces comptables (V106) → déplacées dans le DP
 let _migrationEditionsFaite = false;
@@ -18929,7 +18960,12 @@ function ouvrirModifPiece(id) {
       <div id="mp-bloc-dp" style="display:none;"><div class="form-row c2 mb8"><div class="form-field"><label>Classeur</label><select id="mp-cls">${optCls}</select></div>
         <div class="form-field"><label>Type de document</label><select id="mp-typedp" style="font-family:var(--mono);">${optTypeDP}</select></div></div>
         <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">La pièce quitte les pièces comptables ; ses liens avec les écritures sont conservés.</div></div>`}
-      ${dp ? '<div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Classeur et type : bouton 🗂 de la ligne.</div>' : ''}
+      ${dp ? `<div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Classeur et type : bouton 🗂 de la ligne.</div>
+      ${ouverts.length && !(PIECES || []).some(x => x !== p && x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)) ? `<label style="display:flex;align-items:center;gap:8px;margin:10px 0 6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="mp-vers-compta" onchange="document.getElementById('mp-bloc-compta').style.display=this.checked?'':'none'" style="width:14px;height:14px;"> Déplacer vers les pièces comptables</label>
+      <div id="mp-bloc-compta" style="display:none;"><div class="form-row c2 mb8"><div class="form-field"><label>Exercice (ouverts)</label><select id="mp-ex-c">${ouverts.map(y => `<option value="${esc(y)}" ${y === String(CURRENT_YEAR) ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select></div>
+        <div class="form-field"><label>Type de pièce</label><select id="mp-type-c" style="font-family:var(--mono);">${optType}</select></div></div>
+        <div style="font-size:10px;color:var(--text2);margin-bottom:6px;">Seuls ses liens avec les écritures de cet exercice sont conservés.</div></div>` : '<div style="font-size:10px;color:var(--text2);">Document à plusieurs versions : il reste dans le dossier permanent.</div>'}` : ''}
       <div id="mp-err" style="font-size:11px;color:var(--red);min-height:14px;margin:6px 0;line-height:1.5;"></div>
       <div class="flex gap8"><button class="btn btn-primary" onclick="enregistrerModifPiece()">✓ ENREGISTRER</button><button class="btn ml-auto" onclick="fermerModifPiece()">ANNULER</button></div>
     </div>`;
@@ -18944,6 +18980,14 @@ async function enregistrerModifPiece() {
   if(!titre) { err.textContent = 'Le titre est obligatoire.'; return; }
   if(!date) { err.textContent = 'La date est obligatoire.'; return; }
   const nouveau = Object.assign({}, p, { titre, dateDoc: date, numDoc: v('mp-numdoc') });
+  if(p.espace === 'permanent' && v('mp-vers-compta')) { // V113 : retour dans les pièces comptables
+    const ex = v('mp-ex-c');
+    if(!exercicesOuverts().includes(ex)) { err.textContent = `L'exercice ${ex} n'est pas ouvert.`; return; }
+    const autres = (p.liens || []).filter(l => l.ex !== ex).length;
+    if(autres && !confirm(`Le document sera détaché de ${autres} écriture(s) d'autres exercices. Continuer ?`)) return;
+    Object.assign(nouveau, { espace: 'compta', exercice: ex, test: isTestExercise(ex), typePiece: v('mp-type-c'), liens: (p.liens || []).filter(l => l.ex === ex) });
+    ['rubrique', 'classeurs', 'typeDP', 'groupe', 'version', 'enVigueur', 'sousDossier'].forEach(k => delete nouveau[k]);
+  }
   if(p.espace === 'compta') {
     const ex = v('mp-ex') || String(p.exercice);
     if(v('mp-vers-dp')) {
@@ -18965,8 +19009,104 @@ async function enregistrerModifPiece() {
   catch(e) { err.textContent = "Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e); return; }
   Object.keys(p).forEach(k => delete p[k]); Object.assign(p, nouveau);
   fermerModifPiece();
-  toast(p.espace === 'permanent' && nouveau.groupe === p.id && nouveau.version === 1 && !p.exercice ? 'Pièce déplacée vers le dossier permanent' : 'Pièce modifiée', 'success');
-  updateNavCounts(); renderDocumentsVue(); apresChangementJustifs(); programmerAutoLiaison();
+  toast('Pièce enregistrée', 'success');
+  updateNavCounts(); renderDocumentsVue(); apresChangementJustifs();
+  setTimeout(() => { try { proposerSuggestionsPieces([p.id]); } catch(e) {} }, 300); // V113
+}
+
+// ══════════════════════════════════════════════
+// V113 — LIENS FIGÉS, SUGGESTIONS PAR N° DE PIÈCE, QUITTANCES AU DP, UN CLASSEUR PAR DOCUMENT
+// ══════════════════════════════════════════════
+const CODE_LOCATAIRES = 'locataires';
+// Suggestions : pièce déposée (pas un document de module) de même n° qu'une écriture de l'exercice affiché (ouvert),
+// non encore jointe, et non ignorée. Écritures « pas de pièce » et écritures calculées exclues.
+function suggestionsParNumero() {
+  if(EXERCISE_STATUS === 'closed' || !PIECES || !DB || !DB.ecritures) return [];
+  preparerJustifs();
+  const ex = String(CURRENT_YEAR), refus = new Set(ensureLiensRefuses()), refs = piecesParReference(), out = [];
+  _justifs.forEach(j => {
+    if(!j.numDoc || j.statut === 'sans' || j.statut === 'exempt') return;
+    (refs.get(normRef(j.numDoc)) || []).forEach(p => {
+      if(p.origine || refus.has(j.io + '|' + (p.groupe || p.id))) return;
+      if((p.liens || []).some(l => l.ex === ex && l.io === j.io)) return;
+      out.push({ p, j });
+    });
+  });
+  return out;
+}
+function grouperSuggestions(liste) {
+  const m = new Map();
+  liste.forEach(x => { if(!m.has(x.p.id)) m.set(x.p.id, { p: x.p, js: [] }); m.get(x.p.id).js.push(x.j); });
+  return [...m.values()].sort((a, b) => (a.js[0].num || 0) - (b.js[0].num || 0));
+}
+async function joindreSuggestions(liste) {
+  if(!liste || !liste.length || bloqueSiCloture()) return;
+  let n = 0;
+  for(const g of grouperSuggestions(liste)) { if(await lierPiece(g.p, g.js.map(j => j.io), CURRENT_YEAR)) n += g.js.length; }
+  toast(`📎 ${n} lien(s) créé(s)`, 'success');
+  apresChangementJustifs(); updateNavCounts();
+}
+function ignorerSuggestions(liste) {
+  if(!liste || !liste.length || bloqueSiCloture()) return;
+  const r = ensureLiensRefuses();
+  liste.forEach(x => { const k = x.j.io + '|' + (x.p.groupe || x.p.id); if(!r.includes(k)) r.push(k); });
+  saveDB();
+  toast('Suggestion ignorée : elle ne reviendra pas', 'success');
+  apresChangementJustifs(); updateNavCounts();
+}
+function validerGroupeSuggestion(i) { const g = grouperSuggestions(suggestionsParNumero())[i]; if(g) joindreSuggestions(g.js.map(j => ({ p: g.p, j }))); }
+function ignorerGroupeSuggestion(i) { const g = grouperSuggestions(suggestionsParNumero())[i]; if(g) ignorerSuggestions(g.js.map(j => ({ p: g.p, j }))); }
+// Fenêtre de proposition (après un dépôt, une saisie, une modification de n°)
+let _suggProposees = [];
+function proposerSuggestionsPieces(ids) {
+  if(!ids || !ids.length) return;
+  const set = new Set(ids);
+  const liste = suggestionsParNumero().filter(x => set.has(x.p.id));
+  if(liste.length) proposerSuggestions(liste, liste.length === 1 ? `Une écriture porte le même n° de pièce : y joindre le document ?` : `${liste.length} écritures portent le même n° de pièce : y joindre le document ?`);
+}
+function proposerSuggestions(liste, titre) {
+  _suggProposees = liste.map(x => Object.assign({ coche: true }, x));
+  let el = document.getElementById('sugg-modal');
+  if(!el) { el = document.createElement('div'); el.id = 'sugg-modal'; el.className = 'modal-overlay'; el.style.zIndex = '1080'; document.body.appendChild(el); }
+  el.innerHTML = `<div class="modal" style="width:600px;max-width:95vw;">
+      <div class="modal-title">📎 JOINDRE ?</div>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">${esc(titre)}</div>
+      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${_suggProposees.map((x, i) => `<label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;cursor:pointer;margin:0;text-transform:none;letter-spacing:0;">
+          <input type="checkbox" checked onchange="_suggProposees[${i}].coche=this.checked" style="width:14px;height:14px;">
+          <span style="flex:1;min-width:0;">${iconePiece(x.p)} ${esc(x.p.titre || x.p.nomFichier)} → <span style="font-family:var(--mono);color:var(--cyan);">#${x.j.num}</span> ${esc(x.j.libelle)} <span style="color:var(--text2);font-size:10px;">${x.j.date ? fmtDateFr(x.j.date) : ''}</span></span>
+          <span style="font-family:var(--mono);">${fmt(x.j.montant)} €</span></label>`).join('')}</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:8px;">« Plus tard » : les suggestions restent dans « À traiter ».</div>
+      <div class="flex gap8" style="margin-top:14px;">
+        <button class="btn btn-primary" onclick="document.getElementById('sugg-modal').style.display='none';joindreSuggestions(_suggProposees.filter(x=>x.coche))">✓ JOINDRE</button>
+        <button class="btn" onclick="document.getElementById('sugg-modal').style.display='none';ignorerSuggestions(_suggProposees)">IGNORER</button>
+        <button class="btn ml-auto" onclick="document.getElementById('sugg-modal').style.display='none'">PLUS TARD</button></div>
+    </div>`;
+  el.style.display = 'flex';
+}
+// Migrations (une fois par session) : quittances → DP › Locataires ; un seul classeur par document du DP
+let _migrationV113 = null;
+function migrerV113() {
+  if(_migrationV113) return _migrationV113;
+  _migrationV113 = (async () => {
+    if(!PIECES || !window._fbStorageActif) { _migrationV113 = null; return 0; }
+    if(!_docsConfigLu) await chargerDocsConfig();
+    await assurerClasseursSysteme();
+    let n = 0;
+    const quittances = PIECES.filter(p => p.module === 'loc' && String(p.origine || '').startsWith('loc:') && p.espace === 'compta' && !p.test && /^Quittance/i.test(p.titre || ''));
+    for(const p of quittances) {
+      const nom = String(p.titre || '').split(' — ').slice(1).join(' — ').trim() || 'Locataire';
+      const nouveau = Object.assign({}, p, { espace: 'permanent', rubrique: CODE_LOCATAIRES, classeurs: [CODE_LOCATAIRES], sousDossier: nom, typeDP: 'QUIT',
+        groupe: p.id, version: 1, enVigueur: true, numDoc: '', liens: [], origineExercice: p.origineExercice || p.exercice, test: false });
+      delete nouveau.exercice; delete nouveau.typePiece;
+      try { await window._fbPieceSave(nouveau); Object.keys(p).forEach(k => delete p[k]); Object.assign(p, nouveau); n++; } catch(e) { console.warn(e); }
+    }
+    for(const p of PIECES.filter(p => p.espace === 'permanent' && Array.isArray(p.classeurs) && p.classeurs.length > 1)) {
+      try { await majPiece(p, { classeurs: p.classeurs.slice(0, 1), rubrique: p.classeurs[0] }); } catch(e) {}
+    }
+    if(n) { toast(`🗂 ${n} quittance(s) rangée(s) dans le dossier permanent › Locataires (elles ne sont plus des pièces comptables)`, 'success', 8000); apresChangementJustifs(); try { programmerAutoLiaison(); } catch(e) {} }
+    return n;
+  })();
+  return _migrationV113;
 }
 
 </script>
