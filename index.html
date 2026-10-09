@@ -2935,7 +2935,9 @@ applyTheme();
         <div class="form-field" style="flex:1.2;min-width:0;"><label>Classeur *</label><div id="dep-classeurs"></div></div>
         <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
         <div class="form-field" style="flex:1;min-width:0;"><label title="Le type se place au début de la référence, la suite après un « / ». Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-dp-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc-dp" placeholder="ex. EDF" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
-      </div></div>
+      </div>
+      <div class="form-field" style="margin-top:8px;"><label title="Sous-partie du classeur (ex. Statuts, PV d'AG… dans un classeur Juridique). Laisser vide : à la racine du classeur.">Intercalaire</label><input type="text" id="dep-inter" list="dep-inter-list" placeholder="Aucun — à la racine du classeur" autocomplete="off"><datalist id="dep-inter-list"></datalist></div>
+      </div>
     </div>
     <div id="dep-progress" style="display:none;height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden;"><div id="dep-progress-barre" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
     <div id="dep-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;line-height:1.5;"></div>
@@ -2975,8 +2977,9 @@ applyTheme();
     <div id="cls-doc-titre" style="font-size:12px;color:var(--text1);margin-bottom:12px;"></div>
     <div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin-bottom:6px;">CLASSEUR</div>
     <div id="cls-doc-classeurs" style="max-height:240px;overflow-y:auto;margin-bottom:12px;"></div>
+    <div class="form-field" style="margin-bottom:10px;"><label>Intercalaire</label><input type="text" id="cls-doc-inter" list="cls-doc-inter-list" placeholder="Aucun — à la racine du classeur" autocomplete="off"><datalist id="cls-doc-inter-list"></datalist></div>
     <div class="form-field" style="margin-bottom:10px;"><label>Type de document</label><select id="cls-doc-type" style="font-family:var(--mono);"></select></div>
-    <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">S'applique à toutes les versions du document.</div>
+    <div style="font-size:10px;color:var(--text2);margin-bottom:8px;">S'applique à toutes les versions du document. Intercalaire : tapez un nom nouveau ou choisissez un nom existant.</div>
     <div id="cls-doc-err" style="font-size:11px;color:var(--red);min-height:14px;margin-bottom:8px;"></div>
     <div class="flex gap8"><button class="btn btn-primary" onclick="enregistrerClassementDP()">✓ ENREGISTRER</button><button class="btn ml-auto" onclick="fermerClassementDP()">ANNULER</button></div>
   </div>
@@ -16280,9 +16283,10 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-numdoc').value = '';
   // V107 : classeurs (plusieurs possibles) et type du dossier permanent
   const clsCoches = new Set(source ? classeursDe(source).slice(0, 1) : (rubrique ? [rubrique] : [])); // V113 : un seul classeur
-  el('dep-classeurs').innerHTML = `<select id="dep-cls-sel"><option value="">—</option>${rubriquesDP().map(r => `<option value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select>`; // V115 : liste déroulante
+  el('dep-classeurs').innerHTML = `<select id="dep-cls-sel" onchange="majListeIntercalaires('dep-inter-list',this.value)"><option value="">—</option>${rubriquesDP().map(r => `<option value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select>`; // V115 : liste déroulante
   remplirTypesDP(el('dep-type-dp'), source ? (source.typeDP || '') : ''); // V118
   prerempliNumDocDP(source ? source.numDoc : '', source ? source.typeDP : ''); // V119
+  el('dep-inter').value = source ? (source.sousDossier || '') : ''; majListeIntercalaires('dep-inter-list', (el('dep-cls-sel') || {}).value || ''); // V127
   document.querySelectorAll('.nv-type-dp').forEach(x => x.remove());
   el('dep-date').value = dateLocale(new Date());
   el('dep-titre').value = source ? (source.titre || '') : '';
@@ -16378,7 +16382,7 @@ async function enregistrerDepot() {
   } else {
     const clsSel = document.getElementById('dep-cls-sel'); const classeurs = clsSel && clsSel.value ? [clsSel.value] : []; // V115
     if(!classeurs.length) { err.textContent = 'Choisissez un classeur.'; return; }
-    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: numDocDepotDP() }; // V104 : référence
+    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: numDocDepotDP(), sousDossier: el('dep-inter').value.trim() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
@@ -18332,6 +18336,18 @@ async function creerTypeDP(code, label) {
     return true;
   } catch(e) { console.error(e); toast('Type non enregistré : ' + (e.message || e), 'error'); return false; }
 }
+// V127 : INTERCALAIRES des classeurs du DP = p.sousDossier (saisie libre). Ordre choisi dans ⚙ (rubrique.intercalaires).
+function intercalairesClasseur(code) {
+  const r = rubriquesDP().find(x => x.code === code) || {}, ordre = Array.isArray(r.intercalaires) ? r.intercalaires : [];
+  const presents = [...new Set((PIECES || []).concat(CORBEILLE || []).filter(p => p.espace === 'permanent' && !p.corbeille && classeursDe(p).includes(code) && p.sousDossier).map(p => p.sousDossier))];
+  const desc = code === CODE_ETATS_FINANCIERS;
+  const reste = presents.filter(n => !ordre.includes(n)).sort((a, b) => desc ? b.localeCompare(a, 'fr', { numeric: true }) : a.localeCompare(b, 'fr', { numeric: true }));
+  return ordre.filter(n => presents.includes(n)).concat(reste);
+}
+function majListeIntercalaires(listId, code) {
+  const dl = document.getElementById(listId); if(!dl) return;
+  dl.innerHTML = (code ? intercalairesClasseur(code) : []).map(n => `<option value="${esc(n)}">`).join('');
+}
 function libTypeDP(code) { const t = typesDP().find(x => x.code === code); return t ? t.label : (code || ''); }
 function classeursDe(p) { return (Array.isArray(p.classeurs) && p.classeurs.length) ? p.classeurs : (p.rubrique ? [p.rubrique] : []); }
 async function enregistrerDocsConfig(changements) {
@@ -18535,8 +18551,9 @@ function ouvrirClassementDP(id) {
   const actuels = new Set(classeursDe(p).slice(0, 1)); // V113 : un seul classeur
   document.getElementById('cls-doc-titre').textContent = p.titre || p.nomFichier;
   document.getElementById('cls-doc-classeurs').innerHTML = rubriquesDP().map((r, i) => `<label style="display:flex;align-items:center;gap:8px;margin:0 0 4px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;">
-      <input type="radio" name="cls-doc-cls" value="${esc(r.code)}" ${actuels.has(r.code) ? 'checked' : ''} style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
+      <input type="radio" name="cls-doc-cls" value="${esc(r.code)}" ${actuels.has(r.code) ? 'checked' : ''} onchange="majListeIntercalaires('cls-doc-inter-list',this.value)" style="width:14px;height:14px;"><span style="width:10px;height:10px;border-radius:2px;background:${couleurRubrique(r, i)};"></span>${esc(r.label)}</label>`).join('');
   remplirTypesDP(document.getElementById('cls-doc-type'), p.typeDP || ''); // V118
+  document.getElementById('cls-doc-inter').value = p.sousDossier || ''; majListeIntercalaires('cls-doc-inter-list', classeursDe(p)[0] || ''); // V127
   document.querySelectorAll('.nv-type-dp').forEach(x => x.remove());
   document.getElementById('cls-doc-err').textContent = '';
   document.getElementById('cls-doc-modal').style.display = 'flex';
@@ -18549,7 +18566,8 @@ async function enregistrerClassementDP() {
   const typeDP = document.getElementById('cls-doc-type').value;
   const versions = (PIECES || []).filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id));
   let ok = true;
-  for(const v of versions) ok = (await majPiece(v, { classeurs, rubrique: classeurs[0], typeDP })) && ok;
+  const sousDossier = document.getElementById('cls-doc-inter').value.trim(); // V127
+  for(const v of versions) ok = (await majPiece(v, { classeurs, rubrique: classeurs[0], typeDP, sousDossier })) && ok;
   if(ok) toast('Classement enregistré', 'success');
   fermerClassementDP(); renderDocumentsVue();
 }
@@ -18558,7 +18576,7 @@ async function enregistrerClassementDP() {
 let _gc = null;
 function ouvrirGestionClasseurs(espace) {
   _gc = espace === 'permanent'
-    ? { espace, classeurs: rubriquesDP().map((r, i) => ({ code: r.code, label: r.label, couleur: couleurRubrique(r, i) })), types: typesDP().map(t => Object.assign({}, t)) }
+    ? { espace, classeurs: rubriquesDP().map((r, i) => ({ code: r.code, label: r.label, couleur: couleurRubrique(r, i), inter: intercalairesClasseur(r.code), renommer: {}, rangerDans: '' })), types: typesDP().map(t => Object.assign({}, t)) }
     : { espace, classeurs: classeursCompta().map(c => ({ id: c.id, nom: c.nom, couleur: c.couleur || COULEURS_CLASSEUR[0], types: (c.types || []).slice() })) };
   document.getElementById('gc-titre').textContent = espace === 'permanent' ? '⚙ CLASSEURS ET TYPES DU DOSSIER PERMANENT' : '⚙ CLASSEURS DES PIÈCES COMPTABLES';
   document.getElementById('gc-err').textContent = '';
@@ -18589,6 +18607,16 @@ function gcAjouter() {
   renderGestionClasseurs();
   setTimeout(() => { const ins = document.querySelectorAll('#gc-liste input[type=text]'); if(ins.length) ins[ins.length - 1].focus(); }, 30);
 }
+function gcInterDeplacer(i, k, s) { const l = _gc.classeurs[i].inter, j = k + s; if(j < 0 || j >= l.length) return; [l[k], l[j]] = [l[j], l[k]]; renderGestionClasseurs(); }
+function gcInterRenommer(i, k) {
+  const c = _gc.classeurs[i], ancien = c.inter[k];
+  const nv = (prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien) || '').trim();
+  if(!nv || nv === ancien) return;
+  if(c.inter.some((n, x) => x !== k && n.toLowerCase() === nv.toLowerCase())) { toast('Un intercalaire porte déjà ce nom dans ce classeur', 'error'); return; }
+  const origine = Object.keys(c.renommer).find(o => c.renommer[o] === ancien) || ancien;
+  c.renommer[origine] = nv; c.inter[k] = nv; renderGestionClasseurs();
+}
+function gcRangerDans(i, cible) { _gc.classeurs[i].rangerDans = cible; renderGestionClasseurs(); }
 function gcTypeMaj(i, champ, val) { _gc.types[i][champ] = champ === 'code' ? val.toUpperCase().replace(/[^A-Z0-9_]/g, '') : val; }
 function gcTypeAjouter() { _gc.types.push({ code: '', label: '', nouveau: true }); renderGestionClasseurs(); }
 function gcTypeSupprimer(i) {
@@ -18596,6 +18624,16 @@ function gcTypeSupprimer(i) {
   const n = (PIECES || []).filter(p => p.espace === 'permanent' && p.typeDP && p.typeDP === t.code).length;
   if(n) { toast(`Type utilisé par ${n} document(s) : changez d'abord leur type`, 'error', 5000); return; }
   _gc.types.splice(i, 1); renderGestionClasseurs();
+}
+function htmlGcIntercalaires(c, i) { // V127
+  const systeme = c.code === CODE_LOCATAIRES || c.code === CODE_ETATS_FINANCIERS;
+  const b = (lib, act, tit) => `<span onclick="${act}" title="${tit}" style="cursor:pointer;color:var(--text2);padding:0 2px;">${lib}</span>`;
+  const chips = (c.inter || []).map((n, k) => `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border:1px solid var(--line2);border-radius:10px;font-size:10px;">${b('◀', `gcInterDeplacer(${i},${k},-1)`, 'Avancer')}📁 ${esc(n)}${b('▶', `gcInterDeplacer(${i},${k},1)`, 'Reculer')}${b('✎', `gcInterRenommer(${i},${k})`, 'Renommer')}</span>`).join('');
+  const cibles = _gc.classeurs.filter(x => x !== c && !x.rangerDans && x.code !== CODE_LOCATAIRES && x.code !== CODE_ETATS_FINANCIERS);
+  const ranger = systeme || c.nouveau ? '' : `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 0;text-transform:none;letter-spacing:0;font-size:10px;color:var(--text2);">Ranger ce classeur dans
+      <select onchange="gcRangerDans(${i},this.value)" style="height:24px;font-size:10px;padding:0 4px;width:auto;"><option value="">—</option>${cibles.map(x => `<option value="${esc(x.code)}" ${c.rangerDans === x.code ? 'selected' : ''}>${esc(x.label || '(sans nom)')}</option>`).join('')}</select>
+      ${c.rangerDans ? `<span style="color:var(--amber);">→ ses documents iront dans l'intercalaire « ${esc(c.label)} », puis ce classeur sera supprimé</span>` : ''}</label>`;
+  return `<div style="margin-top:6px;">${chips ? `<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;"><span style="font-size:10px;color:var(--text2);">Intercalaires :</span>${chips}</div>` : `<div style="font-size:10px;color:var(--text2);">Aucun intercalaire (ils se créent au dépôt ou au classement d'un document).</div>`}${ranger}</div>`;
 }
 function renderGestionClasseurs() {
   if(!_gc) return;
@@ -18608,7 +18646,7 @@ function renderGestionClasseurs() {
         <input type="text" value="${esc(dp ? c.label : c.nom)}" oninput="gcMaj(${i},'${dp ? 'label' : 'nom'}',this.value)" placeholder="Nom du classeur" style="flex:1;height:28px;">
         ${b('▲', `gcDeplacer(${i},-1)`, 'Monter')}${b('▼', `gcDeplacer(${i},1)`, 'Descendre')}${b('✕', `gcSupprimer(${i})`, 'Supprimer', 'btn-danger')}
       </div>
-      ${dp ? '' : `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;">${types.map(t => `<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;letter-spacing:0;font-size:10px;cursor:pointer;" title="${esc(t.label)}">
+      ${dp ? htmlGcIntercalaires(c, i) : ''}${dp ? '' : `<div style="display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;">${types.map(t => `<label style="display:flex;align-items:center;gap:4px;margin:0;text-transform:none;letter-spacing:0;font-size:10px;cursor:pointer;" title="${esc(t.label)}">
           <input type="checkbox" ${c.types.includes(t.code) ? 'checked' : ''} onchange="gcType(${i},'${esc(t.code)}',this.checked)" style="width:12px;height:12px;">${esc(t.code)}</label>`).join('')}</div>`}
     </div>`).join('');
   const typesDp = dp ? `<div style="font-family:var(--mono);font-size:10px;color:var(--text1);letter-spacing:.08em;margin:14px 0 6px;">TYPES DE DOCUMENTS DU DOSSIER PERMANENT</div>
@@ -18635,9 +18673,24 @@ async function enregistrerGestionClasseurs() {
       const codes = _gc.types.map(t => t.code.trim());
       if(_gc.types.some(t => !t.code.trim() || !t.label.trim())) { err.textContent = 'Chaque type doit avoir un code et un libellé.'; return; }
       if(new Set(codes).size !== codes.length) { err.textContent = 'Deux types ont le même code.'; return; }
-      const rubriques = _gc.classeurs.map(c => ({ code: c.code, label: c.label.trim(), couleur: c.couleur }));
+      // V127 : classeurs rangés dans un autre (deviennent un intercalaire de la cible), renommage et ordre des intercalaires
+      const ranges = _gc.classeurs.filter(c => c.rangerDans && _gc.classeurs.some(x => x.code === c.rangerDans && !x.rangerDans));
+      if(ranges.length && !confirm(ranges.map(c => `« ${c.label.trim()} » → intercalaire de « ${_gc.classeurs.find(x => x.code === c.rangerDans).label.trim()} »`).join('\n') + '\n\nRanger ces classeurs ?')) return;
+      ranges.forEach(c => { const cible = _gc.classeurs.find(x => x.code === c.rangerDans); if(!cible.inter.includes(c.label.trim())) cible.inter.push(c.label.trim()); });
+      const rubriques = _gc.classeurs.filter(c => !ranges.includes(c)).map(c => ({ code: c.code, label: c.label.trim(), couleur: c.couleur, intercalaires: (c.inter || []).slice() }));
       const supprimes = rubriquesDP().map(r => r.code).filter(code => !rubriques.some(r => r.code === code));
       await enregistrerDocsConfig({ rubriques, typesDP: _gc.types.map(t => ({ code: t.code.trim(), label: t.label.trim() })) });
+      const docsDP = (PIECES || []).concat(CORBEILLE || []).filter(p => p.espace === 'permanent');
+      for(const c of _gc.classeurs) for(const [ancien, nv] of Object.entries(c.renommer || {})) {
+        for(const p of docsDP.filter(p => classeursDe(p).includes(c.code) && p.sousDossier === ancien)) await majPiece(p, { sousDossier: nv });
+      }
+      for(const c of ranges) {
+        const nom = c.label.trim();
+        for(const p of docsDP.filter(p => classeursDe(p).includes(c.code))) {
+          const autres = classeursDe(p).filter(x => x !== c.code && x !== c.rangerDans);
+          await majPiece(p, { classeurs: [c.rangerDans].concat(autres).slice(0, 1), rubrique: c.rangerDans, sousDossier: p.sousDossier ? nom + ' — ' + p.sousDossier : nom });
+        }
+      }
       // Documents des classeurs supprimés : retirés de ces classeurs
       for(const p of (PIECES || []).filter(p => p.espace === 'permanent' && classeursDe(p).some(c => supprimes.includes(c)))) {
         const reste = classeursDe(p).filter(c => !supprimes.includes(c));
@@ -19058,10 +19111,11 @@ function htmlDossierPermanentV109() {
   const ligneGroupe = g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '');
   let lignes;
   if(liste.some(g => g.courante.sousDossier)) { // V110 : sous-dossiers (ex. une année par dossier dans « États financiers »)
-    const sds = [...new Set(liste.map(g => g.courante.sousDossier || ''))].sort((a, b) => (a === '') - (b === '') || b.localeCompare(a, 'fr', { numeric: true }));
+    const ordreI = intercalairesClasseur(id); // V127 : ordre choisi dans ⚙
+    const sds = [...new Set(liste.map(g => g.courante.sousDossier || ''))].sort((a, b) => (b === '') - (a === '') || ((ordreI.indexOf(a) + 1 || 1e6) - (ordreI.indexOf(b) + 1 || 1e6)) || a.localeCompare(b, 'fr', { numeric: true }));
     lignes = sds.map(sd => {
       const gs = liste.filter(g => (g.courante.sousDossier || '') === sd), cle = id + '|' + sd, ferme = _sdFermes.has(cle);
-      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span></td></tr>` : '')
+      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span></td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
         + (ferme ? '' : gs.map(ligneGroupe).join(''));
     }).join('');
   } else lignes = liste.map(ligneGroupe).join('');
