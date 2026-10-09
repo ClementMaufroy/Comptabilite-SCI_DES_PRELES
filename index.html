@@ -2930,7 +2930,7 @@ applyTheme();
         <select id="dep-rubrique" style="display:none;"></select>
         <div class="form-field" style="flex:1.2;min-width:0;"><label>Classeur *</label><div id="dep-classeurs"></div></div>
         <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
-        <div class="form-field" style="flex:1;min-width:0;"><label title="Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><input type="text" id="dep-numdoc-dp" placeholder="ex. CONTRAT_EDF" style="font-family:var(--mono);"></div>
+        <div class="form-field" style="flex:1;min-width:0;"><label title="Le type se place au début de la référence, la suite après un « / ». Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-dp-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc-dp" placeholder="ex. EDF" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
       </div></div>
     </div>
     <div id="dep-progress" style="display:none;height:4px;background:var(--bg3);border-radius:2px;margin-bottom:8px;overflow:hidden;"><div id="dep-progress-barre" style="height:100%;width:0;background:var(--cyan);transition:width .2s;"></div></div>
@@ -4748,12 +4748,17 @@ function editEcriture(id) {
   //   - Saisie manuelle et échéanciers : "TYPE/REF" — le "/" sépare type et ref
   // Règle : si "_" présent → split au "_" ; sinon si "/" présent → split au premier "/".
   // Le séparateur détecté est mémorisé pour être réutilisé à la sauvegarde (préserve le format d'origine).
+  // V120 : un seul séparateur, « / ». Les anciens n° « TYPE_… » et « TYPE-… » / « TYPE - … » (type connu) sont relus
+  // en type + suite et réenregistrés au format TYPE/….
   let typedoc = numDoc, refdoc = '', separateur = '/';
-  if(numDoc.includes('_')) {
+  const mTiret = numDoc.match(/^([^\/_\s-]+)\s*-\s*(.+)$/);
+  if(mTiret && codeTypeConnu(mTiret[1])) {
+    typedoc = codeTypeConnu(mTiret[1]);
+    refdoc = mTiret[2];
+  } else if(numDoc.includes('_')) {
     const idx = numDoc.indexOf('_');
     typedoc = numDoc.slice(0, idx);
     refdoc = numDoc.slice(idx+1);
-    separateur = '_';
   } else if(numDoc.includes('/')) {
     const idx = numDoc.indexOf('/');
     typedoc = numDoc.slice(0, idx);
@@ -16230,11 +16235,11 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   el('dep-rubrique').innerHTML = rubriquesDP().map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join('');
   el('dep-rubrique').value = source ? source.rubrique : (rubrique || rubriquesDP()[0].code);
   el('dep-numdoc').value = '';
-  el('dep-numdoc-dp').value = source ? (source.numDoc || '') : ''; // V104
   // V107 : classeurs (plusieurs possibles) et type du dossier permanent
   const clsCoches = new Set(source ? classeursDe(source).slice(0, 1) : (rubrique ? [rubrique] : [])); // V113 : un seul classeur
   el('dep-classeurs').innerHTML = `<select id="dep-cls-sel"><option value="">—</option>${rubriquesDP().map(r => `<option value="${esc(r.code)}" ${clsCoches.has(r.code) ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select>`; // V115 : liste déroulante
   remplirTypesDP(el('dep-type-dp'), source ? (source.typeDP || '') : ''); // V118
+  prerempliNumDocDP(source ? source.numDoc : '', source ? source.typeDP : ''); // V119
   document.querySelectorAll('.nv-type-dp').forEach(x => x.remove());
   el('dep-date').value = dateLocale(new Date());
   el('dep-titre').value = source ? (source.titre || '') : '';
@@ -16329,7 +16334,7 @@ async function enregistrerDepot() {
   } else {
     const clsSel = document.getElementById('dep-cls-sel'); const classeurs = clsSel && clsSel.value ? [clsSel.value] : []; // V115
     if(!classeurs.length) { err.textContent = 'Choisissez un classeur.'; return; }
-    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: el('dep-numdoc-dp').value.trim() }; // V104 : référence
+    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: numDocDepotDP() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
@@ -16681,6 +16686,7 @@ function signatureDoc(x) {
   return h.toString(36) + '-' + s.length + '-' + VERSION_MISE_EN_PAGE_PDF;
 }
 function rubriquePourPV() { const r = rubriquesDP(); const f = r.find(x => x.code === 'ag') || r.find(x => normLib(x.label) === normLib("PV d'AG et décisions")); return f ? f.code : null; } // V110 : plus de classeur par défaut
+function codeTypeConnu(code) { const c = String(code || '').trim().toUpperCase(); const t = getTypedocList().find(x => String(x.code).toUpperCase() === c); return t ? t.code : ''; } // V120
 function typeSiConnu(code) { return getTypedocList().some(t => t.code === code) ? code : ''; }
 // Description, pour la GED, d'un document généré par un module
 function descripteurDocument(module, x, exercice, loc, data) {
@@ -16942,6 +16948,21 @@ function migrerSeparateursV117() {
   if(n) console.info(`V117 : ${n} ligne(s) d'écriture de modules renumérotée(s) au format TYPE/…`);
   setTimeout(() => saveDB(), 0);
 }
+// V120 : anciens n° « TYPE-suite » / « TYPE - suite » (type connu, ou écriture de module) → TYPE/suite. Exercice ouvert, une fois.
+function migrerTiretsV120() {
+  if(!DB || !Array.isArray(DB.ecritures) || DB._sepV120 || EXERCISE_STATUS === 'closed' || getExerciseStatus(CURRENT_YEAR) === 'closed' || window._saveSuspended || window._fbBloque) return;
+  if(!getTypedocList().length && !DB.ecritures.length) return;
+  const nouveaux = new Map();
+  DB.ecritures.forEach(e => {
+    const m = String(e.numDoc || '').match(/^([^\/_\s-]+)\s*-\s*(.+)$/); if(!m) return;
+    const code = codeTypeConnu(m[1]) || (moduleDeLaLigne(e) ? m[1] : '');
+    if(code) nouveaux.set(e, code + '/' + m[2].trim());
+  });
+  nouveaux.forEach((v, e) => { e.numDoc = v; });
+  DB._sepV120 = true;
+  if(nouveaux.size) console.info(`V120 : ${nouveaux.size} ligne(s) d'écriture renumérotée(s) (tiret → « / »)`);
+  setTimeout(() => saveDB(), 0);
+}
 function migrerMarquagesV112() {
   if(!DB || EXERCISE_STATUS === 'closed' || window._saveSuspended || window._fbBloque) return;
   if(!Array.isArray(DB.ecrituresCalcul) && DB.piecesAFormaliser === undefined) return;
@@ -16952,6 +16973,7 @@ function migrerMarquagesV112() {
 function preparerJustifs() {
   try { migrerMarquagesV112(); } catch(e) { console.error(e); }
   try { migrerSeparateursV117(); } catch(e) { console.error(e); }
+  try { migrerTiretsV120(); } catch(e) { console.error(e); }
   const groupes = new Map();
   (DB.ecritures || []).forEach(e => { const k = cleIo(e._io); if(!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(e); });
   const liensParIo = new Map(), ex = String(CURRENT_YEAR);
@@ -17900,7 +17922,8 @@ function remplirTypesDP(sel, valeur) {
   sel.innerHTML = `<option value="">—</option>` + typesDP().map(t => `<option value="${esc(t.code)}">${esc(t.code)} — ${esc(t.label)}</option>`).join('') + `<option value="__nouveau">+ Nouveau type…</option>`;
   sel.value = valeur && typesDP().some(t => t.code === valeur) ? valeur : '';
   sel.dataset.prec = sel.value;
-  sel.onchange = () => { if(sel.value === '__nouveau') { sel.value = sel.dataset.prec || ''; ouvrirNouveauTypeDP(sel); } else sel.dataset.prec = sel.value; };
+  sel.onchange = () => { if(sel.value === '__nouveau') { sel.value = sel.dataset.prec || ''; ouvrirNouveauTypeDP(sel); } else sel.dataset.prec = sel.value; if(sel.id === 'dep-type-dp') majPrefixeNumDocDP(); };
+  if(sel.id === 'dep-type-dp') majPrefixeNumDocDP(); // V119
 }
 function ouvrirNouveauTypeDP(sel) {
   const champ = sel.closest('.form-field') || sel.parentNode, ligne = champ.parentNode;
@@ -18327,6 +18350,24 @@ function numDocDepot() {
   const u = s.toUpperCase();
   if(u === t.toUpperCase() || u.startsWith(t.toUpperCase() + '/') || u.startsWith(t.toUpperCase() + '_')) return s; // n° complet déjà saisi
   return t + sepDepot() + s;
+}
+// V119 : référence du DP = type + « / » + suite (comme le n° de pièce des pièces comptables)
+function majPrefixeNumDocDP() {
+  const t = (document.getElementById('dep-type-dp') || {}).value || '', z = document.getElementById('dep-numdoc-dp-prefixe');
+  if(z) { z.textContent = t ? t + '/' : ''; z.style.display = t ? '' : 'none'; }
+}
+function numDocDepotDP() {
+  const t = document.getElementById('dep-type-dp').value, s = document.getElementById('dep-numdoc-dp').value.trim();
+  if(!t || !s) return s; // sans suite, pas de référence (le type seul ne suffit pas)
+  const u = s.toUpperCase(), T = t.toUpperCase();
+  if(u === T || u.startsWith(T + '/') || u.startsWith(T + '_')) return s; // référence complète déjà saisie
+  return t + '/' + s;
+}
+function prerempliNumDocDP(numDoc, typeDP) {
+  const nd = String(numDoc || ''), t = String(typeDP || '');
+  const u = nd.toUpperCase(), T = t.toUpperCase();
+  document.getElementById('dep-numdoc-dp').value = t && (u.startsWith(T + '/') || u.startsWith(T + '_')) ? nd.slice(t.length + 1) : nd;
+  majPrefixeNumDocDP();
 }
 // Pré-remplissage depuis un n° complet (écriture) : type + séparateur d'origine + suffixe
 function prerempliNumDoc(numDoc) {
