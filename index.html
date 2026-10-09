@@ -6586,13 +6586,47 @@ function genAcCategorieSearch(fieldId) {
   if(!list) { list=document.createElement('div'); list.id='genacl-'+fieldId; list.className='ac-list'; document.body.appendChild(list); }
   const matches = cats.filter(c => c.toLowerCase().includes(q));
   if(!matches.length) { list.classList.remove('open'); return; }
-  list.innerHTML = matches.map(c=>`<div class="ac-item" onmousedown="genAcCategoriePick('${fieldId}','${c.replace(/'/g,"\\'")}')"><span class="ac-lib">${c}</span></div>`).join('');
+  window._echCatsListe = matches; // V123 : ✎ pour renommer une catégorie existante
+  list.innerHTML = matches.map((c, i) => `<div class="ac-item" style="display:flex;align-items:center;" onmousedown="genAcCategoriePick('${fieldId}',window._echCatsListe[${i}])"><span class="ac-lib" style="flex:1;">${esc(c)}</span><span title="Renommer cette catégorie (tous les échéanciers qui la portent)" onmousedown="event.stopPropagation();event.preventDefault();genAcClose('${fieldId}');ouvrirRenommerCategorieEch(window._echCatsListe[${i}])" style="padding:0 6px;color:var(--text2);cursor:pointer;">✎</span></div>`).join('');
   const rect = inp.getBoundingClientRect();
   list.style.top = (rect.bottom + 2) + 'px';
   list.style.left = rect.left + 'px';
   list.style.width = Math.max(280, rect.width) + 'px';
   list.classList.add('open');
   genAcCatIdx = -1;
+}
+// V123 : renommer une catégorie d'échéancier (= la changer sur tous les échéanciers qui la portent)
+function ouvrirRenommerCategorieEch(ancien) {
+  if(!ancien || bloqueSiCloture()) return;
+  let m = document.getElementById('ech-cat-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'ech-cat-modal'; m.className = 'modal-overlay'; m.style.zIndex = '1100'; document.body.appendChild(m); }
+  const n = ensureEcheanciersArray().filter(e => e.categorie === ancien).length;
+  m.innerHTML = `<div class="modal" style="width:420px;max-width:95vw;">
+      <div class="modal-title">✎ RENOMMER LA CATÉGORIE</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">« ${esc(ancien)} » — ${n} échéancier${n > 1 ? 's' : ''} concerné${n > 1 ? 's' : ''}.</div>
+      <input type="text" id="ech-cat-nouveau" style="width:100%;" onkeydown="if(event.key==='Enter')validerRenommerCategorieEch();if(event.key==='Escape')document.getElementById('ech-cat-modal').style.display='none';">
+      <div id="ech-cat-err" style="font-size:11px;color:var(--red);min-height:14px;margin:6px 0;"></div>
+      <div class="flex gap8"><button class="btn btn-primary" onclick="validerRenommerCategorieEch()">✓ RENOMMER</button><button class="btn ml-auto" onclick="document.getElementById('ech-cat-modal').style.display='none'">ANNULER</button></div></div>`;
+  m._ancien = ancien;
+  m.style.display = 'flex';
+  const i = document.getElementById('ech-cat-nouveau'); i.value = ancien; i.focus(); i.select();
+}
+function validerRenommerCategorieEch() {
+  const m = document.getElementById('ech-cat-modal'); if(!m || bloqueSiCloture()) return;
+  const ancien = m._ancien, nouveau = document.getElementById('ech-cat-nouveau').value.trim();
+  const err = document.getElementById('ech-cat-err');
+  if(!nouveau) { err.textContent = 'Indiquez un nom.'; return; }
+  if(nouveau === ancien) { m.style.display = 'none'; return; }
+  const existante = [...new Set(ensureEcheanciersArray().map(e => e.categorie).filter(Boolean))].find(c => c !== ancien && c.toLowerCase() === nouveau.toLowerCase());
+  if(existante && !confirm(`La catégorie « ${existante} » existe déjà : y regrouper les échéanciers de « ${ancien} » ?`)) return;
+  const cible = existante || nouveau;
+  let n = 0;
+  ensureEcheanciersArray().forEach(e => { if(e.categorie === ancien) { e.categorie = cible; n++; } });
+  const champ = document.getElementById('ech-categorie'); if(champ && champ.value === ancien) champ.value = cible;
+  m.style.display = 'none';
+  saveDB();
+  toast(`Catégorie renommée « ${cible} » (${n} échéancier${n > 1 ? 's' : ''})`, 'success');
+  renderEcheanciers();
 }
 function genAcCategoriePick(fieldId, cat) {
   const inp = document.getElementById(fieldId);
@@ -13040,7 +13074,8 @@ function checkEcheanciersExpirationAuBoot() {
 // ── Aperçu du mois ──
 // Bande visuelle : un carré par mois, coloré selon le statut.
 // Règles d'affichage :
-//  - les mois comptabilisés (verts) ne sont conservés que pour le mois en cours et le mois précédent ;
+//  - les mois comptabilisés (verts) ne sont conservés que pour le mois en cours et le mois précédent,
+//    plus le dernier mois comptabilisé et ceux comptabilisés pendant la session (V123 : toujours annulables) ;
 //  - les mois passés non comptabilisés (orange) restent affichés sans limite d'antériorité ;
 //  - toutes les bandes partent d'un même mois de départ commun (moisDepartCommun), pour que
 //    les carrés d'un même mois soient alignés verticalement d'un échéancier à l'autre.
@@ -13059,11 +13094,13 @@ function moisEcheancierExercice(ech) {
   const debut = moisDebutExerciceCourant();
   return computeMoisRange(ech.periodeDebut, effectiveFin(ech)).filter(m => moisDansExerciceCourant(m));
 }
+const _echMoisSession = new Set(); // V123 : mois comptabilisés pendant cette session (leur carré vert reste affiché)
 function moisVisiblesEcheancier(ech) {
   const done = ech.moisComptabilises || [];
   const seuilVert = moisPrecedent(moisActuelYYYYMM());
+  const dernier = done.filter(m => moisDansExerciceCourant(m)).sort().pop(); // V123 : toujours annulable
   return moisEcheancierExercice(ech)
-    .filter(m => !done.includes(m) || m >= seuilVert);
+    .filter(m => !done.includes(m) || m >= seuilVert || m === dernier || _echMoisSession.has(ech.id + '|' + m));
 }
 function moisDepartCommunEcheanciers() {
   let depart = null;
@@ -13168,7 +13205,7 @@ function renderEcheanciers() {
 
     return `<div style="margin-bottom:22px;">
       <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;color:var(--cyan);margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--line2);">
-        ${cat.toUpperCase()}
+        ${esc(cat.toUpperCase())}${cat !== 'Sans catégorie' && EXERCISE_STATUS !== 'closed' ? ` <span onclick="ouvrirRenommerCategorieEch(${JSON.stringify(cat).replace(/"/g, '&quot;')})" title="Renommer la catégorie" style="cursor:pointer;color:var(--text2);font-weight:400;margin-left:6px;">✎</span>` : ''}
       </div>
       <table style="table-layout:fixed;width:100%;">
         <colgroup>
@@ -13393,6 +13430,7 @@ function postEcheancierMois(ech, mois) {
 
   ech.moisComptabilises = ech.moisComptabilises || [];
   ech.moisComptabilises.push(mois);
+  _echMoisSession.add(ech.id + '|' + mois); // V123
   // Hook post-it (le renum sera fait par l'appelant après l'ensemble des postEcheancierMois)
   notifierPieceGeneree('echeanciers', numDoc, libelleEcriture, dateEcr);
 }
@@ -17011,7 +17049,22 @@ function justifAuto(lignes, module) {
   }
   return null;
 }
-function ecrituresManquantes() { preparerJustifs(); return [..._justifs.values()].filter(j => j.statut === 'manquant').sort((a, b) => (a.num || 0) - (b.num || 0)); }
+// V122 : on compte et on traite par ÉCRITURE (n° d'écriture), même si ses lignes portent plusieurs identifiants _io
+// (anciennes écritures importées). Une pièce jointe ou un « pas de pièce » vaut pour toutes les lignes de l'écriture.
+function iosMemeEcriture(ios) {
+  if(!_justifs) preparerJustifs();
+  const base = (ios || []).map(cleIo), nums = new Set(base.map(io => (_justifs.get(io) || {}).num).filter(n => n !== undefined && n !== null && n !== ''));
+  const out = new Set(base);
+  if(nums.size) _justifs.forEach(j => { if(nums.has(j.num)) out.add(j.io); });
+  return [...out];
+}
+function nbEcrituresDe(liste) { return new Set((liste || []).map(x => { const j = x && x.j ? x.j : x; return j && j.num !== undefined && j.num !== null ? 'n' + j.num : 'i' + (j && j.io); })).size; }
+function ecrituresManquantes() {
+  preparerJustifs();
+  const vus = new Set();
+  return [..._justifs.values()].filter(j => j.statut === 'manquant').sort((a, b) => (a.num || 0) - (b.num || 0))
+    .filter(j => { const k = j.num !== undefined && j.num !== null ? 'n' + j.num : 'i' + j.io; if(vus.has(k)) return false; vus.add(k); return true; });
+}
 
 // ── Trombone (Grand Livre, journaux) ──
 function htmlTromboneEcriture(e) {
@@ -17073,6 +17126,7 @@ function controleRattachement() {
   return true;
 }
 async function lierPiece(p, ios, ex) {
+  if(String(ex) === String(CURRENT_YEAR)) ios = iosMemeEcriture(ios); // V122 : toutes les lignes de l'écriture
   const liens = (p.liens || []).slice();
   if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => { const b = cleIo(io) + '|' + (p.groupe || p.id); return k === b || k.startsWith(b + '|'); })); /* V116 */ if(DB.liensRefuses.length !== av) saveDB(); }
   ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
@@ -17087,7 +17141,8 @@ async function joindrePieceExistante(id) {
 async function detacherPiece(id) {
   if(!controleRattachement()) return;
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
-  const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && l.io === _pjIo));
+  const iosEcr = new Set(iosMemeEcriture([_pjIo])); // V122
+  const liens = (p.liens || []).filter(l => !(l.ex === String(CURRENT_YEAR) && iosEcr.has(l.io)));
   // V104 : une pièce détachée à la main n'est plus jamais rejointe automatiquement à cette écriture
   if(noterRefus(_pjIo, p, true)) saveDB(); // V116 : le refus de suggestion ne vaut que pour le n° actuel de l'écriture
   if(await majPiece(p, { liens })) { toast('Pièce détachée de l\'écriture (elle reste dans la GED)', 'success'); apresChangementJustifs(); }
@@ -17104,10 +17159,12 @@ function deposerPourEcriture(io) {
 }
 function basculerSansJustif(ios, marquer) {
   if(bloqueSiCloture()) return;
+  const nbE = nbEcrituresDe(ios.map(io => justifDe(io)).filter(Boolean)) || ios.length;
+  ios = iosMemeEcriture(ios); // V122
   const liste = ensureSansJustif().map(cleIo);
   DB.sansJustificatif = marquer ? [...new Set(liste.concat(ios.map(cleIo)))] : liste.filter(x => !ios.map(cleIo).includes(x));
   saveDB();
-  toast(marquer ? `${ios.length} écriture${ios.length > 1 ? 's' : ''} marquée${ios.length > 1 ? 's' : ''} « pas de pièce »` : '« Pas de pièce » retiré', 'success');
+  toast(marquer ? `${nbE} écriture${nbE > 1 ? 's' : ''} marquée${nbE > 1 ? 's' : ''} « pas de pièce »` : '« Pas de pièce » retiré', 'success');
   apresChangementJustifs();
 }
 function apresChangementJustifs() {
@@ -17137,7 +17194,7 @@ function elementsATraiter() {
     try { r.vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30); } catch(e) {}
     try { r.cout = coutStockageMensuel(); } catch(e) {}
   }
-  r.total = r.sugg.length + r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
+  r.total = nbEcrituresDe(r.sugg) + r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
   return r;
 }
 function majBadgeATraiter(r) {
@@ -17155,7 +17212,7 @@ function renderPostItPieces() {
   const rect = btn ? btn.getBoundingClientRect() : { bottom: 60, right: window.innerWidth - 200 };
   el.style.cssText = `position:fixed;top:${rect.bottom + 6}px;right:${Math.max(10, window.innerWidth - rect.right)}px;width:460px;background:var(--bg1);color:var(--text0);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,0.5);z-index:9998;font-family:var(--sans);border:1px solid var(--line2);display:block;`;
   const onglets = [
-    { k: 'sugg', lib: 'Suggestions', n: r.sugg.length },
+    { k: 'sugg', lib: 'Suggestions', n: nbEcrituresDe(r.sugg) }, // V122 : nombre d'écritures
     { k: 'ecr', lib: 'Écritures sans pièce', n: r.ecr.length },
     { k: 'orph', lib: 'Pièces sans écriture', n: r.orph.length },
     { k: 'nc', lib: 'Pièces non classées', n: r.nc.length },
@@ -17190,9 +17247,9 @@ function renderPostItPieces() {
     corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);line-height:1.4;">Pièces de la GED qui portent le même n° de pièce que des écritures. Joignez-les, ou ignorez la suggestion : elle ne reviendra pas.</div>`
       + groupes.map((g, i) => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px;">
           <div style="flex:1;min-width:0;"><span style="cursor:pointer;" onclick="voirPiece('${g.p.id}')">${g.p.espace === 'permanent' ? '<span class="npill" style="font-size:9px;">🗂 DP</span> ' : ''}${iconePiece(g.p)} <strong>${esc(g.p.titre || g.p.nomFichier)}</strong></span>
-            <div style="color:var(--text2);font-size:9px;margin-top:2px;">n° ${esc(g.p.numDoc)} → ${g.js.map(j => '#' + j.num).join(', ')}${g.js.length === 1 ? ' — ' + esc(g.js[0].libelle) : ''}</div></div>
+            <div style="color:var(--text2);font-size:9px;margin-top:2px;">n° ${esc(g.p.numDoc)} → ${[...new Set(g.js.map(j => '#' + j.num))].join(', ')}${g.js.length === 1 ? ' — ' + esc(g.js[0].libelle) : ''}</div></div>
           ${ouvert ? b('JOINDRE', `validerGroupeSuggestion(${i})`, 'btn-primary') + b('IGNORER', `ignorerGroupeSuggestion(${i})`) : ''}</div>`).join('');
-    if(ouvert && groupes.length) pied = `<button class="btn btn-sm btn-primary" onclick="joindreSuggestions(suggestionsParNumero())" style="padding:1px 8px;font-size:9px;margin-left:auto;">✓ TOUT VALIDER (${r.sugg.length})</button>`;
+    if(ouvert && groupes.length) pied = `<button class="btn btn-sm btn-primary" onclick="joindreSuggestions(suggestionsParNumero())" style="padding:1px 8px;font-size:9px;margin-left:auto;">✓ TOUT VALIDER (${nbEcrituresDe(r.sugg)})</button>`;
   } else if(_atOnglet === 'orph') {
     corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Pièces de ${esc(CURRENT_YEAR)} jointes à aucune écriture : à rattacher avant la clôture.</div>`
       + r.orph.map(p => ligne(`${iconePiece(p)} <strong>${esc(p.titre || p.nomFichier)}</strong><div style="color:var(--text2);font-size:9px;">${esc(p.numDoc || '')}${p.dateDoc ? ' • ' + fmtDateFr(p.dateDoc) : ''}</div>`, `voirPiece('${p.id}')`)).join('');
@@ -18575,7 +18632,7 @@ function renderGL() {
   document.getElementById('gl-total-s').innerHTML = `<span class="${ts > 0 ? 'c-pos' : ts < 0 ? 'c-neg' : ''}">${fmt(ts)}</span>`;
   document.getElementById('gl-count-chip').textContent = rows.length + ' ligne(s)';
   // Barre d'outils : écritures sans pièce jointe, effacer les filtres, solde des lignes cochées
-  let nbSans = 0; _justifs.forEach(j => { if(j.statut === 'manquant' || j.statut === 'sans') nbSans++; });
+  const nbSans = nbEcrituresDe([..._justifs.values()].filter(j => j.statut === 'manquant' || j.statut === 'sans')); // V122 : en écritures
   const outils = document.getElementById('gl-outils');
   if(outils) outils.innerHTML = `
       <button class="btn btn-sm" onclick="_glSansPJ=!_glSansPJ;renderGL()" title="Afficher uniquement les écritures sans pièce jointe (à joindre, ou marquées « pas de pièce »)"
@@ -19120,8 +19177,8 @@ function grouperSuggestions(liste) {
 async function joindreSuggestions(liste) {
   if(!liste || !liste.length || bloqueSiCloture()) return;
   let n = 0;
-  for(const g of grouperSuggestions(liste)) { if(await lierPiece(g.p, g.js.map(j => j.io), CURRENT_YEAR)) n += g.js.length; }
-  toast(`📎 ${n} lien(s) créé(s)`, 'success');
+  for(const g of grouperSuggestions(liste)) { if(await lierPiece(g.p, g.js.map(j => j.io), CURRENT_YEAR)) n += nbEcrituresDe(g.js); }
+  toast(`📎 ${n} écriture(s) jointe(s)`, 'success');
   apresChangementJustifs(); updateNavCounts();
 }
 function ignorerSuggestions(liste) {
