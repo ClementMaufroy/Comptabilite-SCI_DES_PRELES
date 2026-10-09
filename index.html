@@ -708,6 +708,7 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 .nav-sep { display: none; }
 .nav-version { padding: 4px 14px; font-size: 8.5px; }
 /* V115 : ambre doux des pièces à joindre ; dépôt par glisser-déposer sur toute la GED */
+#doc-upload-modal.dep-multi .dep-unit { display: none !important; } /* V131 : import multiple, documents en l'état */
 .nd-lien { font-weight: 300; text-decoration: none; letter-spacing: .01em; opacity: .92; } /* V124 : n° de pièce du GL plus fin */
 .nd-lien:hover { opacity: 1; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .nd-lien.nd-sans { text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 2px; }
@@ -2922,19 +2923,19 @@ applyTheme();
     <input type="file" id="dep-input" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.eml,.msg" style="display:none;" onchange="depotAjouterFichiers(this.files);this.value='';">
     <div id="dep-fichiers" style="max-height:120px;overflow-y:auto;margin-bottom:10px;"></div>
     <div class="form-field mb8" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
-    <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Chaque fichier prend pour titre son nom de fichier ; les autres informations s'appliquent à tous.</div>
+    <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Import multiple : chaque document garde son nom de fichier, sans date, type ni référence (à compléter ensuite avec ✎ si besoin).</div>
     <div style="display:flex;gap:10px;align-items:flex-end;" class="mb8">
-      <div class="form-field" style="width:140px;flex:none;"><label>Date *</label><input type="date" id="dep-date"></div>
+      <div class="form-field dep-unit" style="width:140px;flex:none;"><label>Date *</label><input type="date" id="dep-date"></div>
       <div id="dep-bloc-compta" style="flex:1;min-width:0;"><div style="display:flex;gap:10px;align-items:flex-end;">
-        <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
-        <div class="form-field" style="flex:1.3;min-width:0;"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
+        <div class="form-field dep-unit" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
+        <div class="form-field dep-unit" style="flex:1.3;min-width:0;"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
         <div class="form-field" id="dep-ex-zone" style="width:100px;flex:none;"><label title="Seuls les exercices ouverts sont proposés">Exercice</label><select id="dep-exercice"></select></div>
       </div></div>
       <div id="dep-bloc-permanent" style="flex:1;min-width:0;"><div style="display:flex;gap:10px;align-items:flex-end;">
         <select id="dep-rubrique" style="display:none;"></select>
         <div class="form-field" style="flex:1.2;min-width:0;"><label>Classeur *</label><div id="dep-classeurs"></div></div>
-        <div class="form-field" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
-        <div class="form-field" style="flex:1;min-width:0;"><label title="Le type se place au début de la référence, la suite après un « / ». Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-dp-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc-dp" placeholder="ex. EDF" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
+        <div class="form-field dep-unit" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type-dp" style="font-family:var(--mono);"></select></div>
+        <div class="form-field dep-unit" style="flex:1;min-width:0;"><label title="Le type se place au début de la référence, la suite après un « / ». Les écritures portant ce n° de pièce vous seront proposées, quel que soit l'exercice">Référence</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-dp-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc-dp" placeholder="ex. EDF" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
       </div>
       <div class="form-field" style="margin-top:8px;"><label title="Sous-partie du classeur (ex. Statuts, PV d'AG… dans un classeur Juridique). Laisser vide : à la racine du classeur.">Intercalaire</label><input type="text" id="dep-inter" list="dep-inter-list" placeholder="Aucun — à la racine du classeur" autocomplete="off"><datalist id="dep-inter-list"></datalist></div>
       </div>
@@ -16291,7 +16292,8 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   if(PIECES === null) { toast("Index des documents illisible : rechargez l'onglet GED", 'error'); return; }
   const source = versionDe ? (PIECES || []).find(p => p.id === versionDe) : null;
   if(espace === 'compta' && !exercicesOuverts().length) { toast('Aucun exercice ouvert : aucune pièce ne peut être ajoutée', 'error'); return; }
-  _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null, options: options || null };
+  _depot = { espace: source ? 'permanent' : espace, fichiers: [], versionDe: source ? source.id : null, options: options || null, multi: false };
+  document.getElementById('doc-upload-modal').classList.remove('dep-multi'); // V131
   const el = id => document.getElementById(id);
   // Exercices proposés : uniquement les exercices ouverts
   const cibleFiltre = filtreExerciceDocs();
@@ -16360,7 +16362,12 @@ function depotAjouterFichiers(liste) {
   const refuses = nouveaux.filter(f => f.size > DOC_TAILLE_MAX && !['image/jpeg', 'image/png', 'image/webp'].includes(f.type));
   if(refuses.length) toast(`Fichier(s) de plus de 20 Mo refusé(s) : ${refuses.map(f => f.name).join(', ')}`, 'error', 6000);
   const ok = nouveaux.filter(f => !refuses.includes(f));
+  const avant = _depot.fichiers.slice();
   _depot.fichiers = _depot.versionDe ? ok.slice(0, 1) : _depot.fichiers.concat(ok);
+  if(!_depot.versionDe && _depot.fichiers.length > 1 && !_depot.multi) { // V131 : import multiple = documents en l'état
+    if(confirm(`Importer ces ${_depot.fichiers.length} documents en une fois ?\n\nChacun garde son nom de fichier ; aucun titre, date, type ni référence n'est renseigné (à compléter ensuite avec ✎ si besoin).\n\nAnnuler = ne garder qu'un document, avec sa fiche complète.`)) _depot.multi = true;
+    else _depot.fichiers = avant.length ? avant : ok.slice(0, 1);
+  }
   if(_depot.versionDe && ok.length > 1) toast('Une nouvelle version = un seul fichier : seul le premier est retenu', 'warn');
   const titre = document.getElementById('dep-titre');
   if(_depot.fichiers.length === 1 && !titre.value) titre.value = titreDepuisNom(_depot.fichiers[0].name);
@@ -16370,6 +16377,8 @@ function depotRetirerFichier(i) { if(!_depot || _depot.enCours) return; _depot.f
 function depotRenderFichiers() { // V115 : la zone de dépôt disparaît dès qu'un fichier est choisi
   const z = document.getElementById('dep-fichiers'); if(!z || !_depot) return;
   const n = _depot.fichiers.length, multi = n > 1;
+  if(n <= 1) _depot.multi = false; // V131
+  document.getElementById('doc-upload-modal').classList.toggle('dep-multi', !!_depot.multi && multi);
   document.getElementById('dep-titre-zone').style.display = multi ? 'none' : '';
   document.getElementById('dep-multi-note').style.display = multi ? '' : 'none';
   const drop = document.getElementById('dep-drop'); if(drop) drop.style.display = n ? 'none' : '';
@@ -16387,8 +16396,9 @@ async function enregistrerDepot() {
   const err = el('dep-err'); err.textContent = '';
   const d = _depot;
   if(!d.fichiers.length) { err.textContent = 'Choisissez au moins un fichier.'; return; }
-  const date = el('dep-date').value;
-  if(!date) { err.textContent = 'La date du document est obligatoire.'; return; }
+  const multi = !!d.multi && d.fichiers.length > 1; // V131
+  const date = multi ? '' : el('dep-date').value;
+  if(!multi && !date) { err.textContent = 'La date du document est obligatoire.'; return; }
   const titreSaisi = el('dep-titre').value.trim();
   if(d.fichiers.length === 1 && !titreSaisi) { err.textContent = 'Le titre est obligatoire.'; return; }
   const source = d.versionDe ? (PIECES || []).find(p => p.id === d.versionDe) : null;
@@ -16398,13 +16408,13 @@ async function enregistrerDepot() {
     if(!exercice) { err.textContent = "Choisissez l'exercice."; return; }
     // Contrôle au moment de l'enregistrement : l'exercice a pu être clôturé entre-temps
     if(exerciceClos(exercice)) { err.textContent = `L'exercice ${exercice} est clôturé : aucune pièce ne peut y être ajoutée.`; return; }
-    base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: numDocDepot() }; // V108
+    base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: multi ? '' : (el('dep-type').value || ''), numDoc: multi ? '' : numDocDepot() }; // V108, V131
     if(d.options && d.options.lien && d.espace === 'compta' && String(d.options.lien.ex) === String(CURRENT_YEAR)) Object.assign(base, refPieceDepuisEcriture(Object.assign({ espace: 'compta' }, base), d.options.lien.ios)); // V126
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
     const clsSel = document.getElementById('dep-cls-sel'); const classeurs = clsSel && clsSel.value ? [clsSel.value] : []; // V115
     if(!classeurs.length) { err.textContent = 'Choisissez un classeur.'; return; }
-    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: el('dep-type-dp').value || '', numDoc: numDocDepotDP(), sousDossier: el('dep-inter').value.trim() }; // V104 : référence
+    base = { espace: 'permanent', rubrique: classeurs[0], classeurs, typeDP: multi ? '' : (el('dep-type-dp').value || ''), numDoc: multi ? '' : numDocDepotDP(), sousDossier: el('dep-inter').value.trim() }; // V104 : référence
   }
   d.enCours = true; el('dep-btn').disabled = true;
   const prog = el('dep-progress'); prog.style.display = 'block';
@@ -18444,6 +18454,19 @@ async function nouvelIntercalaire(code) {
   try { await enregistrerIntercalaires(code, l.concat([nom])); toast(`Intercalaire « ${nom} » ajouté`, 'success'); renderDocumentsVue(); }
   catch(e) { toast('Intercalaire non enregistré : ' + (e.message || e), 'error'); }
 }
+async function renommerIntercalaire(code, ancien) { // V131 : depuis le classeur
+  const nv = (prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien) || '').trim();
+  if(!nv || nv === ancien) return;
+  const l = intercalairesClasseur(code);
+  if(l.some(n => n !== ancien && n.toLowerCase() === nv.toLowerCase())) { toast('Un intercalaire porte déjà ce nom dans ce classeur', 'error'); return; }
+  try {
+    const docs = (PIECES || []).concat(CORBEILLE || []).filter(p => p.espace === 'permanent' && classeursDe(p).includes(code) && p.sousDossier === ancien);
+    for(const p of docs) await majPiece(p, { sousDossier: nv });
+    await enregistrerIntercalaires(code, l.includes(ancien) ? l.map(n => n === ancien ? nv : n) : l.concat([nv]));
+    toast(`Intercalaire renommé « ${nv} »${docs.length ? ` (${docs.length} document${docs.length > 1 ? 's' : ''})` : ''}`, 'success');
+    renderDocumentsVue();
+  } catch(e) { toast('Renommage non enregistré : ' + (e.message || e), 'error'); }
+}
 async function supprimerIntercalaireVide(code, nom) {
   const occupe = (PIECES || []).concat(CORBEILLE || []).some(p => p.espace === 'permanent' && classeursDe(p).includes(code) && p.sousDossier === nom);
   if(occupe) { toast('Cet intercalaire contient des documents (éventuellement en corbeille)', 'error'); return; }
@@ -19253,9 +19276,11 @@ function htmlDossierPermanentV109() {
     const sds = [...new Set(liste.map(g => g.courante.sousDossier || '').concat(sansFiltre ? ordreI : []))].sort((a, b) => (b === '') - (a === '') || ((ordreI.indexOf(a) + 1 || 1e6) - (ordreI.indexOf(b) + 1 || 1e6)) || a.localeCompare(b, 'fr', { numeric: true }));
     lignes = sds.map(sd => {
       const gs = liste.filter(g => (g.courante.sousDossier || '') === sd), cle = id + '|' + sd, ferme = _sdFermes.has(cle);
-      const kI = ordreI.indexOf(sd), flI = (lib, sn, ok) => `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();deplacerIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')},${sn})" ${ok ? '' : 'disabled'} title="${sn < 0 ? 'Monter' : 'Descendre'} l'intercalaire" style="padding:0 6px;font-size:10px;">${lib}</button>`;
-      const outilsI = sd && actif && !id.startsWith('__') ? `<span style="float:right;display:inline-flex;gap:4px;">${sansFiltre && kI >= 0 ? flI('▲', -1, kI > 0) + flI('▼', 1, kI < ordreI.length - 1) : ''}${gs.length ? '' : `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();supprimerIntercalaireVide('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Retirer cet intercalaire vide" style="padding:0 6px;font-size:10px;">✕</button>`}<button class="btn btn-sm" onclick="event.stopPropagation();deposerDansIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Déposer un document dans cet intercalaire" style="padding:0 8px;font-size:10px;">⬆ DÉPOSER ICI</button></span>` : '';
-      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${outilsI}${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span>${gs.length ? '' : ' <span style="color:var(--text2);font-weight:400;font-style:italic;">— vide</span>'}</td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
+      const jsSd = JSON.stringify(sd).replace(/"/g, '&quot;'), kI = ordreI.indexOf(sd); // V131 : outils alignés (emplacements fixes) dans la colonne des actions
+      const bI = (lib, act, tit, ok, visible) => `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();${act}" ${ok ? '' : 'disabled'} title="${tit}" style="padding:1px 6px;font-size:10px;min-width:24px;${visible ? '' : 'visibility:hidden;'}">${lib}</button>`;
+      const ordreOk = sansFiltre && kI >= 0;
+      const outilsI = sd && actif && !id.startsWith('__') ? `<div style="display:flex;justify-content:flex-end;gap:4px;">${bI('▲', `deplacerIntercalaire('${esc(id)}',${jsSd},-1)`, "Monter l'intercalaire", ordreOk && kI > 0, ordreOk)}${bI('▼', `deplacerIntercalaire('${esc(id)}',${jsSd},1)`, "Descendre l'intercalaire", ordreOk && kI < ordreI.length - 1, ordreOk)}${bI('✎', `renommerIntercalaire('${esc(id)}',${jsSd})`, "Renommer l'intercalaire", true, true)}${bI('✕', `supprimerIntercalaireVide('${esc(id)}',${jsSd})`, 'Retirer cet intercalaire vide', !gs.length, !gs.length)}<button class="btn btn-sm" onclick="event.stopPropagation();deposerDansIntercalaire('${esc(id)}',${jsSd})" title="Déposer un document dans cet intercalaire" style="padding:1px 8px;font-size:10px;white-space:nowrap;">⬆ DÉPOSER ICI</button></div>` : '';
+      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="7" style="font-weight:700;font-size:11px;">${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span>${gs.length ? '' : ' <span style="color:var(--text2);font-weight:400;font-style:italic;">— vide</span>'}</td><td class="td-act">${outilsI}</td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
         + (ferme ? '' : gs.map(ligneGroupe).join(''));
     }).join('');
   } else lignes = liste.map(ligneGroupe).join('');
