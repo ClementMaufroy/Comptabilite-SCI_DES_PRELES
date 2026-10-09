@@ -16059,7 +16059,7 @@ function trouverPiece(id) { return (PIECES || []).find(x => x.id === id) || (COR
 let _piecesErreur = null;
 let DOCS_CONFIG = null;       // { rubriques: [{code, label}] } — null = rubriques par défaut
 let _docsConfigLu = false;    // V113 : la configuration a bien été lue dans Firebase (jamais écrasée sans l'avoir lue)
-let _docsVue = 'compta';      // 'compta' | 'permanent'
+let _docsVue = 'accueil';      // 'accueil' | 'compta' | 'permanent' | 'corbeille' (V128)
 const _docsFiltres = { exercice: null, pourExercice: null, type: '', q: '' };
 // V99 : le filtre « exercice » suit l'exercice affiché ; un choix manuel ne vaut que tant qu'on reste sur le même exercice
 function filtreExerciceDocs() {
@@ -16190,7 +16190,7 @@ async function renderDocuments(recharger) {
   migrerV113().then(n => { if(n) renderDocumentsVue(); }); // V113
   renderDocumentsVue();
 }
-function docsChangerVue(v) { if(v === _docsVue && typeof _docsClasseur !== 'undefined') _docsClasseur[v] = null; _docsVue = v; renderDocumentsVue(); } // V107 : re-clic = retour aux classeurs
+function docsChangerVue(v) { if(v === _docsVue && typeof _docsClasseur !== 'undefined' && _docsClasseur[v] !== undefined) _docsClasseur[v] = null; _docsVue = v; renderDocumentsVue(); } // V107 : re-clic = retour aux classeurs
 function docsFiltre(cle, val) { _docsFiltres[cle] = val; renderDocumentsVue(); }
 
 function renderDocumentsVue() {
@@ -16206,6 +16206,22 @@ function renderDocumentsVue() {
   zone.dataset.vue = _docsVue;
   const nouveau = zone.querySelector('.docs-scroll'); if(nouveau && vueAvant === _docsVue) nouveau.scrollTop = defil;
 }
+function htmlAccueilGED(coin, alerte) { // V128
+  const cible = filtreExerciceDocs();
+  const compta = (PIECES || []).filter(p => p.espace === 'compta' && (cible === 'tous' || String(p.exercice) === String(cible)));
+  const nbDP = groupesDP().length;
+  const pan = (v, ic, titre, ligne1, ligne2) => `<div onclick="docsChangerVue('${v}')" style="flex:1;min-width:260px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;border:1px solid var(--line2);border-radius:10px;background:var(--bg2);transition:background .15s,border-color .15s;"
+      onmouseover="this.style.borderColor='var(--cyan)';this.style.background='rgba(var(--accent-rgb),.10)'" onmouseout="this.style.borderColor='var(--line2)';this.style.background='var(--bg2)'">
+      <div style="font-size:64px;line-height:1;">${ic}</div>
+      <div style="font-family:var(--mono);font-size:20px;font-weight:700;letter-spacing:.14em;color:var(--cyan);text-align:center;">${titre}</div>
+      <div style="font-size:12px;color:var(--text1);text-align:center;">${ligne1}</div>
+      <div style="font-size:11px;color:var(--text2);text-align:center;">${ligne2}</div></div>`;
+  return `<div style="display:flex;justify-content:flex-end;">${coin}</div>${alerte}
+    <div style="display:flex;gap:16px;flex-wrap:wrap;height:calc(100vh - 270px);min-height:300px;margin-top:10px;">
+      ${pan('compta', '🧾', 'PIÈCES COMPTABLES', `${compta.length.toLocaleString('fr-FR')} pièce${compta.length > 1 ? 's' : ''} — exercice ${esc(cible === 'tous' ? 'tous exercices' : cible)}`, 'Justificatifs des écritures, rangés par exercice')}
+      ${pan('permanent', '🗂', 'DOSSIER PERMANENT', `${nbDP.toLocaleString('fr-FR')} document${nbDP > 1 ? 's' : ''}`, 'Statuts, contrats, PV… communs à tous les exercices')}
+    </div>`;
+}
 function renderDocumentsVueInterne(zone) {
   const onglet = (v, lib) => `<button class="btn btn-sm ${_docsVue === v ? 'btn-primary' : ''}" onclick="docsChangerVue('${v}')">${lib}</button>`;
   let alerte = '';
@@ -16215,10 +16231,16 @@ function renderDocumentsVueInterne(zone) {
       ${alerte}<div class="alert alert-danger">L'index des documents n'a pas pu être lu dans Firebase (${esc(_piecesErreur || 'erreur inconnue')}). Aucun document n'est affiché. <button class="btn btn-sm" onclick="renderDocuments()" style="margin-left:8px;">↻ RÉESSAYER</button></div>`;
     return;
   }
+  // V128 : accueil = deux grands panneaux ; ailleurs = les deux « hémisphères » toujours en haut
+  const coin = `<div style="display:flex;gap:6px;align-items:center;">
+      <button class="btn btn-sm ${_docsVue === 'corbeille' ? 'btn-primary' : ''}" onclick="docsChangerVue('corbeille')" title="Corbeille">🗑 ${(CORBEILLE || []).length.toLocaleString('fr-FR')}</button>
+      <button class="btn btn-sm" onclick="lancerSyncTousExercices()" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button></div>`;
+  if(_docsVue === 'accueil') { zone.innerHTML = htmlAccueilGED(coin, alerte); return; }
   const corps = _docsVue === 'corbeille' ? htmlCorbeille() : _docsVue === 'permanent' ? htmlDossierPermanentV109() : htmlPiecesComptablesV109(); // V107 : classeurs, V109 : filtres par colonne, V111 : corbeille
-  zone.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      ${onglet('compta', '🧾 PIÈCES COMPTABLES')}${onglet('permanent', '🗂 DOSSIER PERMANENT')}${onglet('corbeille', `🗑 CORBEILLE (${(CORBEILLE || []).length.toLocaleString('fr-FR')})`)}
-      <button class="btn btn-sm" onclick="lancerSyncTousExercices()" style="margin-left:auto;" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button>
+  const hemi = (v, ic, lib) => { const on = _docsVue === v; return `<button onclick="docsChangerVue('${v}')" title="${on ? 'Revenir à la liste des classeurs' : ''}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer;border-radius:var(--radius);border:1px solid ${on ? 'var(--cyan)' : 'var(--line2)'};background:${on ? 'rgba(var(--accent-rgb),.16)' : 'var(--bg2)'};color:${on ? 'var(--cyan)' : 'var(--text1)'};"><span style="font-size:18px;">${ic}</span>${lib}</button>`; };
+  zone.innerHTML = `<div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;">
+      <button class="btn" onclick="docsChangerVue('accueil')" title="Accueil de la GED" style="padding:0 12px;font-size:16px;">⌂</button>
+      ${hemi('compta', '🧾', 'PIÈCES COMPTABLES')}${hemi('permanent', '🗂', 'DOSSIER PERMANENT')}${coin}
     </div>${alerte}${corps}`;
 }
 
@@ -18364,15 +18386,32 @@ function teinte(c, alpha) { return c + alpha; } // #rrggbb + alpha hexadécimal
 function htmlOrigine(p) { return pieceGeneree(p) ? `<span class="npill" style="font-size:9px;white-space:nowrap;" title="Généré automatiquement">⚙ ${esc(LIB_MODULE_ORIGINE[p.module] || 'module')}</span>` : ''; }
 
 // ── Tuiles ──
-function htmlTuileClasseur(espace, id, nom, couleur, nb, detail, alerte) {
-  return `<div onclick="ouvrirClasseur('${espace}','${esc(id)}')" style="cursor:pointer;border:${alerte ? 2 : 1}px solid ${teinte(couleur, alerte ? 'ff' : '66')};border-left:6px solid ${couleur};background:${teinte(couleur, '14')};border-radius:var(--radius);padding:12px 14px;min-height:74px;display:flex;flex-direction:column;gap:4px;"
+function htmlTuileClasseur(espace, id, nom, couleur, nb, detail, alerte) { // V128 : une ligne par classeur, ▲▼ pour le ranger
+  const liste = espace === 'compta' ? classeursCompta().map(c => c.id) : rubriquesDP().map(r => r.code);
+  const k = id.startsWith('__') ? -1 : liste.indexOf(id);
+  const fl = (lib, s, ok) => `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();deplacerClasseur('${espace}','${esc(id)}',${s})" ${ok ? '' : 'disabled'} title="${s < 0 ? 'Monter' : 'Descendre'}" style="padding:0 6px;font-size:10px;">${lib}</button>`;
+  return `<div onclick="ouvrirClasseur('${espace}','${esc(id)}')" style="cursor:pointer;border:${alerte ? 2 : 1}px solid ${teinte(couleur, alerte ? 'ff' : '66')};border-left:6px solid ${couleur};background:${teinte(couleur, '14')};border-radius:var(--radius);padding:10px 14px;display:flex;align-items:center;gap:12px;"
       onmouseover="this.style.background='${teinte(couleur, '26')}'" onmouseout="this.style.background='${teinte(couleur, '14')}'">
-      <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:15px;">${alerte ? '⚠' : '📁'}</span><strong style="flex:1;font-size:12px;color:${alerte ? '#ff3b4f;font-weight:800' : 'var(--text0)'};">${esc(nom)}</strong>
-        <span class="chip" style="border-color:${couleur};color:${couleur};">${nb.toLocaleString('fr-FR')}</span></div>
-      ${detail ? `<div style="font-size:10px;color:var(--text2);line-height:1.4;">${detail}</div>` : ''}
+      <span style="font-size:16px;">${alerte ? '⚠' : '📁'}</span>
+      <div style="flex:1;min-width:0;"><strong style="font-size:13px;color:${alerte ? '#ff3b4f;font-weight:800' : 'var(--text0)'};">${esc(nom)}</strong>
+        ${detail ? `<div style="font-size:10px;color:var(--text2);line-height:1.4;margin-top:2px;">${detail}</div>` : ''}</div>
+      <span class="chip" style="border-color:${couleur};color:${couleur};">${nb.toLocaleString('fr-FR')}</span>
+      ${k >= 0 ? `<span style="display:flex;gap:2px;">${fl('▲', -1, k > 0)}${fl('▼', 1, k < liste.length - 1)}</span>` : '<span style="width:58px;"></span>'}
     </div>`;
 }
-const GRILLE_CLASSEURS = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;';
+async function deplacerClasseur(espace, id, sens) {
+  try {
+    if(!_docsConfigLu) await chargerDocsConfig();
+    if(!_docsConfigLu) { toast('Réglages des documents non lus : réessayez', 'error'); return; }
+    const l = (espace === 'compta' ? classeursCompta() : rubriquesDP()).map(x => Object.assign({}, x));
+    const k = l.findIndex(x => (espace === 'compta' ? x.id : x.code) === id), j = k + sens;
+    if(k < 0 || j < 0 || j >= l.length) return;
+    [l[k], l[j]] = [l[j], l[k]];
+    await enregistrerDocsConfig(espace === 'compta' ? { classeursCompta: l } : { rubriques: l });
+    renderDocumentsVue();
+  } catch(e) { console.error(e); toast("Ordre non enregistré : " + (e.message || e), 'error'); }
+}
+const GRILLE_CLASSEURS = 'display:flex;flex-direction:column;gap:6px;max-width:900px;'; // V128 : classeurs rangés verticalement
 function htmlBarreClasseur(espace, nom, couleur, droite) { // V115 : outils à droite, sur la même ligne
   return `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <button class="btn btn-sm" onclick="ouvrirClasseur('${espace}', null)">← CLASSEURS</button>
@@ -18748,7 +18787,7 @@ function clicNumDoc(io) {
 // - Fiches km et PV d'AGO : ce ne sont plus des « justifications automatiques » ; le PDF du module est
 //   réellement joint aux écritures (liaison automatique, détachable comme toute pièce).
 function reinitialiserVueGED() {
-  _docsVue = 'compta';
+  _docsVue = 'accueil'; // V128 : page d'accueil à deux hémisphères
   _docsClasseur = { compta: null, permanent: null };
   _docsFiltres.type = ''; _docsFiltres.q = ''; _docsFiltres.ecr = ''; _docsFiltres.pourExercice = null;
   _dpFiltreType = '';
@@ -19049,6 +19088,17 @@ function filtreExerciceParDefautGED() { fcEtat('gedc').filtres.ex = new Set([Str
 function htmlBoutonSansEcriture() { // V112 : simple rappel du filtre quand il est actif (ouvert depuis « À TRAITER »)
   return _gedSansEcriture ? `<button class="btn btn-sm" onclick="_gedSansEcriture=false;renderDocumentsVue()" style="background:rgba(255,200,64,.2);border-color:var(--amber);color:var(--amber);">Pièces sans écriture ${esc(CURRENT_YEAR)} ✕</button>` : '';
 }
+// V128 : tri des pièces comptables par n° de pièce (ordre naturel : FA/2 avant FA/10), puis par date ; sans n° : à la fin, par date
+const _collNum = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
+function cleTriNumPiece(nd) { // « TYPE/MM/AA » → TYPE/AA/MM pour que les n° datés suivent l'ordre chronologique d'une année à l'autre
+  const s = normRef(nd), m = s.match(/^(.*\/)(\d{2})\/(\d{2})$/);
+  return m ? m[1] + m[3] + '/' + m[2] : s;
+}
+function triPiecesCompta(a, b) {
+  const na = a.numDoc ? cleTriNumPiece(a.numDoc) : '', nb = b.numDoc ? cleTriNumPiece(b.numDoc) : '';
+  if(!na !== !nb) return na ? -1 : 1;
+  return (na && nb ? _collNum.compare(na, nb) : 0) || (a.dateDoc || '').localeCompare(b.dateDoc || '') || (a.depose || '').localeCompare(b.depose || '');
+}
 function htmlPiecesComptablesV109() {
   if(fcEtat('gedc').pourEx !== String(CURRENT_YEAR)) { fcReset('gedc'); filtreExerciceParDefautGED(); fcEtat('gedc').pourEx = String(CURRENT_YEAR); } // l'exercice affiché par défaut
   const id = _docsClasseur.compta;
@@ -19057,7 +19107,7 @@ function htmlPiecesComptablesV109() {
     return htmlPiecesComptablesV107(); // V112 : alertes regroupées dans « À TRAITER »
   }
   const ouverts = exercicesOuverts();
-  const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort((a, b) => (b.dateDoc || '').localeCompare(a.dateDoc || '') || (b.depose || '').localeCompare(a.depose || ''));
+  const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort(triPiecesCompta); // V128 : par n° de pièce
   const th = (c, l, st) => htmlThFiltre('gedc', c, l, st);
   const lignes = rows.map(p => `<tr>
       <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
