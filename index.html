@@ -16818,7 +16818,7 @@ function deposerDocumentGenere(d) {
     };
     if(d.espace === 'permanent') Object.assign(meta, { espace: 'permanent', rubrique: existant && existant.rubrique ? existant.rubrique : d.rubrique, groupe: id, version: 1, enVigueur: true,
       classeurs: existant && classeursDe(existant).length ? classeursDe(existant) : [d.rubrique], typeDP: (existant && existant.typeDP) || d.typeDP || (d.module === 'pv' ? 'PV' : ''), numDoc: existant ? (existant.numDoc || '') : '',
-      sousDossier: d.sousDossier || (existant && existant.sousDossier) || '', origineExercice: d.exercice, test: !!d.test }); // V107 : classement conservé, V110 : sous-dossier
+      sousDossier: existant && existant.espace === 'permanent' ? (existant.sousDossier || '') : (d.sousDossier || ''), origineExercice: d.exercice, /* V130 : classement conservé, intercalaire compris */ test: !!d.test }); // V107 : classement conservé, V110 : sous-dossier
     else Object.assign(meta, { espace: 'compta', exercice: d.exercice, test: d.test, typePiece: d.typePiece || (existant && existant.typePiece) || '', numDoc: d.numDoc || (existant && existant.numDoc) || '' }); // V109 : n° de pièce des écritures
     if(existant && Array.isArray(existant.liens) && existant.liens.length) meta.liens = existant.liens; // V102 : rattachements conservés
     try { await window._fbPieceSave(meta); }
@@ -18237,6 +18237,54 @@ async function capturerEditionsCloture() {
 }
 // Dépose (ou remplace) les éditions de clôture de l'exercice affiché dans la GED
 let _editionsEnCours = false;
+// V130 : fenêtre de choix du rangement des états financiers (arborescence du DP au moment de la clôture)
+function choisirRangementEF(y) {
+  return new Promise(resolve => {
+    const cfg = DOCS_CONFIG || {}, dernier = cfg.rangementEF && rubriquesDP().some(r => r.code === cfg.rangementEF.classeur) ? cfg.rangementEF.classeur : CODE_ETATS_FINANCIERS;
+    let cls = rubriquesDP().some(r => r.code === dernier) ? dernier : (rubriquesDP()[0] || {}).code, choix = '__nouveau';
+    let m = document.getElementById('ef-rangement-modal');
+    if(!m) { m = document.createElement('div'); m.id = 'ef-rangement-modal'; m.className = 'modal-overlay'; m.style.zIndex = '3500'; document.body.appendChild(m); }
+    const rendre = () => {
+      const inters = intercalairesClasseur(cls), nouveau = (document.getElementById('ef-nouveau') || {}).value;
+      if(choix !== '__racine' && choix !== '__nouveau' && !inters.includes(choix)) choix = '__nouveau';
+      m.innerHTML = `<div class="modal" style="width:640px;max-width:95vw;">
+        <div class="modal-title">📁 RANGER LES ÉTATS FINANCIERS ${esc(y)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Bilan, compte de résultat, balance, Grand Livre, registre des immobilisations et révision vont être déposés en PDF dans le dossier permanent. Choisissez leur place :</div>
+        <div style="display:flex;gap:12px;min-height:220px;">
+          <div style="flex:1;border:1px solid var(--line2);border-radius:var(--radius);padding:6px;max-height:300px;overflow-y:auto;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin:2px 4px 6px;">CLASSEUR</div>
+            ${rubriquesDP().map((r, i) => `<div onclick="window._efChoixCls('${esc(r.code)}')" style="cursor:pointer;padding:6px 8px;border-radius:3px;border-left:5px solid ${couleurRubrique(r, i)};margin-bottom:3px;font-size:12px;${r.code === cls ? 'background:rgba(var(--accent-rgb),.16);color:var(--cyan);font-weight:700;' : ''}">📁 ${esc(r.label)}</div>`).join('')}
+          </div>
+          <div style="flex:1;border:1px solid var(--line2);border-radius:var(--radius);padding:6px;max-height:300px;overflow-y:auto;">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text2);margin:2px 4px 6px;">INTERCALAIRE</div>
+            ${inters.map(n => `<label style="display:flex;align-items:center;gap:6px;margin:0 0 4px;padding:3px 6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;"><input type="radio" name="ef-inter" ${choix === n ? 'checked' : ''} onchange="window._efChoixInter(this.dataset.v)" data-v="${esc(n)}" style="width:14px;height:14px;">📁 ${esc(n)}</label>`).join('')}
+            <label style="display:flex;align-items:center;gap:6px;margin:0 0 4px;padding:3px 6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;"><input type="radio" name="ef-inter" ${choix === '__racine' ? 'checked' : ''} onchange="window._efChoixInter('__racine')" style="width:14px;height:14px;">📄 À la racine du classeur</label>
+            <label style="display:flex;align-items:center;gap:6px;margin:0;padding:3px 6px;text-transform:none;letter-spacing:0;font-size:12px;cursor:pointer;"><input type="radio" name="ef-inter" ${choix === '__nouveau' ? 'checked' : ''} onchange="window._efChoixInter('__nouveau')" style="width:14px;height:14px;">Nouvel intercalaire :
+              <input type="text" id="ef-nouveau" value="${esc(nouveau !== undefined ? nouveau : y)}" onfocus="window._efChoixInter('__nouveau', true)" style="flex:1;height:26px;"></label>
+          </div>
+        </div>
+        <div id="ef-err" style="font-size:11px;color:var(--red);min-height:14px;margin:8px 0;"></div>
+        <div class="flex gap8"><button class="btn btn-primary" onclick="window._efValider()">✓ DÉPOSER ICI</button><button class="btn ml-auto" onclick="window._efAnnuler()">PLUS TARD</button></div></div>`;
+      m.style.display = 'flex';
+    };
+    const fin = v => { m.style.display = 'none'; m.innerHTML = ''; ['_efChoixCls', '_efChoixInter', '_efValider', '_efAnnuler'].forEach(k => delete window[k]); resolve(v); };
+    window._efChoixCls = c => { cls = c; choix = intercalairesClasseur(c).includes(y) ? y : '__nouveau'; rendre(); };
+    window._efChoixInter = (v, sansRendu) => { choix = v; if(!sansRendu) rendre(); else document.querySelectorAll('input[name="ef-inter"]').forEach(r => { r.checked = r.closest('label').contains(document.getElementById('ef-nouveau')); }); };
+    window._efValider = async () => {
+      let inter = choix === '__racine' ? '' : choix === '__nouveau' ? (document.getElementById('ef-nouveau').value || '').trim() : choix;
+      if(choix === '__nouveau' && !inter) { document.getElementById('ef-err').textContent = "Nom de l'intercalaire ?"; return; }
+      const exist = intercalairesClasseur(cls).find(n => n.toLowerCase() === String(inter).toLowerCase()); if(exist) inter = exist;
+      try {
+        if(inter && !exist) await enregistrerIntercalaires(cls, intercalairesClasseur(cls).concat([inter]));
+        await enregistrerDocsConfig({ rangementEF: { classeur: cls } });
+      } catch(e) { console.warn(e); }
+      fin({ classeur: cls, inter });
+    };
+    window._efAnnuler = () => fin(null);
+    if(intercalairesClasseur(cls).includes(y)) choix = y;
+    rendre();
+  });
+}
 async function deposerEditionsCloture(silencieux) {
   if(!window._fbStorageActif) { if(!silencieux) toast('Stockage des documents non configuré', 'error'); return null; }
   if(_editionsEnCours) return null;
@@ -18246,13 +18294,23 @@ async function deposerEditionsCloture(silencieux) {
   try {
     afficherProgressionSauvegarde('Éditions de clôture : préparation…', 0.02);
     await assurerClasseursSysteme(); // V110
+    // V130 : où ranger les états financiers dans le DP ? (demandé si aucune édition de l'exercice n'y est encore)
+    let dest = { classeur: CODE_ETATS_FINANCIERS, inter: y };
+    const dejaLa = (PIECES || []).find(p => String(p.origine || '').startsWith(`ed:${y}:`) && p.espace === 'permanent');
+    if(dejaLa) dest = { classeur: classeursDe(dejaLa)[0] || CODE_ETATS_FINANCIERS, inter: dejaLa.sousDossier || '' }; // éditions refaites : même place
+    else if(!isTestExercise(y) && !(PIECES || []).some(p => String(p.origine || '').startsWith(`ed:${y}:`))) {
+      afficherProgressionSauvegarde(null);
+      dest = await choisirRangementEF(y);
+      if(!dest) { toast(`Éditions de clôture ${y} non déposées : vous pourrez le faire depuis l'onglet Éditions comptables`, 'warn', 8000); return null; }
+      afficherProgressionSauvegarde('Éditions de clôture : préparation…', 0.02);
+    }
     const eds = await capturerEditionsCloture();
     for(let i = 0; i < eds.length; i++) {
       const e = eds[i];
       afficherProgressionSauvegarde(`Éditions de clôture : ${e.titre} (${i + 1} / ${eds.length})`, (i + 0.5) / eds.length);
       if(e.erreur) { rapport.echecs.push(`${e.titre} — ${e.erreur}`); continue; }
       try {
-        const d = { cle: `ed:${y}:${e.code}`, espace: isTestExercise(y) ? 'compta' : 'permanent', rubrique: CODE_ETATS_FINANCIERS, sousDossier: y, typeDP: 'EF', exercice: y, test: isTestExercise(y), module: 'ed', edition: true, // V110 : DP › États financiers › année
+        const d = { cle: `ed:${y}:${e.code}`, espace: isTestExercise(y) ? 'compta' : 'permanent', rubrique: dest.classeur, sousDossier: dest.inter, // V130 : rangement choisi typeDP: 'EF', exercice: y, test: isTestExercise(y), module: 'ed', edition: true, // V110 : DP › États financiers › année
           x: { docHtml: e.html.join('\n<!--atrium-page-->\n') }, titre: e.titre, date: dateFinExercice(), typePiece: '', nom: e.nom, paysage: e.paysage };
         await deposerDocumentGenere(d);
         rapport.ok.push(e.titre);
@@ -18371,6 +18429,13 @@ async function enregistrerIntercalaires(code, liste) {
   if(!_docsConfigLu) throw new Error('réglages des documents non lus');
   const r = rubriquesDP().map(x => x.code === code ? Object.assign({}, x, { intercalaires: liste }) : Object.assign({}, x));
   await enregistrerDocsConfig({ rubriques: r });
+}
+async function deplacerIntercalaire(code, nom, sens) { // V130
+  const l = intercalairesClasseur(code), k = l.indexOf(nom), j = k + sens;
+  if(k < 0 || j < 0 || j >= l.length) return;
+  [l[k], l[j]] = [l[j], l[k]];
+  try { await enregistrerIntercalaires(code, l); renderDocumentsVue(); }
+  catch(e) { toast('Ordre non enregistré : ' + (e.message || e), 'error'); }
 }
 async function nouvelIntercalaire(code) {
   const nom = (prompt("Nom du nouvel intercalaire :") || '').trim(); if(!nom) return;
@@ -19188,7 +19253,8 @@ function htmlDossierPermanentV109() {
     const sds = [...new Set(liste.map(g => g.courante.sousDossier || '').concat(sansFiltre ? ordreI : []))].sort((a, b) => (b === '') - (a === '') || ((ordreI.indexOf(a) + 1 || 1e6) - (ordreI.indexOf(b) + 1 || 1e6)) || a.localeCompare(b, 'fr', { numeric: true }));
     lignes = sds.map(sd => {
       const gs = liste.filter(g => (g.courante.sousDossier || '') === sd), cle = id + '|' + sd, ferme = _sdFermes.has(cle);
-      const outilsI = sd && actif && !id.startsWith('__') ? `<span style="float:right;display:inline-flex;gap:4px;">${gs.length ? '' : `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();supprimerIntercalaireVide('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Retirer cet intercalaire vide" style="padding:0 6px;font-size:10px;">✕</button>`}<button class="btn btn-sm" onclick="event.stopPropagation();deposerDansIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Déposer un document dans cet intercalaire" style="padding:0 8px;font-size:10px;">⬆ DÉPOSER ICI</button></span>` : '';
+      const kI = ordreI.indexOf(sd), flI = (lib, sn, ok) => `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();deplacerIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')},${sn})" ${ok ? '' : 'disabled'} title="${sn < 0 ? 'Monter' : 'Descendre'} l'intercalaire" style="padding:0 6px;font-size:10px;">${lib}</button>`;
+      const outilsI = sd && actif && !id.startsWith('__') ? `<span style="float:right;display:inline-flex;gap:4px;">${sansFiltre && kI >= 0 ? flI('▲', -1, kI > 0) + flI('▼', 1, kI < ordreI.length - 1) : ''}${gs.length ? '' : `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();supprimerIntercalaireVide('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Retirer cet intercalaire vide" style="padding:0 6px;font-size:10px;">✕</button>`}<button class="btn btn-sm" onclick="event.stopPropagation();deposerDansIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Déposer un document dans cet intercalaire" style="padding:0 8px;font-size:10px;">⬆ DÉPOSER ICI</button></span>` : '';
       return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${outilsI}${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span>${gs.length ? '' : ' <span style="color:var(--text2);font-weight:400;font-style:italic;">— vide</span>'}</td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
         + (ferme ? '' : gs.map(ligneGroupe).join(''));
     }).join('');
