@@ -708,6 +708,9 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 .nav-sep { display: none; }
 .nav-version { padding: 4px 14px; font-size: 8.5px; }
 /* V115 : ambre doux des pièces à joindre ; dépôt par glisser-déposer sur toute la GED */
+.nd-lien { font-weight: 300; text-decoration: none; letter-spacing: .01em; opacity: .92; } /* V124 : n° de pièce du GL plus fin */
+.nd-lien:hover { opacity: 1; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.nd-lien.nd-sans { text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 2px; }
 :root { --pj-manquant: #d9a25c; }
 html[data-theme="light"] { --pj-manquant: #a8701f; }
 #docs-wrap.drop-over { outline: 2px dashed var(--cyan); outline-offset: 4px; border-radius: var(--radius); }
@@ -2995,6 +2998,7 @@ applyTheme();
         <div id="dv-infos" style="font-size:10px;color:var(--text2);"></div>
       </div>
       <button class="btn btn-sm" id="dv-ecriture" style="display:none;" onclick="const io=_vue&&_vue.io;fermerVisionneuse();if(io)ouvrirPiecesEcriture(io);">📎 PIÈCES DE L'ÉCRITURE</button>
+      <button class="btn btn-sm" id="dv-annoter" onclick="ouvrirAnnotations()" title="Commenter, encadrer, surligner… (l'original n'est pas modifié ; les annotations figurent sur la copie tamponnée)">✏ ANNOTER</button>
       <button class="btn btn-sm btn-primary" onclick="imprimerPieceVue()">⎙ IMPRIMER</button>
       <button class="btn btn-sm" onclick="_vue && telechargerPiece(_vue.id)">⬇ TÉLÉCHARGER</button>
       <button class="btn btn-sm btn-danger" id="dv-suppr" onclick="supprimerPieceDepuisVue()" title="Mettre à la corbeille (mot de passe)">🗑</button>
@@ -16369,6 +16373,7 @@ async function enregistrerDepot() {
     // Contrôle au moment de l'enregistrement : l'exercice a pu être clôturé entre-temps
     if(exerciceClos(exercice)) { err.textContent = `L'exercice ${exercice} est clôturé : aucune pièce ne peut y être ajoutée.`; return; }
     base = { espace: 'compta', exercice: String(exercice), test: isTestExercise(exercice), typePiece: el('dep-type').value || '', numDoc: numDocDepot() }; // V108
+    if(d.options && d.options.lien && d.espace === 'compta' && String(d.options.lien.ex) === String(CURRENT_YEAR)) Object.assign(base, refPieceDepuisEcriture(Object.assign({ espace: 'compta' }, base), d.options.lien.ios)); // V126
     if(d.options && d.options.lien) base.liens = d.options.lien.ios.map(io => ({ ex: String(d.options.lien.ex), io: String(io), nd: (justifDe(io) || {}).numDoc || '' })); // V102 (+ n° de pièce V103)
   } else {
     const clsSel = document.getElementById('dep-cls-sel'); const classeurs = clsSel && clsSel.value ? [clsSel.value] : []; // V115
@@ -16460,6 +16465,7 @@ async function voirPiece(id, ctx) {
     : [`Dossier permanent — ${classeursDe(p).map(libRubrique).join(', ') || 'sans classeur'}${p.typeDP ? ' — ' + libTypeDP(p.typeDP) : ''}`, 'version ' + (p.version || 1) + (p.enVigueur ? ' (en vigueur)' : ''), p.dateDoc ? 'du ' + fmtDateFr(p.dateDoc) : ''];
   document.getElementById('dv-infos').textContent = infos.filter(Boolean).join(' · ') + ` · ${p.nomFichier} (${tailleLisible(p.taille)})` + (pieceGeneree(p) ? ` · généré par ${LIB_MODULE_ORIGINE[p.module] || 'un module'}` : '');
   document.getElementById('dv-suppr').style.display = (pieceGeneree(p) || !pieceModifiable(p) || p.corbeille) ? 'none' : '';
+  { const bA = document.getElementById('dv-annoter'); if(bA) bA.style.display = (['pdf', 'image'].includes(genrePiece(p)) && !p.corbeille && pieceModifiable(p)) ? '' : 'none'; } // V125
   if(p.corbeille) document.getElementById('dv-infos').textContent += ' · 🗑 dans la corbeille';
   corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement…</div>`;
   modal.style.display = 'flex';
@@ -16471,10 +16477,10 @@ async function voirPiece(id, ctx) {
   _vue.url = url;
   const genre = genrePiece(p);
   // V103 : pièce jointe à une écriture → copie tamponnée du n° de pièce
-  const tampon = texteTampon(p);
-  if(tampon && (genre === 'pdf' || genre === 'image')) {
-    document.getElementById('dv-infos').textContent += ` · tampon « ${tampon} »`;
-    corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Apposition du tampon ${esc(tampon)}…</div>`;
+  const tampon = texteTampon(p), nAnnot = annotationsDe(p).length; // V125 : annotations dessinées sur la copie
+  if((tampon || nAnnot) && (genre === 'pdf' || genre === 'image')) {
+    document.getElementById('dv-infos').textContent += (tampon ? ` · tampon « ${tampon} »` : '') + (nAnnot ? ` · ${nAnnot} annotation${nAnnot > 1 ? 's' : ''}` : '');
+    corps.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Préparation de la copie${tampon ? ' (tampon ' + esc(tampon) + ')' : ''}…</div>`;
     let tb = null;
     try { const brut = await blobDePiece(url); if(brut) tb = await blobTamponne(p, brut); }
     catch(e) { console.warn(e); toast('Tampon non apposé (' + (e.message || e) + ') : document affiché sans tampon', 'warn', 5000); }
@@ -16525,7 +16531,7 @@ async function telechargerPiece(id) {
     const b = await blobDePiece(url);
     if(b) {
       let tb = null; // V103 : téléchargement de la copie tamponnée
-      if(texteTampon(p)) { try { tb = await blobTamponne(p, b); } catch(e) { console.warn(e); toast('Tampon non apposé : fichier d\'origine téléchargé', 'warn', 4000); } }
+      if(texteTampon(p) || annotationsDe(p).length) { try { tb = await blobTamponne(p, b); } catch(e) { console.warn(e); toast('Tampon non apposé : fichier d\'origine téléchargé', 'warn', 4000); } }
       blobUrl = URL.createObjectURL(tb || b); aRevoquer = true; tamponne = !!tb;
     }
   }
@@ -17130,7 +17136,24 @@ async function lierPiece(p, ios, ex) {
   const liens = (p.liens || []).slice();
   if(Array.isArray(DB.liensRefuses) && String(ex) === String(CURRENT_YEAR)) { const av = DB.liensRefuses.length; DB.liensRefuses = DB.liensRefuses.filter(k => !ios.some(io => { const b = cleIo(io) + '|' + (p.groupe || p.id); return k === b || k.startsWith(b + '|'); })); /* V116 */ if(DB.liensRefuses.length !== av) saveDB(); }
   ios.forEach(io => { if(!liens.some(l => l.ex === String(ex) && l.io === cleIo(io))) liens.push({ ex: String(ex), io: cleIo(io), nd: (justifDe(io) || {}).numDoc || '' }); });
-  return majPiece(p, { liens });
+  return majPiece(p, Object.assign({ liens }, String(ex) === String(CURRENT_YEAR) ? refPieceDepuisEcriture(p, ios) : {}));
+}
+// V126 : une pièce comptable déposée prend, en se rattachant, le n° de pièce de l'écriture (type + « / » + suite).
+// Jamais pour un document de module (son n° suit son module) ni pour le dossier permanent (référence commune à plusieurs écritures).
+function refPieceDepuisEcriture(p, ios) {
+  if(!p || p.espace !== 'compta' || pieceGeneree(p)) return {};
+  const j = (ios || []).map(io => justifDe(io)).find(x => x && x.numDoc); if(!j) return {};
+  const nd = normaliserNumPiece(j.numDoc);
+  if(!nd || nd === p.numDoc) return {};
+  const ch = { numDoc: nd }, code = codeTypeConnu(nd.split(/[\/_]/)[0]);
+  if(code && code !== p.typePiece) ch.typePiece = code;
+  return ch;
+}
+// « RBANQUE - 07/26 », « RBANQUE_07/26 » → « RBANQUE/07/26 » quand le préfixe est un type de pièce connu
+function normaliserNumPiece(nd) {
+  nd = String(nd || '').trim();
+  const m = nd.match(/^([^\/_\s-]+)\s*(?:[_\/]|\s*-\s*)\s*(.+)$/);
+  return m && codeTypeConnu(m[1]) ? codeTypeConnu(m[1]) + '/' + m[2].trim() : nd;
 }
 async function joindrePieceExistante(id) {
   if(!controleRattachement()) return;
@@ -17486,16 +17509,18 @@ function zoneLibreTampon(data, W, H, w, h, marge) {
   return best;
 }
 // Appose le tampon sur la 1re page ; renvoie un Blob PDF
-async function apposerTampon(octets, texte) {
+async function apposerTampon(octets, texte, annots) { // V125 : + annotations (tampon facultatif)
   await Promise.all([chargerPdfLib(), chargerPdfJs()]);
   const { PDFDocument, StandardFonts, rgb, degrees } = window.PDFLib;
   const doc = await PDFDocument.load(octets, { ignoreEncryption: true });
   if(doc.isEncrypted) throw new Error('PDF protégé');
+  const pdf = await window.pdfjsLib.getDocument({ data: octets.slice(0), isEvalSupported: false }).promise;
+  try {
+  if(texte) {
   const font = await doc.embedFont(StandardFonts.HelveticaBold);
   texte = texteEncodable(font, texte);
   const page = doc.getPage(0);
   // Rendu de la 1re page pour repérer les inscriptions
-  const pdf = await window.pdfjsLib.getDocument({ data: octets.slice(0), isEvalSupported: false }).promise;
   const pg = await pdf.getPage(1);
   const v1 = pg.getViewport({ scale: 1 });
   const s = 700 / Math.max(v1.width, v1.height);
@@ -17514,7 +17539,6 @@ async function apposerTampon(octets, texte) {
     Math.ceil(wPt * s) + 2 * air, Math.ceil(hPt * s) + 2 * air, Math.round(margePt * s * 0.6));
   const xPx = z ? z.x + air : c.width - Math.round(margePt * s) - Math.ceil(wPt * s);
   const yPx = z ? z.y + air : Math.round(margePt * s);
-  pdf.destroy();
   // Coin visuel bas-gauche du tampon → coordonnées PDF (gère rotation et cadrage de la page)
   const [ax, ay] = vp.convertToPdfPoint(xPx, yPx + hPt * s);
   const rot = ((page.getRotation().angle % 360) + 360) % 360;
@@ -17523,22 +17547,313 @@ async function apposerTampon(octets, texte) {
   page.drawRectangle({ x: ax, y: ay, width: wPt, height: hPt, rotate: degrees(rot), color: rgb(1, 1, 1), opacity: 0.92, borderColor: vert, borderWidth: 1.6 });
   const [tx, ty] = rotP(padX, padY + descente);
   page.drawText(texte, { x: tx, y: ty, size: taille, font, color: vert, rotate: degrees(rot) });
+  }
+  if(annots && annots.length) await dessinerAnnotations(doc, pdf, annots); // V125
+  } finally { pdf.destroy(); }
   return new Blob([await doc.save()], { type: 'application/pdf' });
 }
 // Version tamponnée d'une pièce (cache par pièce, fichier et texte) ; null si pas de tampon à apposer
 const _cacheTampon = new Map();
 async function blobTamponne(p, blob, texteForce) {
-  const texte = texteForce || texteTampon(p); if(!texte) return null; // V105 : texte imposé (sauvegarde, autres exercices)
+  const texte = texteForce !== undefined && texteForce !== null ? texteForce : texteTampon(p); // V105 : texte imposé (sauvegarde, autres exercices)
+  const annots = annotationsDe(p); // V125
+  if(!texte && !annots.length) return null;
   const genre = genrePiece(p); if(genre !== 'pdf' && genre !== 'image') return null;
-  const cle = p.id + '|' + p.chemin + '|' + texte;
+  const cle = p.id + '|' + p.chemin + '|' + texte + '|' + sigAnnotations(annots);
   if(_cacheTampon.has(cle)) return _cacheTampon.get(cle);
   await chargerPdfLib();
   const octets = genre === 'pdf' ? new Uint8Array(await blob.arrayBuffer()) : await pdfDepuisImage(blob);
-  const res = await apposerTampon(octets, texte);
+  const res = await apposerTampon(octets, texte, annots);
   if(_cacheTampon.size > 30) _cacheTampon.delete(_cacheTampon.keys().next().value);
   _cacheTampon.set(cle, res);
   return res;
 }
+// ══════════════════════════════════════════════
+// V125 — ANNOTATIONS DES DOCUMENTS (PDF et images)
+// ══════════════════════════════════════════════
+// Les annotations sont enregistrées dans la fiche du document (p.annotations), jamais dans le fichier :
+// l'original reste intact. Elles sont dessinées sur la copie tamponnée (visionneuse, impression, téléchargement,
+// « Copies tamponnées » du ZIP). Coordonnées en fractions de la page telle qu'elle s'affiche (origine en haut à gauche).
+// Formes : note, texte, cadre, surligne, fleche, crayon.
+const ANN_COULEURS = ['#d62828', '#1d4ed8', '#15803d', '#ea580c', '#facc15', '#111111'];
+const ANN_OUTILS = [
+  ['select', '👆', 'Sélectionner, déplacer (glisser), modifier le texte (double-clic), supprimer (touche Suppr)'],
+  ['note', '📝 Note', 'Note sur fond jaune : cliquez à l\'endroit voulu'], ['texte', 'T Texte', 'Texte libre : cliquez à l\'endroit voulu'],
+  ['cadre', '▭ Encadrer', 'Encadrer une zone : cliquez-glissez'], ['surligne', '▮ Surligner', 'Surligner une zone : cliquez-glissez'],
+  ['fleche', '➚ Flèche', 'Flèche : cliquez-glissez du départ vers la pointe'], ['crayon', '✎ Crayon', 'Dessin à main levée']
+];
+let _ann = null;
+function annotationsDe(p) { return Array.isArray(p && p.annotations) ? p.annotations : []; }
+function sigAnnotations(a) { const s = JSON.stringify(a || []); let h = 0; for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return s.length + ':' + h; }
+// Primitives de dessin d'une annotation (unités = points de la page affichée) — communes à l'écran et au PDF
+function annPrimitives(a, W, H, mesure) {
+  const X = f => f * W, Y = f => f * H, out = [], c = a.c || ANN_COULEURS[0];
+  if(a.t === 'cadre' || a.t === 'surligne') {
+    const x = X(a.x), y = Y(a.y), w = X(a.w), h = Y(a.h);
+    const pts = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    out.push(a.t === 'cadre' ? { k: 'poly', pts, ferme: true, trait: c, ep: 2 } : { k: 'poly', pts, ferme: true, fond: c, op: 0.35 });
+  } else if(a.t === 'fleche' && a.pts && a.pts.length === 2) {
+    const [x1, y1] = [X(a.pts[0][0]), Y(a.pts[0][1])], [x2, y2] = [X(a.pts[1][0]), Y(a.pts[1][1])];
+    const ang = Math.atan2(y2 - y1, x2 - x1), L = 11, o = Math.PI / 7;
+    const base = [x2 - L * 0.8 * Math.cos(ang), y2 - L * 0.8 * Math.sin(ang)];
+    out.push({ k: 'poly', pts: [[x1, y1], base], trait: c, ep: 2 });
+    out.push({ k: 'poly', pts: [[x2, y2], [x2 - L * Math.cos(ang - o), y2 - L * Math.sin(ang - o)], [x2 - L * Math.cos(ang + o), y2 - L * Math.sin(ang + o)]], ferme: true, fond: c, op: 1 });
+  } else if(a.t === 'crayon' && a.pts && a.pts.length > 1) {
+    out.push({ k: 'poly', pts: a.pts.map(p => [X(p[0]), Y(p[1])]), trait: c, ep: 2 });
+  } else if(a.t === 'note' || a.t === 'texte') {
+    const note = a.t === 'note', taille = note ? 10 : 12, lh = taille * 1.25, pad = note ? 5 : 0;
+    const lignes = String(a.txt || '').split('\n');
+    const larg = Math.max(...lignes.map(l => mesure(l, taille)), 10);
+    const x = X(a.x), y = Y(a.y), w = larg + 2 * pad, h = lignes.length * lh + 2 * pad - (lh - taille) * 0.6;
+    if(note) out.push({ k: 'poly', pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], ferme: true, fond: '#fff4b0', op: 0.95, trait: c, ep: 1.2 });
+    lignes.forEach((l, i) => out.push({ k: 'texte', x: x + pad, y: y + pad + taille * 0.82 + i * lh, taille, txt: l, coul: note ? '#111111' : c }));
+    out.push({ k: 'boite', x, y, w, h });
+  }
+  return out;
+}
+function annBoite(prims) {
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  prims.forEach(p => {
+    if(p.k === 'poly') p.pts.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); });
+    if(p.k === 'boite') { x1 = Math.min(x1, p.x); y1 = Math.min(y1, p.y); x2 = Math.max(x2, p.x + p.w); y2 = Math.max(y2, p.y + p.h); }
+  });
+  return isFinite(x1) ? { x: x1 - 3, y: y1 - 3, w: x2 - x1 + 6, h: y2 - y1 + 6 } : null;
+}
+let _annCanvasMesure = null;
+function annMesureEcran(t, taille) {
+  if(!_annCanvasMesure) _annCanvasMesure = document.createElement('canvas').getContext('2d');
+  _annCanvasMesure.font = `${taille}px Helvetica, Arial, sans-serif`;
+  return _annCanvasMesure.measureText(t).width;
+}
+// Dessin sur le PDF (pdf-lib), page par page ; pdfjs sert aux conversions de coordonnées (rotation, cadrage)
+async function dessinerAnnotations(doc, pdfjs, annots) {
+  const { StandardFonts, rgb, degrees } = window.PDFLib;
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const coul = h => { const n = parseInt(String(h || '#000').slice(1), 16); return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255); };
+  const parPage = new Map();
+  annots.forEach(a => { if(!parPage.has(a.pg)) parPage.set(a.pg, []); parPage.get(a.pg).push(a); });
+  for(const [pg, liste] of parPage) {
+    if(!(pg >= 0 && pg < doc.getPageCount() && pg < pdfjs.numPages)) continue;
+    const page = doc.getPage(pg);
+    const vp = (await pdfjs.getPage(pg + 1)).getViewport({ scale: 1 });
+    const rot = ((page.getRotation().angle % 360) + 360) % 360;
+    const P = (x, y) => vp.convertToPdfPoint(x, y);
+    const mesure = (t, s) => font.widthOfTextAtSize(texteEncodable(font, t), s);
+    for(const a of liste) {
+      for(const pr of annPrimitives(a, vp.width, vp.height, mesure)) {
+        if(pr.k === 'poly') {
+          const pts = pr.pts.map(([x, y]) => P(x, y));
+          const d = pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${x.toFixed(2)} ${(-y).toFixed(2)}`).join(' ') + (pr.ferme ? ' Z' : '');
+          const o = { x: 0, y: 0 };
+          if(pr.fond) { o.color = coul(pr.fond); o.opacity = pr.op === undefined ? 1 : pr.op; }
+          if(pr.trait) { o.borderColor = coul(pr.trait); o.borderWidth = pr.ep || 1; o.borderLineCap = 1; }
+          if(!pr.fond) o.color = undefined;
+          page.drawSvgPath(d, o);
+        } else if(pr.k === 'texte' && pr.txt) {
+          const [x, y] = P(pr.x, pr.y);
+          page.drawText(texteEncodable(font, pr.txt), { x, y, size: pr.taille, font, color: coul(pr.coul), rotate: degrees(rot) });
+        }
+      }
+    }
+  }
+}
+
+// ── Éditeur ──
+async function ouvrirAnnotations() {
+  if(!_vue || !_vue.url) return;
+  const p = trouverPiece(_vue.id); if(!p) return;
+  const genre = genrePiece(p);
+  if(genre !== 'pdf' && genre !== 'image') { toast('Annotation possible seulement sur un PDF ou une image', 'error'); return; }
+  let m = document.getElementById('annot-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'annot-modal'; m.className = 'modal-overlay'; m.style.zIndex = '1090'; document.body.appendChild(m); }
+  const lecture = !!(p.corbeille || !pieceModifiable(p));
+  _ann = { id: p.id, io: _vue.io, lecture, liste: JSON.parse(JSON.stringify(annotationsDe(p))), outil: lecture ? 'select' : 'note', couleur: ANN_COULEURS[0], sel: null, histo: [], modif: false, pages: [] };
+  m.innerHTML = `<div class="modal" style="width:1100px;max-width:98vw;height:95vh;max-height:95vh;display:flex;flex-direction:column;padding:12px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <div class="modal-title" style="margin:0;flex:none;">✏ ANNOTER</div>
+        <div style="font-size:10px;color:var(--text2);flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.titre || p.nomFichier)}${lecture ? ' — lecture seule (exercice clôturé ou corbeille)' : ''}</div>
+        ${lecture ? '' : `<button class="btn btn-sm btn-primary" onclick="enregistrerAnnotations()">✓ ENREGISTRER</button>`}
+        <button class="btn btn-sm" onclick="fermerAnnotations()">FERMER</button>
+      </div>
+      <div id="ann-barre" style="display:${lecture ? 'none' : 'flex'};align-items:center;gap:4px;flex-wrap:wrap;margin-bottom:8px;"></div>
+      <div id="ann-pages" style="flex:1;min-height:0;overflow:auto;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--radius);padding:16px 0;">
+        <div style="padding:40px;text-align:center;color:var(--text2);font-size:12px;">Chargement du document…</div></div>
+      <div id="ann-saisie" style="display:none;position:absolute;inset:0;background:rgba(0,0,0,.45);align-items:center;justify-content:center;z-index:5;"></div>
+    </div>`;
+  m.querySelector('.modal').style.position = 'relative';
+  m.style.display = 'flex';
+  annBarre();
+  try {
+    await Promise.all([chargerPdfLib(), chargerPdfJs()]);
+    const brut = await blobDePiece(_vue.url);
+    if(!brut) throw new Error('fichier illisible (réglage CORS du stockage ?)');
+    const octets = genre === 'pdf' ? new Uint8Array(await brut.arrayBuffer()) : await pdfDepuisImage(brut);
+    const pdf = await window.pdfjsLib.getDocument({ data: octets.slice(0), isEvalSupported: false }).promise;
+    const zone = document.getElementById('ann-pages'); if(!zone || !_ann) { pdf.destroy(); return; }
+    zone.innerHTML = '';
+    const largeur = Math.max(300, Math.min(zone.clientWidth - 40, 1000)), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for(let i = 1; i <= pdf.numPages; i++) {
+      if(!_ann || _ann.id !== p.id) break;
+      const pg = await pdf.getPage(i);
+      const v1 = pg.getViewport({ scale: 1 }), s = largeur / v1.width, vp = pg.getViewport({ scale: s * dpr });
+      const wrap = document.createElement('div');
+      wrap.style.cssText = `position:relative;width:${largeur}px;height:${Math.round(v1.height * s)}px;margin:0 auto 14px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.35);`;
+      const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height); cv.style.cssText = 'width:100%;height:100%;display:block;';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${v1.width} ${v1.height}`); svg.dataset.pg = i - 1;
+      svg.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;touch-action:none;';
+      wrap.appendChild(cv); wrap.appendChild(svg); zone.appendChild(wrap);
+      _ann.pages.push({ w: v1.width, h: v1.height, svg });
+      annBrancher(svg);
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      annDessinerPage(i - 1);
+    }
+    pdf.destroy();
+  } catch(e) {
+    console.error(e);
+    const zone = document.getElementById('ann-pages');
+    if(zone) zone.innerHTML = `<div class="alert alert-danger" style="margin:20px;">Document impossible à ouvrir pour l'annotation : ${esc(e.message || e)}</div>`;
+  }
+}
+function annBarre() {
+  const b = document.getElementById('ann-barre'); if(!b || !_ann) return;
+  b.innerHTML = ANN_OUTILS.map(([k, lib, tit]) => `<button class="btn btn-sm ${_ann.outil === k ? 'btn-primary' : ''}" title="${esc(tit)}" onclick="annOutil('${k}')" style="padding:2px 8px;">${lib}</button>`).join('')
+    + `<span style="width:12px;"></span>` + ANN_COULEURS.map(c => `<span onclick="annCouleur('${c}')" title="Couleur" style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${_ann.couleur === c ? 'var(--text0)' : 'transparent'};box-shadow:0 0 0 1px var(--line2);"></span>`).join('')
+    + `<span style="width:12px;"></span><button class="btn btn-sm" onclick="annAnnuler()" title="Annuler la dernière modification (Ctrl+Z)" ${_ann.histo.length ? '' : 'disabled'}>↶ ANNULER</button>`
+    + `<button class="btn btn-sm btn-danger" onclick="annSupprimerSel()" title="Supprimer l'annotation sélectionnée (Suppr)" ${_ann.sel !== null ? '' : 'disabled'}>🗑 SUPPRIMER</button>`
+    + `<span style="font-size:10px;color:var(--text2);margin-left:auto;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;">${esc((ANN_OUTILS.find(o => o[0] === _ann.outil) || [])[2] || '')}</span>`;
+}
+function annOutil(k) { if(!_ann) return; _ann.outil = k; if(k !== 'select') _ann.sel = null; annBarre(); annDessinerTout(); }
+function annCouleur(c) {
+  if(!_ann) return; _ann.couleur = c;
+  if(_ann.sel !== null && _ann.liste[_ann.sel]) { annMemo(); _ann.liste[_ann.sel].c = c; annDessinerPage(_ann.liste[_ann.sel].pg); }
+  annBarre();
+}
+function annMemo() { _ann.histo.push(JSON.stringify(_ann.liste)); if(_ann.histo.length > 60) _ann.histo.shift(); _ann.modif = true; }
+function annAnnuler() { if(!_ann || !_ann.histo.length) return; _ann.liste = JSON.parse(_ann.histo.pop()); _ann.sel = null; _ann.modif = true; annBarre(); annDessinerTout(); }
+function annSupprimerSel() { if(!_ann || _ann.sel === null) return; annMemo(); const pg = _ann.liste[_ann.sel].pg; _ann.liste.splice(_ann.sel, 1); _ann.sel = null; annBarre(); annDessinerPage(pg); }
+function annDessinerTout() { if(_ann) _ann.pages.forEach((x, i) => annDessinerPage(i)); }
+function annSvgPrim(pr) {
+  if(pr.k === 'poly') {
+    const pts = pr.pts.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    return `<${pr.ferme ? 'polygon' : 'polyline'} points="${pts}" fill="${pr.fond || 'none'}" fill-opacity="${pr.op === undefined ? 1 : pr.op}" stroke="${pr.trait || 'none'}" stroke-width="${pr.ep || 0}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  if(pr.k === 'texte') return `<text x="${pr.x.toFixed(1)}" y="${pr.y.toFixed(1)}" font-size="${pr.taille}" font-family="Helvetica, Arial, sans-serif" fill="${pr.coul}" style="white-space:pre;">${esc(pr.txt)}</text>`;
+  return '';
+}
+function annDessinerPage(pg) {
+  if(!_ann || !_ann.pages[pg]) return;
+  const { w, h, svg } = _ann.pages[pg];
+  const sel = _ann.outil === 'select';
+  let html = '';
+  _ann.liste.forEach((a, i) => {
+    if(a.pg !== pg) return;
+    const prims = annPrimitives(a, w, h, annMesureEcran), bx = annBoite(prims);
+    html += `<g>${prims.map(annSvgPrim).join('')}`;
+    if(bx && sel) html += `<rect data-i="${i}" x="${bx.x}" y="${bx.y}" width="${bx.w}" height="${bx.h}" fill="transparent" stroke="${_ann.sel === i ? '#2563eb' : 'none'}" stroke-dasharray="4 3" stroke-width="1" style="cursor:move;pointer-events:all;"/>`;
+    html += `</g>`;
+  });
+  if(_ann.trace && _ann.trace.pg === pg) html += annPrimitives(_ann.trace.a, w, h, annMesureEcran).map(annSvgPrim).join('');
+  svg.innerHTML = html;
+  svg.style.cursor = sel ? 'default' : (['note', 'texte'].includes(_ann.outil) ? 'text' : 'crosshair');
+}
+function annPoint(svg, e) {
+  const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+  const q = pt.matrixTransform(svg.getScreenCTM().inverse()), pg = _ann.pages[+svg.dataset.pg];
+  return [Math.max(0, Math.min(1, q.x / pg.w)), Math.max(0, Math.min(1, q.y / pg.h))];
+}
+function annBrancher(svg) {
+  svg.addEventListener('pointerdown', e => {
+    if(!_ann || _ann.lecture || e.button !== 0) return;
+    const pg = +svg.dataset.pg, [fx, fy] = annPoint(svg, e), o = _ann.outil;
+    if(o === 'select') {
+      const i = e.target && e.target.dataset ? e.target.dataset.i : undefined;
+      _ann.sel = i === undefined ? null : +i; annBarre(); annDessinerPage(pg);
+      if(_ann.sel !== null) { _ann.glisse = { depart: [fx, fy], copie: JSON.stringify(_ann.liste[_ann.sel]), bouge: false }; svg.setPointerCapture(e.pointerId); }
+      return;
+    }
+    if(o === 'note' || o === 'texte') { e.preventDefault(); annDemanderTexte('', txt => { if(!txt) return; annMemo(); _ann.liste.push({ id: 'a' + Date.now().toString(36), t: o, pg, x: fx, y: fy, txt, c: _ann.couleur }); annDessinerPage(pg); annBarre(); }); return; }
+    const a = { id: 'a' + Date.now().toString(36), t: o, pg, c: o === 'surligne' && _ann.couleur === ANN_COULEURS[0] ? '#facc15' : _ann.couleur };
+    if(o === 'cadre' || o === 'surligne') Object.assign(a, { x: fx, y: fy, w: 0, h: 0, _d: [fx, fy] });
+    else a.pts = [[fx, fy], [fx, fy]];
+    _ann.trace = { pg, a }; svg.setPointerCapture(e.pointerId);
+  });
+  svg.addEventListener('pointermove', e => {
+    if(!_ann) return;
+    const pg = +svg.dataset.pg;
+    if(_ann.glisse && _ann.sel !== null) {
+      const [fx, fy] = annPoint(svg, e), g = _ann.glisse, a = _ann.liste[_ann.sel], src = JSON.parse(g.copie);
+      const dx = fx - g.depart[0], dy = fy - g.depart[1];
+      if(!g.bouge && Math.abs(dx) + Math.abs(dy) < 0.003) return;
+      if(!g.bouge) { annMemo(); g.bouge = true; }
+      if(src.x !== undefined) { a.x = src.x + dx; a.y = src.y + dy; }
+      if(src.pts) a.pts = src.pts.map(p => [p[0] + dx, p[1] + dy]);
+      annDessinerPage(pg); return;
+    }
+    if(!_ann.trace || _ann.trace.pg !== pg) return;
+    const [fx, fy] = annPoint(svg, e), a = _ann.trace.a;
+    if(a.t === 'cadre' || a.t === 'surligne') { a.x = Math.min(a._d[0], fx); a.y = Math.min(a._d[1], fy); a.w = Math.abs(fx - a._d[0]); a.h = Math.abs(fy - a._d[1]); }
+    else if(a.t === 'fleche') a.pts[1] = [fx, fy];
+    else if(a.t === 'crayon') { const d = a.pts[a.pts.length - 1]; if(Math.hypot((fx - d[0]) * _ann.pages[pg].w, (fy - d[1]) * _ann.pages[pg].h) > 1.5) a.pts.push([fx, fy]); }
+    annDessinerPage(pg);
+  });
+  const fin = () => {
+    if(!_ann) return;
+    if(_ann.glisse) { _ann.glisse = null; return; }
+    if(!_ann.trace) return;
+    const { pg, a } = _ann.trace; _ann.trace = null;
+    delete a._d;
+    const pw = _ann.pages[pg].w, ph = _ann.pages[pg].h;
+    const assez = (a.t === 'cadre' || a.t === 'surligne') ? (a.w * pw > 3 && a.h * ph > 3)
+      : a.t === 'fleche' ? Math.hypot((a.pts[1][0] - a.pts[0][0]) * pw, (a.pts[1][1] - a.pts[0][1]) * ph) > 6 : a.pts.length > 2;
+    if(assez) { annMemo(); if(a.t === 'crayon') a.pts = a.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]); _ann.liste.push(a); annBarre(); }
+    annDessinerPage(pg);
+  };
+  svg.addEventListener('pointerup', fin); svg.addEventListener('pointercancel', fin);
+  svg.addEventListener('dblclick', e => {
+    if(!_ann || _ann.lecture || _ann.outil !== 'select') return;
+    const i = e.target && e.target.dataset ? e.target.dataset.i : undefined; if(i === undefined) return;
+    const a = _ann.liste[+i]; if(!a || (a.t !== 'note' && a.t !== 'texte')) return;
+    annDemanderTexte(a.txt, txt => { if(txt === null || txt === a.txt) return; annMemo(); if(!txt) { _ann.liste.splice(+i, 1); _ann.sel = null; } else a.txt = txt; annBarre(); annDessinerPage(a.pg); });
+  });
+}
+function annDemanderTexte(initial, cb) {
+  const z = document.getElementById('ann-saisie'); if(!z) return;
+  z.innerHTML = `<div class="modal" style="width:420px;max-width:92%;">
+      <div class="modal-title">TEXTE DE L'ANNOTATION</div>
+      <textarea id="ann-txt" rows="4" style="width:100%;resize:vertical;font-family:Helvetica, Arial, sans-serif;font-size:13px;"></textarea>
+      <div style="font-size:10px;color:var(--text2);margin:4px 0 10px;">Entrée : nouvelle ligne · Ctrl+Entrée : valider</div>
+      <div class="flex gap8"><button class="btn btn-primary" id="ann-ok">✓ OK</button><button class="btn ml-auto" id="ann-non">ANNULER</button></div></div>`;
+  z.style.display = 'flex';
+  const t = document.getElementById('ann-txt'); t.value = initial || ''; t.focus();
+  const fermer = v => { z.style.display = 'none'; z.innerHTML = ''; cb(v); };
+  document.getElementById('ann-ok').onclick = () => fermer(t.value.replace(/\s+$/, ''));
+  document.getElementById('ann-non').onclick = () => fermer(null);
+  t.onkeydown = e => { if(e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fermer(t.value.replace(/\s+$/, '')); } if(e.key === 'Escape') { e.preventDefault(); fermer(null); } };
+}
+document.addEventListener('keydown', e => {
+  if(!_ann || document.getElementById('annot-modal')?.style.display !== 'flex') return;
+  if(document.getElementById('ann-saisie')?.style.display === 'flex') return;
+  if((e.key === 'Delete' || e.key === 'Backspace') && _ann.sel !== null && !_ann.lecture) { e.preventDefault(); annSupprimerSel(); }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !_ann.lecture) { e.preventDefault(); annAnnuler(); }
+});
+async function enregistrerAnnotations() {
+  if(!_ann || _ann.lecture) return;
+  const p = trouverPiece(_ann.id); if(!p) return;
+  const liste = _ann.liste.map(a => { const b = Object.assign({}, a); delete b._d; return b; });
+  if(!(await majPiece(p, { annotations: liste }, `${liste.length} annotation${liste.length > 1 ? 's' : ''} enregistrée${liste.length > 1 ? 's' : ''}`))) return;
+  _ann.modif = false;
+  const id = _ann.id, io = _ann.io;
+  fermerAnnotations(true);
+  if(document.getElementById('doc-viewer-modal')?.style.display === 'flex') { if(_vue && _vue.blobUrl) URL.revokeObjectURL(_vue.blobUrl); voirPiece(id, io ? { io } : undefined); }
+}
+function fermerAnnotations(sansQuestion) {
+  if(!_ann) return;
+  if(!sansQuestion && _ann.modif && !confirm('Annotations non enregistrées : fermer quand même ?')) return;
+  _ann = null;
+  const m = document.getElementById('annot-modal'); if(m) { m.style.display = 'none'; m.innerHTML = ''; }
+}
+
 function nomFichierTamponne(p) { return genrePiece(p) === 'image' ? String(p.nomFichier || 'piece').replace(/\.[^.]+$/, '') + '.pdf' : (p.nomFichier || 'piece.pdf'); }
 
 
@@ -17691,7 +18006,7 @@ async function sauvegarderDocumentsZip(dirHandle, ecrParEx) {
       if(!brut) throw new Error('téléchargement impossible (réglage CORS du stockage ?)');
       const tampon = p.corbeille ? '' : texteTamponSauvegarde(p, idx); // V111 : pas de copie tamponnée pour la corbeille
       let copie = null;
-      if(tampon && (genrePiece(p) === 'pdf' || genrePiece(p) === 'image')) {
+      if((tampon || (!p.corbeille && annotationsDe(p).length)) && (genrePiece(p) === 'pdf' || genrePiece(p) === 'image')) { // V125 : annotations aussi
         try { copie = await blobTamponne(p, brut, tampon); }
         catch(e) { copie = null; rapport.nonTamponnes.push(`${p.titre || p.nomFichier} (${e.message || e})`); }
       }
@@ -18363,7 +18678,7 @@ function htmlNumDocLien(e) {
   const couleur = st === 'joint' ? 'var(--green)' : st === 'manquant' ? 'var(--pj-manquant)' : 'var(--text2)'; // V115 : ambre adouci
   const titre = st === 'joint' ? `Voir la pièce jointe${j.pieces.length > 1 ? 's (' + j.pieces.length + ')' : ''}` : st === 'manquant' ? 'Pièce à joindre : cliquer pour la rattacher' : 'Marquée « pas de pièce » : cliquer pour modifier';
   const txt = nd || (st === 'manquant' ? '📎 à joindre' : st === 'sans' ? '∅' : '📎');
-  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" style="color:${couleur};text-decoration:${st === 'sans' ? 'underline dotted' : 'underline'};text-underline-offset:2px;font-weight:400;">${txt}</a>`; // V115 : couleur sans gras
+  return `<a href="#" onclick="clicNumDoc('${io}');return false;" title="${esc(titre)}" class="nd-lien${st === 'sans' ? ' nd-sans' : ''}" style="color:${couleur};">${txt}</a>`; // V124 : trait fin, sans soulignement permanent
 }
 function clicNumDoc(io) {
   const j = justifDe(io); if(!j) return;
