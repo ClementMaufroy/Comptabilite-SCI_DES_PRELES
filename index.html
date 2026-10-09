@@ -16233,8 +16233,8 @@ function renderDocumentsVueInterne(zone) {
   }
   // V128 : accueil = deux grands panneaux ; ailleurs = les deux « hémisphères » toujours en haut
   const coin = `<div style="display:flex;gap:6px;align-items:center;">
-      <button class="btn btn-sm ${_docsVue === 'corbeille' ? 'btn-primary' : ''}" onclick="docsChangerVue('corbeille')" title="Corbeille">🗑 ${(CORBEILLE || []).length.toLocaleString('fr-FR')}</button>
-      <button class="btn btn-sm" onclick="lancerSyncTousExercices()" title="Crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore">⟳ DOCUMENTS DES MODULES</button></div>`;
+      <button class="btn btn-sm" onclick="lancerSyncTousExercices()" title="Rattrapage : crée en PDF, dans la GED, les documents émis par les modules (tous exercices) qui n'y sont pas encore" style="padding:2px 7px;font-size:11px;opacity:.7;">⟳</button>
+      <button class="btn ${_docsVue === 'corbeille' ? 'btn-primary' : ''}" onclick="docsChangerVue('corbeille')" title="Documents supprimés, restaurables">🗑 CORBEILLE (${(CORBEILLE || []).length.toLocaleString('fr-FR')})</button></div>`; // V129
   if(_docsVue === 'accueil') { zone.innerHTML = htmlAccueilGED(coin, alerte); return; }
   const corps = _docsVue === 'corbeille' ? htmlCorbeille() : _docsVue === 'permanent' ? htmlDossierPermanentV109() : htmlPiecesComptablesV109(); // V107 : classeurs, V109 : filtres par colonne, V111 : corbeille
   const hemi = (v, ic, lib) => { const on = _docsVue === v; return `<button onclick="docsChangerVue('${v}')" title="${on ? 'Revenir à la liste des classeurs' : ''}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 16px;font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer;border-radius:var(--radius);border:1px solid ${on ? 'var(--cyan)' : 'var(--line2)'};background:${on ? 'rgba(var(--accent-rgb),.16)' : 'var(--bg2)'};color:${on ? 'var(--cyan)' : 'var(--text1)'};"><span style="font-size:18px;">${ic}</span>${lib}</button>`; };
@@ -18364,7 +18364,30 @@ function intercalairesClasseur(code) {
   const presents = [...new Set((PIECES || []).concat(CORBEILLE || []).filter(p => p.espace === 'permanent' && !p.corbeille && classeursDe(p).includes(code) && p.sousDossier).map(p => p.sousDossier))];
   const desc = code === CODE_ETATS_FINANCIERS;
   const reste = presents.filter(n => !ordre.includes(n)).sort((a, b) => desc ? b.localeCompare(a, 'fr', { numeric: true }) : a.localeCompare(b, 'fr', { numeric: true }));
-  return ordre.filter(n => presents.includes(n)).concat(reste);
+  return ordre.concat(reste); // V129 : un intercalaire créé reste, même vide
+}
+async function enregistrerIntercalaires(code, liste) {
+  if(!_docsConfigLu) await chargerDocsConfig();
+  if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+  const r = rubriquesDP().map(x => x.code === code ? Object.assign({}, x, { intercalaires: liste }) : Object.assign({}, x));
+  await enregistrerDocsConfig({ rubriques: r });
+}
+async function nouvelIntercalaire(code) {
+  const nom = (prompt("Nom du nouvel intercalaire :") || '').trim(); if(!nom) return;
+  const l = intercalairesClasseur(code);
+  if(l.some(n => n.toLowerCase() === nom.toLowerCase())) { toast('Cet intercalaire existe déjà dans ce classeur', 'error'); return; }
+  try { await enregistrerIntercalaires(code, l.concat([nom])); toast(`Intercalaire « ${nom} » ajouté`, 'success'); renderDocumentsVue(); }
+  catch(e) { toast('Intercalaire non enregistré : ' + (e.message || e), 'error'); }
+}
+async function supprimerIntercalaireVide(code, nom) {
+  const occupe = (PIECES || []).concat(CORBEILLE || []).some(p => p.espace === 'permanent' && classeursDe(p).includes(code) && p.sousDossier === nom);
+  if(occupe) { toast('Cet intercalaire contient des documents (éventuellement en corbeille)', 'error'); return; }
+  try { await enregistrerIntercalaires(code, intercalairesClasseur(code).filter(n => n !== nom)); renderDocumentsVue(); }
+  catch(e) { toast('Modification non enregistrée : ' + (e.message || e), 'error'); }
+}
+function deposerDansIntercalaire(code, nom) {
+  ouvrirDepot('permanent', code);
+  const i = document.getElementById('dep-inter'); if(i) i.value = nom;
 }
 function majListeIntercalaires(listId, code) {
   const dl = document.getElementById(listId); if(!dl) return;
@@ -19160,17 +19183,18 @@ function htmlDossierPermanentV109() {
   };
   const ligneGroupe = g => ligne(g.courante, false, g) + (_dpVersionsOuvertes[g.courante.groupe || g.courante.id] ? g.anciennes.map(v => ligne(v, true, null)).join('') : '');
   let lignes;
-  if(liste.some(g => g.courante.sousDossier)) { // V110 : sous-dossiers (ex. une année par dossier dans « États financiers »)
-    const ordreI = intercalairesClasseur(id); // V127 : ordre choisi dans ⚙
-    const sds = [...new Set(liste.map(g => g.courante.sousDossier || ''))].sort((a, b) => (b === '') - (a === '') || ((ordreI.indexOf(a) + 1 || 1e6) - (ordreI.indexOf(b) + 1 || 1e6)) || a.localeCompare(b, 'fr', { numeric: true }));
+  const ordreI = id.startsWith('__') ? [] : intercalairesClasseur(id), sansFiltre = !fcNb('gedp'); // V129 : intercalaires vides affichés (sans filtre)
+  if(liste.some(g => g.courante.sousDossier) || (sansFiltre && ordreI.length)) { // V110 : sous-dossiers (ex. une année par dossier dans « États financiers »)
+    const sds = [...new Set(liste.map(g => g.courante.sousDossier || '').concat(sansFiltre ? ordreI : []))].sort((a, b) => (b === '') - (a === '') || ((ordreI.indexOf(a) + 1 || 1e6) - (ordreI.indexOf(b) + 1 || 1e6)) || a.localeCompare(b, 'fr', { numeric: true }));
     lignes = sds.map(sd => {
       const gs = liste.filter(g => (g.courante.sousDossier || '') === sd), cle = id + '|' + sd, ferme = _sdFermes.has(cle);
-      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span></td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
+      const outilsI = sd && actif && !id.startsWith('__') ? `<span style="float:right;display:inline-flex;gap:4px;">${gs.length ? '' : `<button class="btn btn-sm btn-icon" onclick="event.stopPropagation();supprimerIntercalaireVide('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Retirer cet intercalaire vide" style="padding:0 6px;font-size:10px;">✕</button>`}<button class="btn btn-sm" onclick="event.stopPropagation();deposerDansIntercalaire('${esc(id)}',${JSON.stringify(sd).replace(/"/g, '&quot;')})" title="Déposer un document dans cet intercalaire" style="padding:0 8px;font-size:10px;">⬆ DÉPOSER ICI</button></span>` : '';
+      return (sd ? `<tr style="cursor:pointer;background:var(--bg2);" onclick="basculerSousDossier('${esc(cle)}')"><td colspan="8" style="font-weight:700;font-size:11px;">${outilsI}${ferme ? '▸' : '▾'} 📁 ${esc(sd)} <span style="color:var(--text2);font-weight:400;">(${gs.length})</span>${gs.length ? '' : ' <span style="color:var(--text2);font-weight:400;font-style:italic;">— vide</span>'}</td></tr>` : `<tr style="background:var(--bg2);"><td colspan="8" style="font-size:11px;color:var(--text2);">📄 Hors intercalaire <span style="font-weight:400;">(${gs.length})</span></td></tr>`)
         + (ferme ? '' : gs.map(ligneGroupe).join(''));
     }).join('');
   } else lignes = liste.map(ligneGroupe).join('');
   const nbF = fcNb('gedp');
-  return `${htmlBarreClasseur('permanent', info.nom, info.couleur, `${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${liste.length} document${liste.length > 1 ? 's' : ''}</span>${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}`)}
+  return `${htmlBarreClasseur('permanent', info.nom, info.couleur, `${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${liste.length} document${liste.length > 1 ? 's' : ''}</span>${actif && !id.startsWith('__') ? `<button class="btn btn-sm" onclick="nouvelIntercalaire('${esc(id)}')" title="Ajouter un intercalaire à ce classeur">+ INTERCALAIRE</button>` : ''}${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}`)}
     <div class="tbl-wrap docs-scroll">
       <table>
         <thead><tr>${th('type', 'Type', 'width:76px;')}${th('doc', 'Référence', 'width:140px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}${th('date', 'Date', 'width:90px;')}${th('ver', 'Version', 'width:150px;')}<th style="width:190px;"></th></tr></thead>
