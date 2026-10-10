@@ -16162,7 +16162,80 @@ function genrePiece(p) {
   if(m.startsWith('image/') && !/hei[cf]/i.test(m)) return 'image';
   return 'autre';
 }
-function iconePiece(p) { const g = genrePiece(p); return g === 'pdf' ? '📄' : g === 'image' ? '🖼' : '📎'; }
+// V133 : genre « bureautique » et pastille du type de fichier (texte générique, pas de logo de marque)
+function genreBureau(p) {
+  const n = String(p && p.nomFichier || '').toLowerCase(), m = String(p && p.mime || '');
+  if(/\.(docx?|dotx?|docm|odt|rtf)$/.test(n) || /wordprocessing|msword|opendocument\.text/.test(m)) return 'word';
+  if(/\.(xlsx?|xlsm|xltx?|ods|csv)$/.test(n) || /spreadsheet|ms-excel|opendocument\.spreadsheet|text\/csv/.test(m)) return 'excel';
+  return '';
+}
+function iconePiece(p) {
+  const g = genrePiece(p), b = genreBureau(p);
+  const pastille = (txt, coul) => `<span title="${txt}" style="display:inline-block;min-width:26px;padding:0 3px;border-radius:3px;background:${coul};color:#fff;font:700 8px/14px var(--mono);text-align:center;letter-spacing:.04em;vertical-align:1px;">${txt}</span>`;
+  return g === 'pdf' ? pastille('PDF', '#c0392b') : g === 'image' ? pastille('IMG', '#7c3aed') : b === 'word' ? pastille('DOC', '#2563eb') : b === 'excel' ? pastille('XLS', '#15803d') : '📎';
+}
+// V135 : modification d'un Word / Excel du DP — fichier enregistré sur le poste (Chrome / Edge), surveillé tant que l'onglet est ouvert ;
+// chaque enregistrement est proposé comme NOUVELLE VERSION du document (l'ancienne reste consultable).
+const _editionsBureau = new Map(); // groupe → { handle, nom, vu, modifie, titre }
+let _editionsTimer = null;
+function peutModifierBureau(p) { return !!(p && p.espace === 'permanent' && !p.corbeille && !pieceGeneree(p) && genreBureau(p) && pieceModifiable(p)); }
+async function modifierDansBureau() {
+  if(!_vue || !_vue.url) return;
+  const p = trouverPiece(_vue.id); if(!peutModifierBureau(p)) return;
+  if(!window.showSaveFilePicker) { toast("Votre navigateur ne permet pas ce suivi (utilisez Chrome ou Edge) : téléchargez le fichier puis déposez la version modifiée avec ⊕", 'error', 8000); return; }
+  const groupe = p.groupe || p.id;
+  try {
+    const blob = await blobDePiece(_vue.url); if(!blob) throw new Error('fichier illisible');
+    const ext = (String(p.nomFichier || '').match(/\.[^.]+$/) || [''])[0];
+    const handle = await window.showSaveFilePicker({ suggestedName: p.nomFichier || ('document' + ext) });
+    const w = await handle.createWritable(); await w.write(blob); await w.close();
+    const f = await handle.getFile();
+    _editionsBureau.set(groupe, { handle, nom: f.name, vu: f.lastModified, modifie: false, titre: p.titre || p.nomFichier });
+    if(!_editionsTimer) _editionsTimer = setInterval(surveillerEditionsBureau, 3000);
+    renderEditionsBureau();
+    toast(`« ${f.name} » enregistré sur ce poste : ouvrez-le avec ${genreBureau(p) === 'word' ? 'Word' : 'Excel'}, modifiez-le et enregistrez — Atrium vous proposera la nouvelle version`, 'success', 10000);
+  } catch(e) { if(e && e.name === 'AbortError') return; console.error(e); toast('Modification impossible : ' + (e.message || e), 'error', 6000); }
+}
+async function surveillerEditionsBureau() {
+  if(!_editionsBureau.size) { clearInterval(_editionsTimer); _editionsTimer = null; renderEditionsBureau(); return; }
+  let chg = false;
+  for(const [g, ed] of _editionsBureau) {
+    try { const f = await ed.handle.getFile(); if(f.lastModified > ed.vu && !ed.modifie) { ed.modifie = true; chg = true; } }
+    catch(e) { _editionsBureau.delete(g); chg = true; } // fichier supprimé / déplacé : suivi arrêté
+  }
+  if(chg) renderEditionsBureau();
+}
+function renderEditionsBureau() {
+  let el = document.getElementById('editions-bureau');
+  const liste = [..._editionsBureau.entries()];
+  if(!liste.length) { if(el) el.remove(); return; }
+  if(!el) { el = document.createElement('div'); el.id = 'editions-bureau'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;right:16px;bottom:70px;z-index:2500;width:380px;background:var(--bg1);border:1px solid var(--cyan);border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.5);padding:8px 10px;font-size:11px;';
+  el.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--cyan);letter-spacing:.08em;margin-bottom:6px;">✏ DOCUMENTS EN COURS DE MODIFICATION</div>`
+    + liste.map(([g, ed]) => `<div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-top:1px solid var(--line);">
+        <div style="flex:1;min-width:0;"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><strong>${esc(ed.nom)}</strong></div>
+          <div style="color:${ed.modifie ? 'var(--amber)' : 'var(--text2)'};font-size:10px;">${ed.modifie ? 'Modifié et enregistré sur le poste' : 'En attente de votre enregistrement (Ctrl+S)'}</div></div>
+        ${ed.modifie ? `<button class="btn btn-sm btn-primary" onclick="enregistrerEditionBureau('${esc(g)}')" style="padding:1px 8px;font-size:9px;">⬆ NOUVELLE VERSION</button>` : ''}
+        <button class="btn btn-sm btn-icon" onclick="_editionsBureau.delete('${esc(g)}');renderEditionsBureau()" title="Arrêter le suivi (le fichier reste sur le poste)" style="padding:0 6px;font-size:10px;">✕</button></div>`).join('');
+}
+async function enregistrerEditionBureau(g) {
+  const ed = _editionsBureau.get(g); if(!ed) return;
+  const courante = (PIECES || []).find(p => p.espace === 'permanent' && (p.groupe || p.id) === g && p.enVigueur) || (PIECES || []).filter(p => p.espace === 'permanent' && (p.groupe || p.id) === g).sort((a, b) => (b.version || 1) - (a.version || 1))[0];
+  if(!courante) { toast('Document introuvable dans la GED (supprimé ?) : suivi arrêté', 'error'); _editionsBureau.delete(g); renderEditionsBureau(); return; }
+  try {
+    const f = await ed.handle.getFile();
+    ed.vu = f.lastModified; ed.modifie = false; renderEditionsBureau();
+    if(typeof fermerVisionneuse === 'function' && document.getElementById('doc-viewer-modal')?.style.display === 'flex') fermerVisionneuse();
+    ouvrirDepot('permanent', null, [new File([f], f.name, { type: f.type, lastModified: f.lastModified })], courante.id);
+  } catch(e) { toast('Fichier illisible sur le poste : ' + (e.message || e), 'error'); }
+}
+function ouvrirDansBureau() {
+  if(!_vue || !_vue.url) return;
+  const p = trouverPiece(_vue.id); const b = p ? genreBureau(p) : '';
+  if(!b) return;
+  // Protocole Office : ouverture en lecture seule dans l'application installée sur ce poste
+  window.location.href = (b === 'word' ? 'ms-word' : 'ms-excel') + ':ofv|u|' + _vue.url;
+}
 function messageErreurStorage(e) {
   const c = (e && e.code) || '';
   if(c === 'atrium/storage-off') return "Le stockage des documents n'est pas configuré dans ce fichier (storageBucket manquant).";
@@ -16554,7 +16627,15 @@ async function voirPiece(id, ctx) {
   } else if(genre === 'image') {
     corps.innerHTML = `<div style="height:100%;overflow:auto;display:flex;align-items:flex-start;justify-content:center;background:var(--bg2);"><img src="${url}" alt="" style="max-width:100%;height:auto;display:block;"></div>`;
   } else {
-    corps.innerHTML = `<div style="padding:40px;text-align:center;font-size:12px;color:var(--text1);">Aperçu indisponible pour ce type de fichier.<br><br><button class="btn btn-primary" onclick="telechargerPiece('${id}')">⬇ TÉLÉCHARGER</button></div>`;
+    const bu = genreBureau(p); // V133 : Word / Excel → application de bureau
+    corps.innerHTML = bu ? `<div style="padding:50px 30px;text-align:center;font-size:12px;color:var(--text1);line-height:1.7;">
+        <div style="font-size:40px;margin-bottom:6px;">${iconePiece(p).replace('font:700 8px/14px', 'font:700 16px/30px').replace('min-width:26px', 'min-width:56px')}</div>
+        <div style="margin-bottom:16px;">Le navigateur ne sait pas afficher un document ${bu === 'word' ? 'Word' : 'Excel'}.</div>
+        <button class="btn btn-primary" onclick="ouvrirDansBureau()" style="padding:8px 18px;">${bu === 'word' ? '📝 OUVRIR DANS WORD' : '📊 OUVRIR DANS EXCEL'}</button>
+        ${p.espace === 'permanent' && peutModifierBureau(p) ? `<button class="btn" onclick="modifierDansBureau()" style="padding:8px 18px;margin-left:8px;" title="Enregistre le fichier sur ce poste ; chaque enregistrement dans ${bu === 'word' ? 'Word' : 'Excel'} vous sera proposé comme nouvelle version">✏ MODIFIER</button>` : ''}
+        <button class="btn" onclick="telechargerPiece('${id}')" style="padding:8px 18px;margin-left:8px;">⬇ TÉLÉCHARGER</button>
+        <div style="font-size:10px;color:var(--text2);margin-top:14px;">« Ouvrir » : lecture seule, dans l'application ${bu === 'word' ? 'Word' : 'Excel'} installée sur ce poste.${p.espace === 'permanent' && peutModifierBureau(p) ? ' « Modifier » : le fichier est enregistré sur ce poste ; ouvrez-le, modifiez-le, enregistrez (Ctrl+S) : Atrium vous propose aussitôt d\'en faire une nouvelle version (tant que cet onglet reste ouvert).' : ''}<br>Si rien ne s'ouvre (pas d'Office sur ce poste), utilisez « Télécharger ».</div></div>`
+      : `<div style="padding:40px;text-align:center;font-size:12px;color:var(--text1);">Aperçu indisponible pour ce type de fichier.<br><br><button class="btn btn-primary" onclick="telechargerPiece('${id}')">⬇ TÉLÉCHARGER</button></div>`;
   }
 }
 async function imprimerPieceVue() {
@@ -18623,6 +18704,28 @@ async function explRenommerDossier(p) {
   try { await explRenommerChemin(c, p, (parentDossier(p) ? parentDossier(p) + '/' : '') + nom, 'renommé'); } catch(e) { toast('Renommage non enregistré : ' + (e.message || e), 'error'); }
   renderDocumentsVue();
 }
+// V136 : un dossier du DP redevient un classeur (au même niveau que les autres), avec ses sous-dossiers et ses documents
+async function explEnClasseur(p) {
+  const c = explCtx(); p = normDossier(p); if(!p || c.espace !== 'permanent') return;
+  const nom = nomDuDossier(p);
+  if(rubriquesDP().some(r => r.label.trim().toLowerCase() === nom.toLowerCase())) { toast(`Un classeur « ${nom} » existe déjà : renommez d'abord le dossier`, 'error', 6000); return; }
+  const docs = docsDuClasseur('permanent', c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); });
+  if(!confirm(`Transformer le dossier « ${nom} » en classeur ?\n\nIl rejoindra la liste des classeurs du dossier permanent, avec ses ${docs.length} document(s) et ses sous-dossiers.`)) return;
+  try {
+    if(!_docsConfigLu) await chargerDocsConfig();
+    if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+    const code = 'cl_' + Math.random().toString(36).slice(2, 8);
+    const rel = x => { const n = normDossier(x); return n === p ? '' : n.startsWith(p + '/') ? n.slice(p.length + 1) : null; };
+    const sousCfg = dossiersConfig('permanent', c.id).map(rel).filter(x => x);
+    const r = rubriquesDP().map(x => { const y = Object.assign({}, x); if(x.code === c.id) { y.dossiers = dossiersConfig('permanent', c.id).filter(d => rel(d) === null); delete y.intercalaires; } return y; });
+    r.push({ code, label: nom, couleur: COULEURS_CLASSEUR[r.length % COULEURS_CLASSEUR.length], dossiers: sousCfg });
+    await enregistrerDocsConfig({ rubriques: r });
+    for(const x of docs) await majPiece(x, { classeurs: [code], rubrique: code, sousDossier: rel(x.sousDossier) || '' });
+    _explCourant[c.cle] = parentDossier(p);
+    toast(`« ${nom} » est maintenant un classeur (${docs.length} document${docs.length > 1 ? 's' : ''})`, 'success', 6000);
+    renderDocumentsVue();
+  } catch(e) { toast('Transformation non enregistrée : ' + (e.message || e), 'error'); }
+}
 async function explSupprimerDossier(p) {
   const c = explCtx(); if(!p) return;
   const dedans = docsDuClasseur(c.espace, c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); });
@@ -18645,7 +18748,11 @@ function explMenu(e, p) {
   const js = JSON.stringify(p).replace(/"/g, '&quot;');
   m.innerHTML = (p ? it('📂 Ouvrir', `explOuvrir(${js})`) : '') + it(p ? '📁 Nouveau sous-dossier' : '📁 Nouveau dossier', `explNouveauDossier(${js})`)
     + it('⬆ Déposer ici', `explOuvrir(${js});setTimeout(()=>ouvrirDepot('${c.espace}',${c.espace === 'permanent' ? `'${esc(c.id)}'` : 'null'}),50)`)
-    + (p ? it('✎ Renommer', `explRenommerDossier(${js})`) + it('🗑 Supprimer (vide)', `explSupprimerDossier(${js})`) : '');
+    + (p && c.espace === 'permanent' ? it('⤴ Transformer en classeur', `explEnClasseur(${js})`) : '')
+    + (p ? it('✎ Renommer', `explRenommerDossier(${js})`) + (() => { // V134 : suppression proposée seulement si le dossier est vide
+        const n = docsDuClasseur(c.espace, c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); }).length;
+        return n ? it(`🗑 Supprimer — impossible : ${n} document${n > 1 ? 's' : ''} dedans${(CORBEILLE || []).length ? ' (corbeille comprise)' : ''}`, '', false) : it('🗑 Supprimer', `explSupprimerDossier(${js})`);
+      })() : '');
   m.style.cssText = `display:block;position:fixed;left:${Math.min(e.clientX, window.innerWidth - 200)}px;top:${Math.min(e.clientY, window.innerHeight - 180)}px;z-index:3000;`;
   setTimeout(() => document.addEventListener('click', function f() { m.style.display = 'none'; document.removeEventListener('click', f); }), 0);
 }
@@ -19394,11 +19501,11 @@ function htmlPiecesComptablesV109() {
   const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort(triPiecesCompta); // V128 : par n° de pièce
   const th = (c, l, st) => htmlThFiltre('gedc', c, l, st);
   const ligneP = (p, chemin) => `<tr ${!id.startsWith('__') && pieceModifiable(p) ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''}>
+      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
+      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
+      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.exercice)}${p.test ? ' <span class="jbadge" style="color:#a78bfa;border:1px solid rgba(139,92,246,.35);">TEST</span>' : ''}</td>
-      <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
-      <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
-      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
       <td>${htmlOrigine(p)}</td>
       <td style="font-size:10px;white-space:nowrap;">${htmlEcrituresDePiece(p)}</td>
       <td style="font-size:10px;color:var(--text2);white-space:nowrap;">${tailleLisible(p.taille)}</td>
@@ -19411,13 +19518,13 @@ function htmlPiecesComptablesV109() {
   const nbF = fcNb('gedc') + (_gedSansEcriture ? 1 : 0);
   if(!id.startsWith('__')) { // V132 : explorateur (arbre + contenu)
     return htmlExplorateur({ espace: 'compta', id, nom: info.nom, couleur: info.couleur, items: rows, dossierDe: p => p.sousDossier, ligne: (p, chemin) => ligneP(p, chemin), colonnes: 9, filtre: Object.keys(fcEtat('gedc').filtres || {}).some(k => k !== 'ex') || _gedSansEcriture, /* le filtre d'exercice par défaut ne compte pas */
-      thead: `<tr>${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:86px;')}${th('type', 'Type', 'width:76px;')}${th('doc', 'N° pièce', 'width:130px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}<th style="width:64px;">Taille</th><th style="width:150px;"></th></tr>`,
+      thead: `<tr>${th('titre', 'Titre', 'width:30%;')}${th('doc', 'N° pièce', 'width:120px;')}${th('type', 'Type', 'width:76px;')}${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:76px;')}${th('orig', 'Origine', 'width:110px;')}${th('ecr', 'Écritures', 'width:90px;')}<th style="width:60px;">Taille</th><th style="width:130px;"></th></tr>`,
       outils: `${htmlBoutonSansEcriture()}${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedc');_gedSansEcriture=false;renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}${zone}` });
   }
   return `${htmlBarreClasseur('compta', info.nom, info.couleur, `${htmlBoutonSansEcriture()}${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedc');_gedSansEcriture=false;renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${rows.length} document${rows.length > 1 ? 's' : ''}</span>${zone}`)}
     <div class="tbl-wrap docs-scroll">
       <table>
-        <thead><tr>${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:86px;')}${th('type', 'Type', 'width:76px;')}${th('doc', 'N° pièce', 'width:130px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}<th style="width:64px;">Taille</th><th style="width:150px;"></th></tr></thead>
+        <thead><tr>${th('titre', 'Titre', 'width:30%;')}${th('doc', 'N° pièce', 'width:120px;')}${th('type', 'Type', 'width:76px;')}${th('date', 'Date', 'width:90px;')}${th('ex', 'Exercice', 'width:76px;')}${th('orig', 'Origine', 'width:110px;')}${th('ecr', 'Écritures', 'width:90px;')}<th style="width:60px;">Taille</th><th style="width:130px;"></th></tr></thead>
         <tbody>${lignes || `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucune pièce${nbF ? ' avec ces filtres' : ' dans ce classeur'}.</td></tr>`}</tbody>
       </table>
     </div>`;
@@ -19434,10 +19541,10 @@ function htmlDossierPermanentV109() {
     const nbAnc = g ? g.anciennes.length : 0, ouvert = g ? !!_dpVersionsOuvertes[p.groupe || p.id] : false;
     const autres = classeursDe(p).filter(c => c !== id).map(libRubrique);
     return `<tr style="${ancienne ? 'color:var(--text2);' : ''}" ${!ancienne && actif && !id.startsWith('__') ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''}>
-      <td style="white-space:nowrap;">${p.typeDP ? `<span class="npill" title="${esc(libTypeDP(p.typeDP))}">${esc(p.typeDP)}</span>` : ''}</td>
-      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.numDoc || '')}</td>
       <td style="${ancienne ? 'padding-left:26px;' : ''}"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:${ancienne ? 'var(--text2)' : 'var(--text0)'};text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
         ${!ancienne && autres.length ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">aussi dans : ${autres.map(esc).join(', ')}</div>` : ''}${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
+      <td style="white-space:nowrap;">${p.typeDP ? `<span class="npill" title="${esc(libTypeDP(p.typeDP))}">${esc(p.typeDP)}</span>` : ''}</td>
+      <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.numDoc || '')}</td>
       <td>${htmlOrigine(p)}</td>
       <td style="font-size:10px;white-space:nowrap;">${ancienne ? '' : htmlEcrituresDePiece(p)}</td>
       <td style="font-family:var(--mono);font-size:10px;white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
@@ -19452,7 +19559,7 @@ function htmlDossierPermanentV109() {
   if(!id.startsWith('__')) { // V132 : explorateur (arbre + contenu)
     const nbF0 = fcNb('gedp');
     return htmlExplorateur({ espace: 'permanent', id, nom: info.nom, couleur: info.couleur, items: liste, dossierDe: g => g.courante.sousDossier, ligne: (g, chemin) => ligneGroupe(g, chemin), colonnes: 8, filtre: nbF0 > 0,
-      thead: `<tr>${th('type', 'Type', 'width:76px;')}${th('doc', 'Référence', 'width:140px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}${th('date', 'Date', 'width:90px;')}${th('ver', 'Version', 'width:150px;')}<th style="width:190px;"></th></tr>`,
+      thead: `<tr>${th('titre', 'Titre', 'width:34%;')}${th('type', 'Type', 'width:70px;')}${th('doc', 'Référence', 'width:120px;')}${th('orig', 'Origine', 'width:110px;')}${th('ecr', 'Écritures', 'width:90px;')}${th('date', 'Date', 'width:86px;')}${th('ver', 'Version', 'width:120px;')}<th style="width:170px;"></th></tr>`,
       outils: `${nbF0 ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF0})</button>` : ''}${htmlZoneDepot('permanent', id, actif, 'Dépôt impossible : stockage non configuré')}` });
   }
   let lignes;
@@ -19473,7 +19580,7 @@ function htmlDossierPermanentV109() {
   return `${htmlBarreClasseur('permanent', info.nom, info.couleur, `${nbF ? `<button class="btn btn-sm" onclick="fcReset('gedp');renderDocumentsVue()" title="Retirer tous les filtres de colonne">✕ FILTRES (${nbF})</button>` : ''}<span class="chip">${liste.length} document${liste.length > 1 ? 's' : ''}</span>${actif && !id.startsWith('__') ? `<button class="btn btn-sm" onclick="nouvelIntercalaire('${esc(id)}')" title="Ajouter un intercalaire à ce classeur">+ INTERCALAIRE</button>` : ''}${htmlZoneDepot('permanent', id.startsWith('__') ? null : id, actif, 'Dépôt impossible : stockage non configuré')}`)}
     <div class="tbl-wrap docs-scroll">
       <table>
-        <thead><tr>${th('type', 'Type', 'width:76px;')}${th('doc', 'Référence', 'width:140px;')}${th('titre', 'Titre', '')}${th('orig', 'Origine', 'width:150px;')}${th('ecr', 'Écritures', 'width:110px;')}${th('date', 'Date', 'width:90px;')}${th('ver', 'Version', 'width:150px;')}<th style="width:190px;"></th></tr></thead>
+        <thead><tr>${th('titre', 'Titre', 'width:34%;')}${th('type', 'Type', 'width:70px;')}${th('doc', 'Référence', 'width:120px;')}${th('orig', 'Origine', 'width:110px;')}${th('ecr', 'Écritures', 'width:90px;')}${th('date', 'Date', 'width:86px;')}${th('ver', 'Version', 'width:120px;')}<th style="width:170px;"></th></tr></thead>
         <tbody>${lignes || `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">Aucun document${nbF ? ' avec ces filtres' : ' dans ce classeur'}.</td></tr>`}</tbody>
       </table>
     </div>`;
