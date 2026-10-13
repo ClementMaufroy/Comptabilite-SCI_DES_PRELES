@@ -723,6 +723,11 @@ textarea { font-family: var(--mono); font-size: 11px; resize: vertical; }
 #expl-menu { background: var(--bg1); border: 1px solid var(--line2); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.5); padding: 4px; min-width: 200px; font-size: 12px; }
 .expl-menu-it { padding: 6px 10px; border-radius: 3px; cursor: pointer; }
 .expl-menu-it:hover { background: var(--bg3); }
+.expl-zone tr[data-doc], .expl-zone tr[data-dos] { user-select: none; -webkit-user-select: none; cursor: default; } /* V137 : sélection multiple */
+.expl-zone tr.expl-sel td { background: rgba(var(--accent-rgb),.18) !important; }
+.expl-zone tr.expl-coupe { opacity: .45; }
+.expl-zone a.expl-titre { cursor: default; }
+#expl-selbar { margin-left: auto; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .expl-menu-it.off { opacity: .4; cursor: default; } /* V131 : import multiple, documents en l'état */
 .nd-lien { font-weight: 300; text-decoration: none; letter-spacing: .01em; opacity: .92; } /* V124 : n° de pièce du GL plus fin */
 .nd-lien:hover { opacity: 1; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; }
@@ -1783,6 +1788,15 @@ applyTheme();
           <div id="params-dp-rubriques"></div>
         </div>
 
+        <!-- V138 : comptes dont le justificatif va au dossier permanent -->
+        <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--line2);">
+            <div style="font-size:12px;font-weight:600;color:var(--text0);letter-spacing:0.03em;">📑 JUSTIFICATIFS AU DOSSIER PERMANENT</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px;">Comptes dont les justificatifs sont rangés au dossier permanent plutôt que dans les pièces comptables de l'exercice. Communs à tous les exercices ; enregistrés à chaque modification.</div>
+          </div>
+          <div id="params-comptes-dp" style="padding:14px;"></div>
+        </div>
+
         <!-- Section : Types de pièces comptables -->
         <div style="border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg1);margin-bottom:20px;">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line2);">
@@ -1877,7 +1891,14 @@ applyTheme();
     <div class="form-row c2 mb8">
       <div class="form-field" style="grid-column:1/-1;">
         <label>Libellé de l'immobilisation *</label>
-        <input type="text" id="immo-libelle" placeholder="Ex : Toiture – 12 rue des Lilas">
+        <input type="text" id="immo-libelle" placeholder="Ex : Toiture – 12 rue des Lilas" onblur="proposerNomDepuisLibelle()">
+      </div>
+    </div>
+    <div class="form-row mb8"><!-- V138 : nom unique = dossier de l'immobilisation dans la GED -->
+      <div class="form-field" style="grid-column:1/-1;">
+        <label title="Unique, sans « / ». C'est aussi le nom du dossier de l'immobilisation dans le classeur « Immobilisations » du dossier permanent.">Nom de l'immobilisation (dossier GED) *</label>
+        <input type="text" id="immo-nom" maxlength="80" placeholder="Ex : Toiture Lilas" autocomplete="off" oninput="this.dataset.touche='1';majAideNomImmo()">
+        <div id="immo-nom-aide" style="font-size:10px;line-height:1.5;margin-top:3px;"></div>
       </div>
     </div>
     <div class="form-row mb8">
@@ -6085,6 +6106,7 @@ function renderParametres() {
   renderThemeSettings();
   renderPiecesTypesList();
   renderRubriquesDPV107(); // V98 → V107 : classeurs (gérés dans la GED)
+  try { renderComptesDPParams(); } catch(e) { console.error(e); } // V138
 }
 
 // V77 : réglages d'apparence (mode clair/sombre + couleur dominante), stockés localement
@@ -6285,10 +6307,11 @@ function socRafraichir() { if(socAssistantOuvert()) rendreAssistantSociete(); el
 // ══ V87v2 : ASSISTANT DE PREMIÈRE OUVERTURE ══
 // Ouvert après la connexion lorsqu'aucune identité n'existe dans Firebase. Bloquant : il se ferme une fois l'identité enregistrée.
 let _wizEtape = 1;
-const WIZ_ETAPES = ['Identité', 'Contacts & signatures', 'Charte des documents'];
+const WIZ_ETAPES = ['Identité', 'Contacts & signatures', 'Charte des documents', 'Justificatifs au DP']; // V138 : 4ᵉ étape
 function socAssistantOuvert() { const m = document.getElementById('soc-wizard'); return !!(m && m.style.display === 'flex'); }
 function ouvrirAssistantSociete() {
   _socB = JSON.parse(JSON.stringify(SOCIETE)); _socModif = true; _wizEtape = 1;
+  _cdpB = comptesDP(); _cdpVerifie = false; _cdpTouche = false; // V138
   const p = document.getElementById('params-societe'); if(p) p.innerHTML = '';
   document.getElementById('soc-wizard').style.display = 'flex';
   rendreAssistantSociete();
@@ -6307,8 +6330,10 @@ function rendreAssistantSociete() {
     ? `<div style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:16px;">Avant de commencer, renseignez l'identité de votre société : elle figurera sur vos éditions comptables, appels de loyer, quittances, PV d'assemblée et e-mails. <span style="color:var(--text2);">Seul le nom est obligatoire ; tout reste modifiable ensuite dans <em>Paramètres › Identité de la société</em>.</span></div>`
     : _wizEtape === 2
       ? `<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px;">Ces informations apparaissent sur les documents envoyés aux locataires et sur les PV d'assemblée. Vous pourrez les compléter plus tard.</div>`
-      : `<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px;">Choisissez la couleur de vos documents et, si vous le souhaitez, votre logo. L'aperçu se met à jour en direct.</div>`;
-  const contenu = _wizEtape === 3 ? socCharteHtml() : socGroupeHtml(WIZ_ETAPES[_wizEtape - 1]);
+      : _wizEtape === 3
+        ? `<div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px;">Choisissez la couleur de vos documents et, si vous le souhaitez, votre logo. L'aperçu se met à jour en direct.</div>`
+        : `<div style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:12px;">Choisissez les comptes dont les justificatifs seront rangés au <strong>dossier permanent</strong> (éléments durables du bilan : immobilisations, dépôts de garantie, provisions…) plutôt que dans les pièces comptables de chaque exercice. Cette étape est obligatoire ; la liste reste modifiable dans <em>Paramètres › Justificatifs au dossier permanent</em>.</div>`;
+  const contenu = _wizEtape === 4 ? htmlEditeurComptesDP('wiz', true) : _wizEtape === 3 ? socCharteHtml() : socGroupeHtml(WIZ_ETAPES[_wizEtape - 1]); // V138
   body.innerHTML = `<div style="display:flex;gap:4px;margin-bottom:20px;">${pas}</div>${intro}${contenu}`;
   document.getElementById('soc-wiz-prec').style.visibility = _wizEtape > 1 ? 'visible' : 'hidden';
   document.getElementById('soc-wiz-suiv').textContent = _wizEtape < WIZ_ETAPES.length ? 'SUIVANT ▶' : '✓ TERMINER';
@@ -6318,11 +6343,17 @@ function rendreAssistantSociete() {
 function assistantPrecedent() { if(_wizEtape > 1) { _wizEtape--; rendreAssistantSociete(); } }
 async function assistantSuivant() {
   if(_wizEtape === 1 && !String(_socB.nom || '').trim()) { toast('Le nom affiché de la société est obligatoire', 'error'); const i = document.querySelector('#soc-wizard [data-soc=nom]'); if(i) i.focus(); return; }
-  if(_wizEtape < WIZ_ETAPES.length) { _wizEtape++; rendreAssistantSociete(); return; }
+  if(_wizEtape < WIZ_ETAPES.length) {
+    if(_wizEtape + 1 === 4) await preparerEtapeComptesDP(); // V138 : lit la configuration des documents avant d'afficher la liste
+    _wizEtape++; rendreAssistantSociete(); return;
+  }
+  if(!_cdpVerifie) { toast('Cochez « J\'ai vérifié cette liste » pour terminer', 'error'); return; } // V138 : validation explicite
   const btn = document.getElementById('soc-wiz-suiv'); btn.disabled = true;
-  const ok = await enregistrerIdentiteSociete();
+  const ok = _socB ? await enregistrerIdentiteSociete() : window._societeEtat === 'firebase'; // identité déjà enregistrée lors d'un essai précédent
+  let okDP = false;
+  if(ok) { try { await enregistrerComptesDPAssistant(); okDP = true; } catch(e) { toast('Liste des comptes non enregistrée : ' + (e.message || e) + ' — réessayez', 'error', 8000); } }
   btn.disabled = false;
-  if(ok) { document.getElementById('soc-wizard').style.display = 'none'; renderSocieteSettings(); toast('Bienvenue dans Atrium — votre société est configurée', 'success', 5000); }
+  if(ok && okDP) { document.getElementById('soc-wizard').style.display = 'none'; renderSocieteSettings(); toast('Bienvenue dans Atrium — votre société est configurée', 'success', 5000); }
 }
 function socLogoBrouillon() { return _socB.logo || SOC_LOGOS.L0 || LOGO_SRC || LOGO_VIDE; }
 function socMarquerModif() {
@@ -15464,7 +15495,10 @@ async function boot() {
   fillYears(); initSaisie(); upDl(); updateNavCounts();
   applyExerciseStatus();
   startLiveSync();
-  chargerDocsConfig().then(() => chargerPieces()).then(() => { updateNavCounts(); ecouterPieces(); if(EXERCISE_STATUS !== 'closed') planifierSyncGED(); }); // V98→V100 : base documentaire
+  chargerDocsConfig().then(() => { // V138 : noms des immobilisations, liste des comptes justifiés au DP
+    try { if(document.getElementById('tab-immos')?.classList.contains('active')) renderImmos(); } catch(e) {}
+    try { verifierComptesDPAuDemarrage(); } catch(e) { console.warn(e); }
+  }).then(() => chargerPieces()).then(() => { updateNavCounts(); ecouterPieces(); if(EXERCISE_STATUS !== 'closed') planifierSyncGED(); }); // V98→V100 : base documentaire
   checkMonthlyExport();
   checkWeeklyExport();
   // Post-it pièces à formaliser : rendu initial + purge auto des cochées > 10 jours
@@ -15729,7 +15763,7 @@ function renderImmos() {
   });
   const sortedRoots = Object.keys(groups).sort();
 
-  groupsWrap.innerHTML = sortedRoots.map(root => {
+  groupsWrap.innerHTML = htmlBandeauImmosSansNom() + sortedRoots.map(root => { // V138
     const items = groups[root].slice().sort((a,b) => String(a.compteImmo||'').localeCompare(String(b.compteImmo||'')));
     const rowsHtml = items.map(immo => {
       const schedule = computeAmortSchedule(immo);
@@ -15749,7 +15783,7 @@ function renderImmos() {
         : `<button class="btn btn-sm btn-icon" onclick="viewImmoSchedule('${immo.id}')" title="Tableau d'amortissement" style="padding:1px 5px;font-size:10px;">📊</button>`;
       return `<tr${immo.nonAmortissable ? ' style="opacity:0.85;"' : ''}>
         <td style="font-family:var(--mono);font-size:10px;color:var(--cyan);">${immo.compteImmo||''}</td>
-        <td style="font-size:11px;">${esc(immo.libelle||'')}${immo.nonAmortissable ? ' <span style="font-size:9px;color:var(--text2);border:1px solid var(--line2);border-radius:3px;padding:1px 5px;margin-left:4px;">TERRAIN</span>' : ''}</td>
+        <td style="font-size:11px;">${esc(immo.libelle||'')}${immo.nonAmortissable ? ' <span style="font-size:9px;color:var(--text2);border:1px solid var(--line2);border-radius:3px;padding:1px 5px;margin-left:4px;">TERRAIN</span>' : ''}${nomImmo(immo) ? `<div style="font-size:9.5px;color:var(--text2);margin-top:1px;" title="Nom de l'immobilisation et de son dossier dans la GED">🗂 ${esc(nomImmo(immo))}</div>` : (_docsConfigLu ? '<div style="font-size:9.5px;color:var(--amber);margin-top:1px;">sans nom</div>' : '')}</td>
         <td style="font-family:var(--mono);font-size:10px;">${fmtDateGL(immo.dateAchat)}</td>
         <td class="td-num" style="font-size:11px;">${rn(immo.valeurBrute)}</td>
         <td style="font-size:11px;text-align:center;">${immo.nonAmortissable ? '—' : immo.dureeAnnees+' ans'}</td>
@@ -15758,6 +15792,7 @@ function renderImmos() {
         <td class="td-num" style="font-size:11px;color:var(--amber);">${immo.nonAmortissable ? '—' : rn(cumulActuel) + noteDotation}</td>
         <td class="td-num" style="font-size:11px;font-weight:600;">${rn(vncActuelle)}</td>
         <td style="text-align:center;white-space:nowrap;">
+          <button class="btn btn-sm btn-icon" onclick="ouvrirDocsImmo('${immo.id}')" title="Documents de l'immobilisation (son dossier du dossier permanent)" style="padding:1px 5px;font-size:10px;">📎</button>
           ${scheduleBtn}
           ${isDotationAlreadyPosted(immo) ? `<button class="btn btn-sm btn-icon" onclick="askAnnulerDotation('${immo.id}')" title="Annuler la dotation ${anneeCompta()}" style="padding:1px 5px;font-size:10px;">↩</button>` : ''}
           <button class="btn btn-sm btn-icon" onclick="openImmoModal('${immo.id}')" title="Modifier" style="padding:1px 5px;font-size:10px;">✎</button>
@@ -15782,7 +15817,7 @@ function renderImmos() {
             <th style="width:85px">Compte Amort.</th>
             <th class="td-num" style="width:240px">Amort. cumulés</th>
             <th class="td-num" style="width:100px">VNC actuelle</th>
-            <th style="width:90px"></th>
+            <th style="width:112px"></th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
@@ -15809,13 +15844,18 @@ function openImmoModal(editId) {
     document.getElementById('immo-compte-amort').value = immo.compteAmort || '';
     document.getElementById('immo-notes').value = immo.notes || '';
     document.getElementById('immo-non-amortissable').checked = !!immo.nonAmortissable;
+    document.getElementById('immo-nom').value = nomImmo(immo); // V138
   } else {
     document.getElementById('immo-modal-title').textContent = '🏛 NOUVELLE IMMOBILISATION';
     ['immo-libelle','immo-compte-immo','immo-date-achat','immo-valeur-brute','immo-duree','immo-compte-dotation','immo-compte-amort','immo-notes'].forEach(id => {
       const el = document.getElementById(id); if(el) el.value = '';
     });
     document.getElementById('immo-non-amortissable').checked = false;
+    document.getElementById('immo-nom').value = ''; // V138
   }
+  delete document.getElementById('immo-nom').dataset.touche;
+  if(!_docsConfigLu) chargerDocsConfig().then(majAideNomImmo); // V138 : noms existants
+  majAideNomImmo();
   toggleImmoAmortFields();
   document.getElementById('immo-modal').style.display = 'flex';
 }
@@ -15824,7 +15864,7 @@ function closeImmoModal() {
   document.getElementById('immo-modal').style.display = 'none';
 }
 
-function saveImmo() {
+async function saveImmo() {
   if(bloqueSiCloture()) return; // V81 (M3)
   const editId = document.getElementById('immo-edit-id').value;
   const libelle = document.getElementById('immo-libelle').value.trim();
@@ -15846,6 +15886,17 @@ function saveImmo() {
     if(!compteDotation || compteDotation.length !== 6) { toast('Compte de dotation invalide (6 chiffres)','error'); return; }
     if(!compteAmort || compteAmort.length !== 6) { toast('Compte d\'amortissement invalide (6 chiffres)','error'); return; }
   }
+  // V138 : nom obligatoire et unique — c'est aussi le nom du dossier de l'immobilisation dans la GED
+  const nom = document.getElementById('immo-nom').value.trim();
+  if(!_docsConfigLu) await chargerDocsConfig();
+  if(!_docsConfigLu) { toast('Réglages de la GED illisibles : rechargez la page avant d\'enregistrer', 'error', 6000); return; }
+  const idImmo = editId || crypto.randomUUID();
+  const errNom = controleNomImmo(nom, idImmo);
+  if(errNom) { toast(errNom, 'error', 5000); majAideNomImmo(); document.getElementById('immo-nom').focus(); return; }
+  if(nom !== nomImmo(idImmo)) {
+    try { await definirNomImmo(idImmo, nom); }
+    catch(e) { toast('Nom non enregistré : ' + (e.message || e), 'error', 6000); return; }
+  }
 
   const list = ensureImmoArray();
   if(editId) {
@@ -15855,7 +15906,7 @@ function saveImmo() {
     }
     toast('Immobilisation modifiée','success');
   } else {
-    list.push({id: crypto.randomUUID(), libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes, nonAmortissable});
+    list.push({id: idImmo, libelle, compteImmo, dateAchat, valeurBrute, dureeAnnees, compteDotation, compteAmort, notes, nonAmortissable});
     toast('Immobilisation ajoutée','success');
   }
 
@@ -16295,6 +16346,7 @@ function renderDocumentsVue() {
   renderDocumentsVueInterne(zone);
   zone.dataset.vue = _docsVue;
   const nouveau = zone.querySelector('.docs-scroll'); if(nouveau && vueAvant === _docsVue) nouveau.scrollTop = defil;
+  if(typeof explMajSelDOM === 'function') explMajSelDOM(); // V137
 }
 function htmlAccueilGED(coin, alerte) { // V128
   const cible = filtreExerciceDocs();
@@ -16551,11 +16603,12 @@ async function enregistrerDepot() {
   d.enCours = false;
   updateNavCounts();
   if(!echecs.length) {
-    const apres = d.options && d.options.apres;
+    const apres = d.options && d.options.apres, lie = !!(d.options && d.options.lien);
     fermerDepot();
     if(apres) apres();
     toast(`${nbOk} document${nbOk > 1 ? 's' : ''} enregistré${nbOk > 1 ? 's' : ''}`, 'success');
     setTimeout(() => { try { proposerSuggestionsPieces(idsCrees); } catch(e) { console.warn(e); } }, 400); // V113
+    if(lie) setTimeout(() => { try { proposerRangementDP(idsCrees); } catch(e) { console.warn(e); } }, 500); // V138 : justificatif d'un compte « DP »
   } else {
     el('dep-btn').disabled = false;
     // Les fichiers déjà envoyés sont retirés de la liste : un nouvel essai ne les renverra pas
@@ -17295,7 +17348,7 @@ async function joindrePieceExistante(id) {
   if(!controleRattachement()) return;
   const p = (PIECES || []).find(x => x.id === id); if(!p) return;
   const ios = iosCibles(_pjIo);
-  if(await lierPiece(p, ios, CURRENT_YEAR)) { toast(`Pièce jointe à ${ios.length} écriture${ios.length > 1 ? 's' : ''}`, 'success'); apresChangementJustifs(); }
+  if(await lierPiece(p, ios, CURRENT_YEAR)) { toast(`Pièce jointe à ${ios.length} écriture${ios.length > 1 ? 's' : ''}`, 'success'); apresChangementJustifs(); proposerRangementDP([p.id]); } // V138
 }
 async function detacherPiece(id) {
   if(!controleRattachement()) return;
@@ -17342,7 +17395,7 @@ const PAJ_MODULES = { '': 'Saisie manuelle', locative: 'Gestion locative', echea
 // V112 : tout ce qui demande attention, au même endroit ; un seul compteur dans l'en-tête
 let _atOnglet = 'ecr';
 function elementsATraiter() {
-  const r = { sugg: [], ecr: [], orph: [], nc: [], croises: [], introuv: [], vieux: [], cout: 0 };
+  const r = { sugg: [], ecr: [], orph: [], nc: [], croises: [], introuv: [], vieux: [], dp: [], cout: 0 };
   try { r.ecr = ecrituresManquantes(); } catch(e) { console.error(e); }
   if(typeof PIECES !== 'undefined' && PIECES) {
     try { r.sugg = suggestionsParNumero(); } catch(e) { console.warn(e); }
@@ -17352,8 +17405,9 @@ function elementsATraiter() {
     try { r.introuv = PIECES.filter(p => _sourcesIntrouvables.has(p.id)); } catch(e) {}
     try { r.vieux = (CORBEILLE || []).filter(p => ageCorbeilleJours(p) > 30); } catch(e) {}
     try { r.cout = coutStockageMensuel(); } catch(e) {}
+    try { r.dp = piecesARangerAuDP(); } catch(e) { console.warn(e); } // V138
   }
-  r.total = nbEcrituresDe(r.sugg) + r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + (r.cout > 1 ? 1 : 0);
+  r.total = nbEcrituresDe(r.sugg) + r.ecr.length + r.orph.length + r.nc.length + r.croises.length + r.introuv.length + r.vieux.length + r.dp.length + (r.cout > 1 ? 1 : 0);
   return r;
 }
 function majBadgeATraiter(r) {
@@ -17375,6 +17429,7 @@ function renderPostItPieces() {
     { k: 'ecr', lib: 'Écritures sans pièce', n: r.ecr.length },
     { k: 'orph', lib: 'Pièces sans écriture', n: r.orph.length },
     { k: 'nc', lib: 'Pièces non classées', n: r.nc.length },
+    { k: 'dp', lib: 'À ranger au DP', n: r.dp.length }, // V138
     { k: 'croises', lib: 'Liens entre locataires', n: r.croises.length },
     { k: 'introuv', lib: 'Sources introuvables', n: r.introuv.length },
     { k: 'vieux', lib: 'Corbeille > 30 jours', n: r.vieux.length },
@@ -17417,6 +17472,12 @@ function renderPostItPieces() {
     corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Pièces sans type, ou dont le type n'est rangé dans aucun classeur (tous exercices).</div>`
       + r.nc.map(p => ligne(`${iconePiece(p)} <strong>${esc(p.titre || p.nomFichier)}</strong><div style="color:var(--text2);font-size:9px;">Exercice ${esc(p.exercice)}${p.typePiece ? ' • type ' + esc(p.typePiece) : ' • sans type'}</div>`, `voirPiece('${p.id}')`)).join('');
     pied = b('OUVRIR « NON CLASSÉS »', "allerGEDDepuisATraiter(()=>{_docsVue='compta';ouvrirClasseur('compta','__nc');})", 'btn-primary') + b('⚙ GÉRER LES CLASSEURS', "allerGEDDepuisATraiter(()=>ouvrirGestionClasseurs('compta'))");
+  } else if(_atOnglet === 'dp') { // V138
+    corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);line-height:1.4;">Pièces comptables qui justifient une écriture touchant un compte « dossier permanent » (Paramètres › Justificatifs au dossier permanent). Rangez-les au DP, ou gardez-les en pièces comptables.</div>`
+      + r.dp.map(x => `<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-bottom:1px solid var(--line);font-size:11px;">
+          <div style="flex:1;min-width:0;"><span style="cursor:pointer;" onclick="voirPiece('${x.p.id}')">${iconePiece(x.p)} <strong>${esc(x.p.titre || x.p.nomFichier)}</strong></span>
+            <div style="color:var(--text2);font-size:9px;margin-top:2px;">${x.js.map(j => '#' + j.num).join(', ')} · ${x.comptes.map(esc).join(', ')}</div></div>
+          ${ouvert ? b('RANGER…', `closePostItPieces();proposerRangementDP(['${x.p.id}'])`, 'btn-primary') : ''}</div>`).join('');
   } else if(_atOnglet === 'croises') {
     corps = `<div style="padding:6px 10px;font-size:10px;color:var(--text2);">Documents d'un locataire joints aux écritures d'un autre (exercice ${esc(CURRENT_YEAR)}).</div>`
       + r.croises.map(x => ligne(`${iconePiece(x.p)} <strong>${esc(x.p.titre || x.p.nomFichier)}</strong><div style="color:var(--red);font-size:9px;">→ écriture #${x.j.num} de ${esc(x.vers)}</div>`)).join('');
@@ -17492,7 +17553,7 @@ async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
   if(PIECES === null) await chargerPieces();
   const ex = String(CURRENT_YEAR);
   const code = String(numDoc || '').split(/[\/_]/)[0];
-  let ok = 0;
+  let ok = 0; const idsCrees = []; // V138
   for(const f of fichiers) {
     try {
       const prep = await preparerFichier(f);
@@ -17504,12 +17565,13 @@ async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
         titre: fichiers.length === 1 && libelle ? libelle : titreDepuisNom(f.name), dateDoc: date || dateLocale(new Date()),
         nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin, depose: new Date().toISOString(), liens: [{ ex, io: cleIo(io), nd: numDoc || '' }] };
       try { await window._fbPieceSave(meta); } catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
-      indexerPiece(meta); ok++;
+      indexerPiece(meta); ok++; idsCrees.push(meta.id);
     } catch(e) { console.error(e); toast(`Justificatif « ${f.name} » non enregistré : ${messageErreurStorage(e)} — joignez-le depuis le 📎 du Grand Livre`, 'error', 8000); }
   }
   if(ok) toast(`${ok} justificatif${ok > 1 ? 's' : ''} joint${ok > 1 ? 's' : ''} à l'écriture`, 'success');
   _ioEnDepot.delete(cleIo(io));
   apresChangementJustifs();
+  if(idsCrees.length) setTimeout(() => { try { proposerRangementDP(idsCrees); } catch(e) { console.warn(e); } }, 300); // V138
 }
 
 document.addEventListener('DOMContentLoaded', () => { try { renderSaisiePJ(); } catch(e) {} });
@@ -18535,14 +18597,14 @@ async function deplacerIntercalaire(code, nom, sens) { // V130
   catch(e) { toast('Ordre non enregistré : ' + (e.message || e), 'error'); }
 }
 async function nouvelIntercalaire(code) {
-  const nom = (prompt("Nom du nouvel intercalaire :") || '').trim(); if(!nom) return;
+  const nom = explNomValide(prompt("Nom du nouvel intercalaire :")); if(!nom) return; // V138 : pas de « / »
   const l = intercalairesClasseur(code);
   if(l.some(n => n.toLowerCase() === nom.toLowerCase())) { toast('Cet intercalaire existe déjà dans ce classeur', 'error'); return; }
   try { await enregistrerIntercalaires(code, l.concat([nom])); toast(`Intercalaire « ${nom} » ajouté`, 'success'); renderDocumentsVue(); }
   catch(e) { toast('Intercalaire non enregistré : ' + (e.message || e), 'error'); }
 }
 async function renommerIntercalaire(code, ancien) { // V131 : depuis le classeur
-  const nv = (prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien) || '').trim();
+  const nv = explNomValide(prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien)); // V138 : pas de « / »
   if(!nv || nv === ancien) return;
   const l = intercalairesClasseur(code);
   if(l.some(n => n !== ancien && n.toLowerCase() === nv.toLowerCase())) { toast('Un intercalaire porte déjà ce nom dans ce classeur', 'error'); return; }
@@ -18551,6 +18613,7 @@ async function renommerIntercalaire(code, ancien) { // V131 : depuis le classeur
     for(const p of docs) await majPiece(p, { sousDossier: nv });
     await enregistrerIntercalaires(code, l.includes(ancien) ? l.map(n => n === ancien ? nv : n) : l.concat([nv]));
     toast(`Intercalaire renommé « ${nv} »${docs.length ? ` (${docs.length} document${docs.length > 1 ? 's' : ''})` : ''}`, 'success');
+    await synchroImmoApresRenommage({ espace: 'permanent', id: code }, ancien, nv); // V138
     renderDocumentsVue();
   } catch(e) { toast('Renommage non enregistré : ' + (e.message || e), 'error'); }
 }
@@ -18630,29 +18693,35 @@ function htmlExplorateur(o) {
   const sous = recursif ? [] : sousDossiersDe(tous, cour);
   const nbDans = p => o.items.filter(it => { const d = normDossier(o.dossierDe(it)); return d === p || d.startsWith(p + '/'); }).length;
   const filAriane = [`<a href="#" onclick="explOuvrir('');return false;" ${dnd('')}>${esc(o.nom)}</a>`].concat(cour ? cour.split('/').map((s, k, a) => { const p = a.slice(0, k + 1).join('/'); return `<a href="#" ${dnd(p)} onclick="explOuvrir(this.dataset.path);return false;">${esc(s)}</a>`; }) : []).join(' <span style="color:var(--text2);">›</span> ');
-  const lignesDossiers = sous.map(p => `<tr class="expl-ligne-dossier" ${dnd(p)} ${actif ? 'draggable="true" ondragstart="explDragDossier(event,this.dataset.path)"' : ''} oncontextmenu="explMenu(event,this.dataset.path)" ondblclick="explOuvrir(this.dataset.path)" onclick="explOuvrir(this.dataset.path)">
+  const lignesDossiers = sous.map(p => `<tr class="expl-ligne-dossier" ${dnd(p)} ${actif ? 'draggable="true" ondragstart="explDragDossier(event,this.dataset.path)"' : ''} data-dos="${esc(p)}" oncontextmenu="explMenu(event,this.dataset.path,'ligne')" ondblclick="explOuvrir(this.dataset.path)" onclick="explClic(event,'f',this.dataset.path)">
       <td colspan="${o.colonnes}" style="font-size:12px;"><span style="font-size:14px;">📁</span> <strong>${esc(nomDuDossier(p))}</strong> <span style="color:var(--text2);font-size:10px;">${nbDans(p).toLocaleString('fr-FR')} élément(s)</span></td></tr>`).join('');
   const lignesDocs = items.map(it => o.ligne(it, recursif && normDossier(o.dossierDe(it)) !== cour ? normDossier(o.dossierDe(it)) : null)).join('');
   return `${htmlBarreClasseur(espace, o.nom, o.couleur, (actif ? `<button class="btn btn-sm" onclick="explNouveauDossier(explCourant('${espace}','${esc(id)}'))" title="Créer un dossier dans le dossier ouvert">+ DOSSIER</button>` : '') + o.outils)}
     <div class="expl-zone" style="display:flex;gap:10px;flex:1;min-height:0;">
       <div class="expl-arbre" oncontextmenu="if(event.target===this)explMenu(event,'')">${noeud('', 0)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0;">
-        <div class="expl-ariane">${cour ? `<button class="btn btn-sm btn-icon" data-path="${esc(parentDossier(cour))}" onclick="explOuvrir(this.dataset.path)" title="Dossier parent" style="padding:0 7px;">‹</button>` : ''}${filAriane}${recursif ? ' <span style="color:var(--amber);font-size:10px;">— filtre actif : sous-dossiers compris</span>' : ''}</div>
-        <div class="tbl-wrap docs-scroll"><table><thead>${o.thead}</thead>
+        <div class="expl-ariane">${cour ? `<button class="btn btn-sm btn-icon" data-path="${esc(parentDossier(cour))}" onclick="explOuvrir(this.dataset.path)" title="Dossier parent" style="padding:0 7px;">‹</button>` : ''}${filAriane}${recursif ? ' <span style="color:var(--amber);font-size:10px;">— filtre actif : sous-dossiers compris</span>' : ''}<span id="expl-selbar"></span></div>
+        <div class="tbl-wrap docs-scroll" onclick="if(!event.target.closest('tr[data-doc],tr[data-dos],thead,button,a,input,select'))explViderSel()" oncontextmenu="if(!event.target.closest('tr[data-doc],tr[data-dos],thead'))explMenu(event,explCourant('${espace}','${esc(id)}'),'fond')"><table><thead>${o.thead}</thead>
           <tbody>${lignesDossiers}${lignesDocs}${!lignesDossiers && !lignesDocs ? `<tr><td colspan="${o.colonnes}" style="text-align:center;padding:24px;color:var(--text2);font-style:italic;">${o.filtre ? 'Aucun document avec ces filtres.' : 'Dossier vide — déposez des documents ici, ou glissez-y des documents d\'un autre dossier.'}</td></tr>` : ''}</tbody></table></div>
       </div>
     </div>`;
 }
-function explOuvrir(p) { const c = explCtx(); _explCourant[c.cle] = normDossier(p || ''); renderDocumentsVue(); }
+function explOuvrir(p) { const c = explCtx(); _explCourant[c.cle] = normDossier(p || ''); const s = explSel(); s.docs.clear(); s.dossiers.clear(); s.ancre = null; renderDocumentsVue(); }
 function explBasculer(p) { const k = explCtx().cle + '|' + p; if(_explOuverts.has(k)) _explOuverts.delete(k); else _explOuverts.add(k); renderDocumentsVue(); }
 function explRacineDoc(id) { const c = explCtx(); return c.id && !String(c.id).startsWith('__') ? explCourant(c.espace, c.id) : ''; }
 // ── Glisser-déposer ──
-function explDragDoc(e, id) { e.dataTransfer.setData('text/atrium-doc', id); e.dataTransfer.effectAllowed = 'move'; }
-function explDragDossier(e, p) { e.stopPropagation(); e.dataTransfer.setData('text/atrium-dossier', p); e.dataTransfer.effectAllowed = 'move'; }
-function explDragOver(e) { const t = [...(e.dataTransfer.types || [])]; if(t.includes('text/atrium-doc') || t.includes('text/atrium-dossier')) { e.preventDefault(); e.currentTarget.classList.add('expl-cible'); } }
+function explDragSel(e, type, cle) { const s = explSel(); if(!(type === 'd' ? s.docs : s.dossiers).has(normDossier(cle) || cle) || explNbSel() < 2) return false; e.dataTransfer.setData('text/atrium-sel', '1'); return true; } // V137
+function explDragDoc(e, id) { if(!explDragSel(e, 'd', id)) e.dataTransfer.setData('text/atrium-doc', id); e.dataTransfer.effectAllowed = 'move'; }
+function explDragDossier(e, p) { e.stopPropagation(); if(!explDragSel(e, 'f', p)) e.dataTransfer.setData('text/atrium-dossier', p); e.dataTransfer.effectAllowed = 'move'; }
+function explDragOver(e) { const t = [...(e.dataTransfer.types || [])]; if(t.includes('text/atrium-doc') || t.includes('text/atrium-dossier') || t.includes('text/atrium-sel')) { e.preventDefault(); e.currentTarget.classList.add('expl-cible'); } }
 async function explDrop(e, cible) {
-  const t = [...(e.dataTransfer.types || [])]; if(!t.includes('text/atrium-doc') && !t.includes('text/atrium-dossier')) return;
+  const t = [...(e.dataTransfer.types || [])]; if(!t.includes('text/atrium-doc') && !t.includes('text/atrium-dossier') && !t.includes('text/atrium-sel')) return;
   e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('expl-cible');
+  if(t.includes('text/atrium-sel')) { // V137 : plusieurs éléments sélectionnés
+    const c = explCtx(), s = explSel(); if(s.dossiers.has(normDossier(cible))) return;
+    await explDeplacerElements(c.espace, c.id, [...s.docs], [...s.dossiers], c.id, cible);
+    explViderSel(); renderDocumentsVue(); return;
+  }
   const docId = e.dataTransfer.getData('text/atrium-doc'), dos = e.dataTransfer.getData('text/atrium-dossier');
   if(docId) await explDeplacerDoc(docId, cible); else if(dos) await explDeplacerDossier(dos, cible);
 }
@@ -18675,10 +18744,12 @@ async function explRenommerChemin(c, ancien, nouveau, verbe) {
   await enregistrerDossiersCfg(c.espace, c.id, dossiersConfig(c.espace, c.id).map(p => conv(p) || p).concat([nouveau]));
   const cour = explCourant(c.espace, c.id); if(conv(cour) !== null) _explCourant[c.cle] = conv(cour);
   toast(`Dossier ${verbe} (${docs.length} document${docs.length > 1 ? 's' : ''})`, 'success');
+  await synchroImmoApresRenommage(c, ancien, nouveau); // V138 : le dossier d'une immobilisation renommé → l'immobilisation suit
   return true;
 }
 async function explDeplacerDossier(src, cible) {
   const c = explCtx(); src = normDossier(src); cible = normDossier(cible);
+  { const im = dossierImmoProtege(c.espace, c.id, src); if(im && parentDossier(src) !== cible) { toast(msgDossierImmo(im, 'déplacé'), 'error', 7000); return; } } // V138
   if(!src || cible === src || cible.startsWith(src + '/')) { if(cible !== src) toast('Un dossier ne peut pas être rangé dans lui-même', 'error'); return; }
   if(parentDossier(src) === cible) return;
   try { await explRenommerChemin(c, src, (cible ? cible + '/' : '') + nomDuDossier(src), 'déplacé'); } catch(e) { toast('Déplacement non enregistré : ' + (e.message || e), 'error'); }
@@ -18707,6 +18778,7 @@ async function explRenommerDossier(p) {
 // V136 : un dossier du DP redevient un classeur (au même niveau que les autres), avec ses sous-dossiers et ses documents
 async function explEnClasseur(p) {
   const c = explCtx(); p = normDossier(p); if(!p || c.espace !== 'permanent') return;
+  { const im = dossierImmoProtege(c.espace, c.id, p); if(im) { toast(msgDossierImmo(im, 'transformé en classeur'), 'error', 7000); return; } } // V138
   const nom = nomDuDossier(p);
   if(rubriquesDP().some(r => r.label.trim().toLowerCase() === nom.toLowerCase())) { toast(`Un classeur « ${nom} » existe déjà : renommez d'abord le dossier`, 'error', 6000); return; }
   const docs = docsDuClasseur('permanent', c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); });
@@ -18730,30 +18802,208 @@ async function explSupprimerDossier(p) {
   const c = explCtx(); if(!p) return;
   const dedans = docsDuClasseur(c.espace, c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); });
   if(dedans.length) { toast(`Le dossier contient ${dedans.length} document(s) (corbeille comprise) : videz-le d'abord`, 'error', 5000); return; }
-  if(!confirm(`Supprimer le dossier « ${nomDuDossier(p)} » et ses sous-dossiers vides ?`)) return;
+  const imSup = dossierImmoProtege(c.espace, c.id, p); // V138
+  if(imSup && ensureImmoArray().some(i => i.id === imSup)) { toast(msgDossierImmo(imSup, 'supprimé tant que l\'immobilisation existe'), 'error', 7000); return; }
+  if(!confirm(imSup ? `« ${nomDuDossier(p)} » était le dossier d'une immobilisation qui n'existe plus dans cet exercice.\n\nLe supprimer ? Si l'immobilisation existe encore dans un autre exercice, elle devra être renommée.` : `Supprimer le dossier « ${nomDuDossier(p)} » et ses sous-dossiers vides ?`)) return;
   try {
+    if(imSup) { const n = Object.assign({}, nomsImmos()); delete n[imSup]; await enregistrerDocsConfig({ immos: n }); }
     await enregistrerDossiersCfg(c.espace, c.id, dossiersConfig(c.espace, c.id).filter(x => x !== p && !x.startsWith(p + '/')));
     const cour = explCourant(c.espace, c.id); if(cour === p || cour.startsWith(p + '/')) _explCourant[c.cle] = parentDossier(p);
     renderDocumentsVue();
   } catch(e) { toast('Suppression non enregistrée : ' + (e.message || e), 'error'); }
 }
+// ── V137 : sélection multiple (clic, Ctrl + clic, Maj + clic), double-clic pour ouvrir, couper / coller ──
+// Pas de copie (choix de Clément) : couper + coller = déplacer. Le DP accepte le collage dans un autre classeur ;
+// les pièces comptables restent dans leur classeur (il dépend de leur type).
+let _explSel = { cle: '', docs: new Set(), dossiers: new Set(), ancre: null };
+let _explPP = null; // presse-papiers « couper » : { espace, id, nom, docs: [ids], dossiers: [chemins] }
+function explSel() { const cle = explCtx().cle; if(_explSel.cle !== cle) _explSel = { cle, docs: new Set(), dossiers: new Set(), ancre: null }; return _explSel; }
+function explNbSel() { const s = explSel(); return s.docs.size + s.dossiers.size; }
+function explAttrsDoc(id) { return `data-doc="${id}" onclick="explClic(event,'d',this.dataset.doc)" ondblclick="explDbl(event,this.dataset.doc)" oncontextmenu="explMenuDoc(event,this.dataset.doc)"`; }
+function explHorsSelection(e) { return !!(e.target && e.target.closest && e.target.closest('button,input,select,textarea,a:not(.expl-titre)')); }
+function explElementsVisibles() {
+  const z = document.querySelector('#docs-wrap .expl-zone');
+  return z ? [...z.querySelectorAll('tr[data-doc],tr[data-dos]')].map(tr => tr.dataset.doc ? ['d', tr.dataset.doc] : ['f', tr.dataset.dos]) : [];
+}
+function explClic(e, type, cle) {
+  if(explHorsSelection(e)) return; // boutons d'action, liens d'écritures…
+  const s = explSel(), set = type === 'd' ? s.docs : s.dossiers, mod = e.ctrlKey || e.metaKey;
+  if(e.shiftKey && s.ancre) {
+    const vis = explElementsVisibles();
+    const i = vis.findIndex(([t, k]) => t === s.ancre[0] && k === s.ancre[1]), j = vis.findIndex(([t, k]) => t === type && k === cle);
+    if(i >= 0 && j >= 0) {
+      if(!mod) { s.docs.clear(); s.dossiers.clear(); }
+      vis.slice(Math.min(i, j), Math.max(i, j) + 1).forEach(([t, k]) => (t === 'd' ? s.docs : s.dossiers).add(k));
+    }
+    try { window.getSelection().removeAllRanges(); } catch(x) {}
+  } else if(mod) { if(set.has(cle)) set.delete(cle); else set.add(cle); s.ancre = [type, cle]; }
+  else { s.docs.clear(); s.dossiers.clear(); set.add(cle); s.ancre = [type, cle]; }
+  explMajSelDOM();
+}
+function explSelUnique(type, cle) { const s = explSel(); s.docs.clear(); s.dossiers.clear(); (type === 'd' ? s.docs : s.dossiers).add(cle); s.ancre = [type, cle]; explMajSelDOM(); }
+function explViderSel() { const s = explSel(); if(!s.docs.size && !s.dossiers.size) return; s.docs.clear(); s.dossiers.clear(); s.ancre = null; explMajSelDOM(); }
+function explToutSel() { const s = explSel(); explElementsVisibles().forEach(([t, k]) => (t === 'd' ? s.docs : s.dossiers).add(k)); explMajSelDOM(); }
+function explDbl(e, id) { if(explHorsSelection(e)) return; try { window.getSelection().removeAllRanges(); } catch(x) {} voirPiece(id); }
+function explEstCoupe(type, cle) { const c = explCtx(); return !!_explPP && _explPP.espace === c.espace && _explPP.id === c.id && (type === 'd' ? _explPP.docs : _explPP.dossiers).includes(cle); }
+function explMajSelDOM() {
+  const z = document.querySelector('#docs-wrap .expl-zone'); if(!z) return;
+  const s = explSel();
+  z.querySelectorAll('tr[data-doc],tr[data-dos]').forEach(tr => {
+    const t = tr.dataset.doc ? 'd' : 'f', k = tr.dataset.doc || tr.dataset.dos;
+    tr.classList.toggle('expl-sel', (t === 'd' ? s.docs : s.dossiers).has(k));
+    tr.classList.toggle('expl-coupe', explEstCoupe(t, k));
+  });
+  const b = document.getElementById('expl-selbar'); if(!b) return;
+  const n = s.docs.size + s.dossiers.size, np = _explPP ? _explPP.docs.length + _explPP.dossiers.length : 0;
+  b.innerHTML = (n ? `<span style="font-size:11px;color:var(--cyan);">${n} sélectionné${n > 1 ? 's' : ''}</span>
+      <button class="btn btn-sm" onclick="explCouper()" title="Couper (Ctrl+X) : ouvrez ensuite le dossier de destination, puis collez">✂ COUPER</button>
+      <button class="btn btn-sm btn-icon" onclick="explViderSel()" title="Tout désélectionner (Échap)" style="padding:0 7px;">✕</button>` : '')
+    + (np ? `<button class="btn btn-sm btn-primary" onclick="explColler()" title="Coller dans le dossier ouvert (Ctrl+V) — coupé${np > 1 ? 's' : ''} dans « ${esc(_explPP.nom)} »">📋 COLLER ICI (${np})</button>
+      <button class="btn btn-sm btn-icon" onclick="_explPP=null;explMajSelDOM()" title="Annuler le couper" style="padding:0 7px;">✕</button>` : '')
+    + (!n && !np ? `<span style="font-size:10px;color:var(--text2);">clic : sélectionner · Ctrl / Maj + clic : plusieurs · double-clic : ouvrir</span>` : '');
+}
+function explCouper(docs, dossiers) {
+  const c = explCtx(), s = explSel();
+  if(!c.id || String(c.id).startsWith('__')) return;
+  docs = docs || [...s.docs]; dossiers = dossiers || [...s.dossiers];
+  if(!docs.length && !dossiers.length) { toast('Sélectionnez d\'abord des documents ou des dossiers (clic, Ctrl + clic)', 'error'); return; }
+  if(c.espace === 'compta') {
+    const bloq = docs.map(id => (PIECES || []).find(x => x.id === id)).filter(p => p && !pieceModifiable(p));
+    if(bloq.length) { toast(`${bloq.length} pièce${bloq.length > 1 ? 's' : ''} d'un exercice clôturé : déplacement impossible`, 'error', 5000); return; }
+  }
+  const info = c.espace === 'compta' ? infoClasseurCompta(c.id) : infoClasseurDP(c.id);
+  _explPP = { espace: c.espace, id: c.id, nom: info ? info.nom : '', docs, dossiers };
+  const n = docs.length + dossiers.length;
+  toast(`${n} élément${n > 1 ? 's' : ''} coupé${n > 1 ? 's' : ''} : ouvrez le dossier de destination${c.espace === 'permanent' ? ' (dans ce classeur ou un autre)' : ''}, puis collez (Ctrl+V ou 📋)`, 'success', 5000);
+  explMajSelDOM();
+}
+function explCouperDepuisMenu(type, cle) {
+  const s = explSel();
+  if((type === 'd' ? s.docs : s.dossiers).has(cle)) explCouper();
+  else explCouper(type === 'd' ? [cle] : [], type === 'f' ? [cle] : []);
+}
+async function explColler(cible) {
+  const c = explCtx(), pp = _explPP; if(!pp || !c.id || String(c.id).startsWith('__')) return;
+  if(pp.espace !== c.espace) { toast('On ne colle pas entre le dossier permanent et les pièces comptables', 'error', 5000); return; }
+  if(c.espace === 'compta' && pp.id !== c.id) { toast(`Pièces comptables : collez dans le classeur « ${pp.nom} » (le classeur d'une pièce dépend de son type)`, 'error', 6000); return; }
+  cible = cible === undefined ? explCourant(c.espace, c.id) : normDossier(cible);
+  const ok = await explDeplacerElements(c.espace, pp.id, pp.docs, pp.dossiers, c.id, cible);
+  if(ok) _explPP = null;
+  explViderSel(); renderDocumentsVue();
+}
+// Déplace des documents et des dossiers (avec tout leur contenu) vers un dossier, dans le même classeur ou dans un autre (DP)
+async function explDeplacerElements(espace, srcId, docs, dossiers, destId, cible) {
+  cible = normDossier(cible);
+  dossiers = [...new Set((dossiers || []).map(normDossier).filter(Boolean))];
+  dossiers = dossiers.filter(d => !dossiers.some(a => a !== d && d.startsWith(a + '/'))); // un sous-dossier part avec son parent
+  const dansDossier = p => { const x = normDossier(p.sousDossier); return dossiers.some(d => x === d || x.startsWith(d + '/')); };
+  const docsSeuls = (docs || []).map(id => (PIECES || []).find(x => x.id === id)).filter(p => p && !dansDossier(p));
+  const autre = srcId !== destId, erreurs = [];
+  let nbDos = 0, nbDocs = 0;
+  for(const d of dossiers) {
+    { const im = dossierImmoProtege(espace, srcId, d); if(im && (autre || parentDossier(d) !== cible)) { erreurs.push(`« ${nomDuDossier(d)} » : dossier d'une immobilisation, il ne peut pas être déplacé`); continue; } } // V138
+    if(!autre && (cible === d || cible.startsWith(d + '/'))) { erreurs.push(`« ${nomDuDossier(d)} » ne peut pas être rangé dans lui-même`); continue; }
+    if(!autre && parentDossier(d) === cible) continue;
+    try { const r = await explTransfererDossier(espace, srcId, d, destId, cible); if(r === true) nbDos++; else erreurs.push(`« ${nomDuDossier(d)} » : ${r}`); }
+    catch(e) { erreurs.push(`« ${nomDuDossier(d)} » : ${e.message || e}`); }
+  }
+  for(const p of docsSeuls) {
+    if(p.espace === 'compta' && !pieceModifiable(p)) { erreurs.push(`« ${p.titre || p.nomFichier} » : exercice clôturé`); continue; }
+    if(!autre && normDossier(p.sousDossier) === cible) continue;
+    const versions = p.espace === 'permanent' ? (PIECES || []).concat(CORBEILLE || []).filter(x => x.espace === 'permanent' && (x.groupe || x.id) === (p.groupe || p.id)) : [p];
+    let ok = true;
+    for(const v of versions) ok = (await majPiece(v, Object.assign({ sousDossier: cible }, autre ? explChangementClasseur(v, srcId, destId) : {}))) && ok;
+    if(ok) nbDocs++; else erreurs.push(`« ${p.titre || p.nomFichier} » : non enregistré`);
+  }
+  if(nbDos || nbDocs) {
+    const info = espace === 'compta' ? infoClasseurCompta(destId) : infoClasseurDP(destId);
+    const ou = (autre && info ? `« ${info.nom} »` : '') + (cible ? `${autre ? ' › ' : ''}« ${nomDuDossier(cible)} »` : (autre ? '' : 'la racine du classeur'));
+    toast(`${[nbDocs ? `${nbDocs} document${nbDocs > 1 ? 's' : ''}` : '', nbDos ? `${nbDos} dossier${nbDos > 1 ? 's' : ''}` : ''].filter(Boolean).join(' et ')} déplacé${nbDocs + nbDos > 1 ? 's' : ''} dans ${ou}`, 'success', 4000);
+  }
+  if(erreurs.length) toast('Non déplacé : ' + erreurs.join(' ; '), 'error', 8000);
+  return erreurs.length === 0;
+}
+function explChangementClasseur(p, srcId, destId) {
+  const cl = [...new Set(classeursDe(p).map(x => x === srcId ? destId : x))];
+  return { classeurs: cl.length ? cl : [destId], rubrique: !p.rubrique || p.rubrique === srcId ? destId : p.rubrique };
+}
+async function explTransfererDossier(espace, srcId, src, destId, destParent) {
+  const nouveau = (destParent ? destParent + '/' : '') + nomDuDossier(src), autre = srcId !== destId;
+  if(tousDossiers(espace, destId).some(x => x.toLowerCase() === nouveau.toLowerCase())) return 'un dossier du même nom existe déjà à cet endroit';
+  const conv = x => { const n = normDossier(x); return n === src ? nouveau : n.startsWith(src + '/') ? nouveau + n.slice(src.length) : null; };
+  const docs = docsDuClasseur(espace, srcId, true).filter(p => conv(p.sousDossier) !== null);
+  let cibles = docs.map(p => [p, conv(p.sousDossier)]);
+  if(espace === 'permanent') { // toutes les versions d'un document suivent
+    const chemins = new Map(docs.map(p => [p.groupe || p.id, conv(p.sousDossier)]));
+    cibles = (PIECES || []).concat(CORBEILLE || []).filter(x => x.espace === 'permanent' && chemins.has(x.groupe || x.id)).map(x => [x, chemins.get(x.groupe || x.id)]);
+  }
+  for(const [p, chemin] of cibles) {
+    const ok = await majPiece(p, Object.assign({ sousDossier: chemin }, autre ? explChangementClasseur(p, srcId, destId) : {}));
+    if(!ok) throw new Error('enregistrement interrompu');
+  }
+  if(!autre) await enregistrerDossiersCfg(espace, srcId, dossiersConfig(espace, srcId).map(x => conv(x) || x).concat([nouveau]));
+  else {
+    const deplaces = dossiersConfig(espace, srcId).map(conv).filter(Boolean);
+    await enregistrerDossiersCfg(espace, srcId, dossiersConfig(espace, srcId).filter(x => conv(x) === null));
+    await enregistrerDossiersCfg(espace, destId, dossiersConfig(espace, destId).concat(deplaces, [nouveau]));
+  }
+  const cleSrc = espace + '|' + srcId, cour = _explCourant[cleSrc] || '';
+  if(cour && conv(cour) !== null) _explCourant[cleSrc] = autre ? parentDossier(src) : conv(cour);
+  return true;
+}
+function explMenuDoc(e, id) {
+  e.preventDefault(); e.stopPropagation();
+  const c = explCtx(); if(!c.id || !window._fbStorageActif) return;
+  if(!explSel().docs.has(id)) explSelUnique('d', id);
+  let m = document.getElementById('expl-menu');
+  if(!m) { m = document.createElement('div'); m.id = 'expl-menu'; document.body.appendChild(m); }
+  const it = (lib, act) => `<div class="expl-menu-it" onclick="document.getElementById('expl-menu').style.display='none';${act}">${lib}</div>`;
+  const n = explNbSel(), nPP = _explPP ? _explPP.docs.length + _explPP.dossiers.length : 0;
+  m.innerHTML = it('👁 Ouvrir', `voirPiece('${id}')`) + it(`✂ Couper${n > 1 ? ` (${n} éléments)` : ''}`, 'explCouper()')
+    + (_explPP ? it(`📋 Coller dans ce dossier (${nPP})`, 'explColler()') : '');
+  m.style.cssText = `display:block;position:fixed;left:${Math.min(e.clientX, window.innerWidth - 220)}px;top:${Math.min(e.clientY, window.innerHeight - 120)}px;z-index:3000;`;
+  setTimeout(() => document.addEventListener('click', function f() { m.style.display = 'none'; document.removeEventListener('click', f); }), 0);
+}
+// Raccourcis clavier de l'explorateur (seulement quand il est affiché et qu'aucune saisie ni fenêtre n'est active)
+function explClavier(e) {
+  const z = document.querySelector('#docs-wrap .expl-zone'); if(!z || !z.offsetParent) return;
+  const t = e.target; if(t && t.closest && t.closest('input,textarea,select,[contenteditable="true"],.modal-overlay')) return;
+  if([...document.querySelectorAll('.modal-overlay')].some(m => m.style.display === 'flex')) return;
+  const k = String(e.key || '').toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if(mod && k === 'x') { if(explNbSel()) { e.preventDefault(); explCouper(); } }
+  else if(mod && k === 'v') { if(_explPP) { e.preventDefault(); explColler(); } }
+  else if(mod && k === 'a') { e.preventDefault(); explToutSel(); }
+  else if(mod && k === 'c') { if(explNbSel() && !String(window.getSelection() || '')) { e.preventDefault(); toast('Pas de copie dans la GED : Couper (Ctrl+X) puis Coller (Ctrl+V) pour déplacer', '', 4000); } }
+  else if(k === 'escape') {
+    const m = document.getElementById('expl-menu'); if(m && m.style.display === 'block') { m.style.display = 'none'; return; }
+    if(explNbSel()) explViderSel(); else if(_explPP) { _explPP = null; explMajSelDOM(); }
+  }
+  else if(k === 'enter' && !mod) { const s = explSel(); if(s.docs.size + s.dossiers.size === 1) { e.preventDefault(); if(s.docs.size) voirPiece([...s.docs][0]); else explOuvrir([...s.dossiers][0]); } }
+}
+document.addEventListener('keydown', explClavier);
 // ── Menu contextuel (clic droit) ──
-function explMenu(e, p) {
+function explMenu(e, p, mode) { // mode : undefined = arbre, 'ligne' = ligne de la liste, 'fond' = espace vide de la liste
   e.preventDefault(); e.stopPropagation();
   const c = explCtx(); if(!c.id || !window._fbStorageActif) return;
   p = normDossier(p);
+  if(mode === 'ligne' && p && !explSel().dossiers.has(p)) explSelUnique('f', p); // V137 : comme Windows
   let m = document.getElementById('expl-menu');
   if(!m) { m = document.createElement('div'); m.id = 'expl-menu'; document.body.appendChild(m); }
   const it = (lib, act, ok) => `<div class="expl-menu-it${ok === false ? ' off' : ''}" ${ok === false ? '' : `onclick="document.getElementById('expl-menu').style.display='none';${act}"`}>${lib}</div>`;
   const js = JSON.stringify(p).replace(/"/g, '&quot;');
-  m.innerHTML = (p ? it('📂 Ouvrir', `explOuvrir(${js})`) : '') + it(p ? '📁 Nouveau sous-dossier' : '📁 Nouveau dossier', `explNouveauDossier(${js})`)
+  const nSel = explNbSel(), nPP = _explPP ? _explPP.docs.length + _explPP.dossiers.length : 0, avecSel = mode === 'ligne' || explSel().dossiers.has(p);
+  m.innerHTML = (p && mode !== 'fond' ? it('📂 Ouvrir', `explOuvrir(${js})`) : '')
+    + (p && mode !== 'fond' ? it(`✂ Couper${avecSel && nSel > 1 ? ` (${nSel} éléments)` : ''}`, `explCouperDepuisMenu('f',${js})`) : '') // V137
+    + (_explPP ? it(`📋 Coller ${mode === 'fond' || !p ? 'ici' : 'dans ce dossier'} (${nPP})`, `explColler(${js})`) : '')
+    + it(p && mode !== 'fond' ? '📁 Nouveau sous-dossier' : '📁 Nouveau dossier', `explNouveauDossier(${js})`)
     + it('⬆ Déposer ici', `explOuvrir(${js});setTimeout(()=>ouvrirDepot('${c.espace}',${c.espace === 'permanent' ? `'${esc(c.id)}'` : 'null'}),50)`)
     + (p && c.espace === 'permanent' ? it('⤴ Transformer en classeur', `explEnClasseur(${js})`) : '')
     + (p ? it('✎ Renommer', `explRenommerDossier(${js})`) + (() => { // V134 : suppression proposée seulement si le dossier est vide
         const n = docsDuClasseur(c.espace, c.id, true).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); }).length;
         return n ? it(`🗑 Supprimer — impossible : ${n} document${n > 1 ? 's' : ''} dedans${(CORBEILLE || []).length ? ' (corbeille comprise)' : ''}`, '', false) : it('🗑 Supprimer', `explSupprimerDossier(${js})`);
       })() : '');
-  m.style.cssText = `display:block;position:fixed;left:${Math.min(e.clientX, window.innerWidth - 200)}px;top:${Math.min(e.clientY, window.innerHeight - 180)}px;z-index:3000;`;
+  if(mode === 'fond') m.innerHTML = (_explPP ? it(`📋 Coller ici (${nPP})`, `explColler(${js})`) : '') + it('📁 Nouveau dossier', `explNouveauDossier(${js})`) + it('⬆ Déposer ici', `setTimeout(()=>ouvrirDepot('${c.espace}',${c.espace === 'permanent' ? `'${esc(c.id)}'` : 'null'}),50)`) + (nSel ? '' : it('☑ Tout sélectionner', 'explToutSel()'));
+  m.style.cssText = `display:block;position:fixed;left:${Math.min(e.clientX, window.innerWidth - 220)}px;top:${Math.min(e.clientY, window.innerHeight - 220)}px;z-index:3000;`;
   setTimeout(() => document.addEventListener('click', function f() { m.style.display = 'none'; document.removeEventListener('click', f); }), 0);
 }
 
@@ -19028,6 +19278,7 @@ function gcSupprimer(i) {
   }
   if(c.code === CODE_ETATS_FINANCIERS) { toast('Classeur « États financiers » : alimenté automatiquement à chaque clôture, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; }
   if(c.code === CODE_LOCATAIRES) { toast('Classeur « Locataires » : il reçoit automatiquement les quittances, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; } // V113
+  if(c.code === codeClasseurImmos()) { toast('Classeur « Immobilisations » : il contient les dossiers des immobilisations, il ne peut pas être supprimé (vous pouvez le renommer)', 'error', 6000); return; } // V138
   _gc.classeurs.splice(i, 1); renderGestionClasseurs();
 }
 function gcAjouter() {
@@ -19040,7 +19291,8 @@ function gcAjouter() {
 function gcInterDeplacer(i, k, s) { const l = _gc.classeurs[i].inter, j = k + s; if(j < 0 || j >= l.length) return; [l[k], l[j]] = [l[j], l[k]]; renderGestionClasseurs(); }
 function gcInterRenommer(i, k) {
   const c = _gc.classeurs[i], ancien = c.inter[k];
-  const nv = (prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien) || '').trim();
+  if(dossierImmoProtege('permanent', c.code, ancien)) { toast('Dossier d\'une immobilisation : renommez-le depuis la GED ou le module Immobilisations', 'error', 6000); return; } // V138
+  const nv = explNomValide(prompt(`Nouveau nom de l'intercalaire « ${ancien} » :`, ancien)); // V138 : pas de « / »
   if(!nv || nv === ancien) return;
   if(c.inter.some((n, x) => x !== k && n.toLowerCase() === nv.toLowerCase())) { toast('Un intercalaire porte déjà ce nom dans ce classeur', 'error'); return; }
   const origine = Object.keys(c.renommer).find(o => c.renommer[o] === ancien) || ancien;
@@ -19056,10 +19308,10 @@ function gcTypeSupprimer(i) {
   _gc.types.splice(i, 1); renderGestionClasseurs();
 }
 function htmlGcIntercalaires(c, i) { // V127
-  const systeme = c.code === CODE_LOCATAIRES || c.code === CODE_ETATS_FINANCIERS;
+  const systeme = c.code === CODE_LOCATAIRES || c.code === CODE_ETATS_FINANCIERS || c.code === codeClasseurImmos(); // V138
   const b = (lib, act, tit) => `<span onclick="${act}" title="${tit}" style="cursor:pointer;color:var(--text2);padding:0 2px;">${lib}</span>`;
   const chips = (c.inter || []).map((n, k) => `<span style="display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border:1px solid var(--line2);border-radius:10px;font-size:10px;">${b('◀', `gcInterDeplacer(${i},${k},-1)`, 'Avancer')}📁 ${esc(n)}${b('▶', `gcInterDeplacer(${i},${k},1)`, 'Reculer')}${b('✎', `gcInterRenommer(${i},${k})`, 'Renommer')}</span>`).join('');
-  const cibles = _gc.classeurs.filter(x => x !== c && !x.rangerDans && x.code !== CODE_LOCATAIRES && x.code !== CODE_ETATS_FINANCIERS);
+  const cibles = _gc.classeurs.filter(x => x !== c && !x.rangerDans && x.code !== CODE_LOCATAIRES && x.code !== CODE_ETATS_FINANCIERS && x.code !== codeClasseurImmos()); // V138
   const ranger = systeme || c.nouveau ? '' : `<label style="display:flex;align-items:center;gap:6px;margin:6px 0 0;text-transform:none;letter-spacing:0;font-size:10px;color:var(--text2);">Ranger ce classeur dans
       <select onchange="gcRangerDans(${i},this.value)" style="height:24px;font-size:10px;padding:0 4px;width:auto;"><option value="">—</option>${cibles.map(x => `<option value="${esc(x.code)}" ${c.rangerDans === x.code ? 'selected' : ''}>${esc(x.label || '(sans nom)')}</option>`).join('')}</select>
       ${c.rangerDans ? `<span style="color:var(--amber);">→ il deviendra le dossier « ${esc(nomDossierSur(c.label))} » (sous-dossiers compris), puis ce classeur sera supprimé</span>` : ''}</label>`;
@@ -19500,8 +19752,8 @@ function htmlPiecesComptablesV109() {
   const ouverts = exercicesOuverts();
   const rows = fcFiltrer('gedc', FC_TABLES.gedc.rows()).slice().sort(triPiecesCompta); // V128 : par n° de pièce
   const th = (c, l, st) => htmlThFiltre('gedc', c, l, st);
-  const ligneP = (p, chemin) => `<tr ${!id.startsWith('__') && pieceModifiable(p) ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''}>
-      <td><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
+  const ligneP = (p, chemin) => `<tr ${!id.startsWith('__') && pieceModifiable(p) ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''} ${!id.startsWith('__') ? explAttrsDoc(p.id) : ''}>
+      <td><a href="#" ${!id.startsWith('__') ? 'class="expl-titre" onclick="event.preventDefault();"' : `onclick="voirPiece('${p.id}');return false;"`} style="color:var(--text0);text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
       <td style="font-family:var(--mono);">${esc(p.numDoc || '')}</td>
       <td style="white-space:nowrap;">${p.typePiece ? `<span class="npill" title="${esc(libTypePiece(p.typePiece))}">${esc(p.typePiece)}</span>` : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</td>
@@ -19540,8 +19792,8 @@ function htmlDossierPermanentV109() {
   const ligne = (p, ancienne, g, chemin) => {
     const nbAnc = g ? g.anciennes.length : 0, ouvert = g ? !!_dpVersionsOuvertes[p.groupe || p.id] : false;
     const autres = classeursDe(p).filter(c => c !== id).map(libRubrique);
-    return `<tr style="${ancienne ? 'color:var(--text2);' : ''}" ${!ancienne && actif && !id.startsWith('__') ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''}>
-      <td style="${ancienne ? 'padding-left:26px;' : ''}"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:${ancienne ? 'var(--text2)' : 'var(--text0)'};text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
+    return `<tr style="${ancienne ? 'color:var(--text2);' : ''}" ${!ancienne && actif && !id.startsWith('__') ? `draggable="true" ondragstart="explDragDoc(event,'${p.id}')"` : ''} ${!id.startsWith('__') ? (ancienne ? `ondblclick="explDbl(event,'${p.id}')"` : explAttrsDoc(p.id)) : ''}>
+      <td style="${ancienne ? 'padding-left:26px;' : ''}"><a href="#" ${!id.startsWith('__') ? 'class="expl-titre" onclick="event.preventDefault();"' : `onclick="voirPiece('${p.id}');return false;"`} style="color:${ancienne ? 'var(--text2)' : 'var(--text0)'};text-decoration:none;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a>
         ${!ancienne && autres.length ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">aussi dans : ${autres.map(esc).join(', ')}</div>` : ''}${chemin ? `<div style="font-size:9px;color:var(--text2);margin-top:2px;">📁 ${esc(chemin.replace(/\//g, ' › '))}</div>` : ''}</td>
       <td style="white-space:nowrap;">${p.typeDP ? `<span class="npill" title="${esc(libTypeDP(p.typeDP))}">${esc(p.typeDP)}</span>` : ''}</td>
       <td style="font-family:var(--mono);white-space:nowrap;">${esc(p.numDoc || '')}</td>
@@ -20002,10 +20254,11 @@ function grouperSuggestions(liste) {
 }
 async function joindreSuggestions(liste) {
   if(!liste || !liste.length || bloqueSiCloture()) return;
-  let n = 0;
-  for(const g of grouperSuggestions(liste)) { if(await lierPiece(g.p, g.js.map(j => j.io), CURRENT_YEAR)) n += nbEcrituresDe(g.js); }
+  let n = 0; const lies = []; // V138
+  for(const g of grouperSuggestions(liste)) { if(await lierPiece(g.p, g.js.map(j => j.io), CURRENT_YEAR)) { n += nbEcrituresDe(g.js); lies.push(g.p.id); } }
   toast(`📎 ${n} écriture(s) jointe(s)`, 'success');
   apresChangementJustifs(); updateNavCounts();
+  if(lies.length) setTimeout(() => { try { proposerRangementDP(lies); } catch(e) { console.warn(e); } }, 300); // V138
 }
 function ignorerSuggestions(liste) {
   if(!liste || !liste.length || bloqueSiCloture()) return;
@@ -20085,6 +20338,484 @@ function deposerDepuisGlisser(files) {
   const id = _docsClasseur.compta, info = id ? infoClasseurCompta(id) : null;
   const t = info && info.types && info.types.length === 1 ? info.types[0] : '';
   ouvrirDepot('compta', null, files, null, t ? { typePiece: t } : null);
+}
+
+
+// ══════════════════════════════════════════════
+// V138 — JUSTIFICATIFS AU DOSSIER PERMANENT · NOM ET DOSSIER DES IMMOBILISATIONS
+// ══════════════════════════════════════════════
+// 1. Liste des comptes « justifiés au DP » (DOCS_CONFIG.comptesDP, commune à tous les exercices) : quand une pièce
+//    justifie une écriture saisie (hors écritures des modules) qui touche un de ces comptes, Atrium propose de la
+//    ranger au dossier permanent, dans le classeur et le dossier de son choix. C'est l'un OU l'autre, jamais les deux.
+//    DOCS_CONFIG.comptesDPValides = la liste a été vérifiée explicitement (assistant d'installation ou première ouverture).
+// 2. Chaque immobilisation a un NOM obligatoire et unique (sans « / »), qui est aussi le nom de son dossier dans le
+//    classeur « Immobilisations » du DP. Nom stocké hors exercice (DOCS_CONFIG.immos = { idImmo: nom }) : il vaut
+//    pour tous les exercices, même clôturés. Renommer l'immo renomme son dossier, et inversement.
+const COMPTES_DP_DEFAUT = ['20', '21', '23', '26', '27', '15'];
+const MSG_COMPTES_DP = "Pour ces comptes, le justificatif est rangé dans le dossier permanent et non dans les pièces comptables de l'exercice. C'est l'un ou l'autre, jamais les deux.";
+const LIB_RACINES_DP = {
+  '1': 'Capitaux', '10': 'Capital et réserves', '13': "Subventions d'investissement", '15': 'Provisions', '16': 'Emprunts et dettes assimilées',
+  '2': 'Immobilisations', '20': 'Immobilisations incorporelles', '21': 'Immobilisations corporelles', '23': 'Immobilisations en cours',
+  '26': 'Participations', '27': 'Autres immobilisations financières (dont dépôts et cautionnements)', '275': 'Dépôts et cautionnements versés',
+  '4': 'Tiers', '45': 'Associés', '455': "Comptes courants d'associés", '5': 'Financiers', '512': 'Banque'
+};
+function comptesDP() { return (DOCS_CONFIG && Array.isArray(DOCS_CONFIG.comptesDP)) ? DOCS_CONFIG.comptesDP.map(String) : COMPTES_DP_DEFAUT.slice(); }
+function compteJustifieAuDP(c) { c = String(c || ''); return !!c && comptesDP().some(r => c.startsWith(r)); }
+function libRacineDP(r) {
+  if(LIB_RACINES_DP[r]) return LIB_RACINES_DP[r];
+  const plan = (DB && Array.isArray(DB.tbData)) ? DB.tbData.filter(x => String(x.compte || '').startsWith(r)) : [];
+  if(plan.length === 1) return plan[0].libelle || '';
+  return plan.length ? `${plan.length} comptes du plan` : '';
+}
+// Comptes « DP » touchés par des écritures saisies de l'exercice affiché (les écritures des modules ne comptent pas)
+function comptesDPDesEcritures(ios) {
+  const out = new Set();
+  iosMemeEcriture(ios || []).forEach(io => {
+    const j = justifDe(io); if(!j || j.module) return;
+    j.lignes.forEach(l => { if(!moduleDeLaLigne(l) && compteJustifieAuDP(l.compte)) out.add(String(l.compte)); });
+  });
+  return [...out].sort();
+}
+
+// ── Éditeur de la liste (Paramètres, assistant d'installation, première ouverture de la V138) ──
+let _cdpB = null, _cdpVerifie = false, _cdpTouche = false;
+function cdpNormaliser(liste) {
+  const l = [...new Set((liste || []).map(x => String(x).trim()).filter(x => /^\d{1,6}$/.test(x)))].sort();
+  return l.filter(r => !l.some(a => a !== r && r.startsWith(a))); // « 275 » est déjà couvert par « 27 »
+}
+function htmlEditeurComptesDP(cible, avecVerif) {
+  const l = _cdpB || [];
+  const puce = r => `<span class="chip" style="display:inline-flex;align-items:center;gap:6px;padding:3px 8px;font-size:11px;">
+      <strong style="font-family:var(--mono);color:var(--cyan);">${esc(r)}</strong><span style="color:var(--text1);">${esc(libRacineDP(r))}</span>
+      <span style="cursor:pointer;color:var(--text2);" title="Retirer" onclick="cdpRetirer('${cible}','${esc(r)}')">✕</span></span>`;
+  return `<div style="font-size:11.5px;color:var(--text0);line-height:1.6;margin-bottom:10px;padding:8px 10px;border-left:3px solid var(--amber);background:var(--amber-dim);border-radius:var(--radius);">${esc(MSG_COMPTES_DP)}</div>
+    <div style="font-size:10px;color:var(--text2);line-height:1.5;margin-bottom:8px;">Une racine vaut pour tous les comptes qui commencent par elle (« 21 » couvre 211000, 213100…). Les écritures générées par les modules (dotations, échéances d'emprunt, loyers, frais km…) ne sont jamais concernées. Quand une pièce justifie une écriture qui touche un de ces comptes, Atrium vous propose de la ranger au dossier permanent.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;min-height:26px;">${l.length ? l.map(puce).join('') : '<span style="font-size:11px;color:var(--text2);font-style:italic;">Aucun compte : tous les justificatifs resteront dans les pièces comptables.</span>'}</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="cdp-ajout-${cible}" maxlength="6" placeholder="Racine (ex. 16)" style="width:130px;height:28px;font-family:var(--mono);" oninput="this.value=this.value.replace(/[^0-9]/g,'')" onkeydown="if(event.key==='Enter'){event.preventDefault();cdpAjouter('${cible}');}">
+      <button type="button" class="btn btn-sm" onclick="cdpAjouter('${cible}')">+ AJOUTER</button>
+      <button type="button" class="btn btn-sm" onclick="cdpDefaut('${cible}')" title="${esc(COMPTES_DP_DEFAUT.join(', '))}">↺ Liste par défaut</button>
+    </div>
+    ${avecVerif ? `<label style="display:flex;align-items:center;gap:8px;margin-top:14px;cursor:pointer;text-transform:none;letter-spacing:0;font-family:var(--sans);font-size:12px;color:var(--text0);">
+      <input type="checkbox" id="cdp-verif-${cible}" ${_cdpVerifie ? 'checked' : ''} onchange="_cdpVerifie=this.checked" style="width:15px;height:15px;margin:0;">
+      J'ai vérifié cette liste : pour ces comptes, les justificatifs iront au dossier permanent.</label>` : ''}`;
+}
+function cdpRafraichir(cible) {
+  if(cible === 'params') { cdpEnregistrerParams(); return; }
+  if(cible === 'wiz') { rendreAssistantSociete(); return; }
+  if(cible === 'ouv') { const z = document.getElementById('cdp-ouv-corps'); if(z) z.innerHTML = htmlEditeurComptesDP('ouv', true); }
+}
+function cdpAjouter(cible) {
+  const i = document.getElementById('cdp-ajout-' + cible); const r = String(i ? i.value : '').trim();
+  if(!/^\d{1,6}$/.test(r)) { toast('Indiquez une racine de compte (chiffres uniquement)', 'error'); if(i) i.focus(); return; }
+  const couvre = (_cdpB || []).find(a => r.startsWith(a));
+  if(couvre) { toast(couvre === r ? `${r} est déjà dans la liste` : `${r} est déjà couvert par ${couvre}`, 'warn'); return; }
+  _cdpB = cdpNormaliser((_cdpB || []).concat([r])); _cdpTouche = true;
+  cdpRafraichir(cible);
+}
+function cdpRetirer(cible, r) { _cdpB = (_cdpB || []).filter(x => x !== r); _cdpTouche = true; cdpRafraichir(cible); }
+function cdpDefaut(cible) { _cdpB = COMPTES_DP_DEFAUT.slice(); _cdpTouche = true; cdpRafraichir(cible); }
+
+// Paramètres : enregistrement immédiat
+function renderComptesDPParams() {
+  const el = document.getElementById('params-comptes-dp'); if(!el) return;
+  if(!_docsConfigLu) {
+    el.innerHTML = `<div style="font-size:11px;color:var(--text2);">Lecture des réglages des documents…</div>`;
+    chargerDocsConfig().then(() => { if(_docsConfigLu) renderComptesDPParams(); else el.innerHTML = `<div style="font-size:11px;color:var(--red);">Réglages des documents illisibles : rechargez la page.</div>`; });
+    return;
+  }
+  _cdpB = comptesDP();
+  el.innerHTML = htmlEditeurComptesDP('params', false);
+}
+async function cdpEnregistrerParams() {
+  try {
+    if(!_docsConfigLu) await chargerDocsConfig();
+    if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+    await enregistrerDocsConfig({ comptesDP: cdpNormaliser(_cdpB), comptesDPValides: true });
+    toast('Liste des comptes justifiés au dossier permanent enregistrée', 'success');
+  } catch(e) { toast('Liste non enregistrée : ' + (e.message || e), 'error', 6000); }
+  renderComptesDPParams();
+}
+// Première ouverture de la V138 (installation existante) : la liste doit être vérifiée une fois
+function verifierComptesDPAuDemarrage() {
+  if(!_docsConfigLu || socAssistantOuvert()) return;
+  if(DOCS_CONFIG && DOCS_CONFIG.comptesDPValides) return;
+  _cdpB = comptesDP(); _cdpVerifie = false; _cdpTouche = false;
+  let m = document.getElementById('cdp-ouv-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'cdp-ouv-modal'; m.className = 'modal-overlay'; m.style.zIndex = '4000'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="modal" style="width:640px;max-width:95vw;">
+      <div class="modal-title">🗂 JUSTIFICATIFS AU DOSSIER PERMANENT</div>
+      <div style="font-size:12px;color:var(--text1);line-height:1.6;margin-bottom:12px;">Nouveau : les justificatifs des éléments durables du bilan (immobilisations, dépôts de garantie, provisions…) peuvent être rangés au dossier permanent plutôt que dans les pièces comptables de l'exercice. Vérifiez la liste des comptes concernés.</div>
+      <div id="cdp-ouv-corps">${htmlEditeurComptesDP('ouv', true)}</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:10px;">Modifiable ensuite dans Paramètres › Justificatifs au dossier permanent.</div>
+      <div class="flex gap8" style="margin-top:14px;">
+        <button class="btn btn-primary" onclick="validerComptesDPOuverture()">✓ VALIDER LA LISTE</button>
+        <button class="btn ml-auto" onclick="document.getElementById('cdp-ouv-modal').style.display='none'">PLUS TARD</button>
+      </div></div>`;
+  m.style.display = 'flex';
+}
+async function validerComptesDPOuverture() {
+  if(!_cdpVerifie) { toast('Cochez « J\'ai vérifié cette liste » pour valider', 'error'); return; }
+  try {
+    if(!_docsConfigLu) await chargerDocsConfig();
+    if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+    await enregistrerDocsConfig({ comptesDP: cdpNormaliser(_cdpB), comptesDPValides: true });
+    document.getElementById('cdp-ouv-modal').style.display = 'none';
+    toast('Liste enregistrée — modifiable dans Paramètres', 'success');
+    if(document.getElementById('tab-parametres')?.classList.contains('active')) renderComptesDPParams();
+  } catch(e) { toast('Liste non enregistrée : ' + (e.message || e), 'error', 6000); }
+}
+// Assistant d'installation (4ᵉ étape) : la liste est enregistrée en même temps que l'identité
+async function preparerEtapeComptesDP() {
+  if(!_docsConfigLu) { try { await chargerDocsConfig(); } catch(e) {} }
+  if(!_cdpTouche) _cdpB = comptesDP();
+}
+async function enregistrerComptesDPAssistant() {
+  if(!_docsConfigLu) await chargerDocsConfig();
+  if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+  await enregistrerDocsConfig({ comptesDP: cdpNormaliser(_cdpB), comptesDPValides: true });
+}
+
+// ══ CHOIX D'UN DOSSIER DU DP (fenêtre façon explorateur) ══
+let _dpc = null; // { classeur, chemin, cb, titre }
+let _dernierClasseurDP = '';
+function choisirDossierDP(opts, cb) {
+  const cls = rubriquesDP();
+  if(!cls.length) { toast('Aucun classeur dans le dossier permanent : créez-en un dans la GED', 'error'); return; }
+  const classeur = opts && opts.classeur && cls.some(r => r.code === opts.classeur) ? opts.classeur : (cls.some(r => r.code === _dernierClasseurDP) ? _dernierClasseurDP : cls[0].code);
+  _dpc = { classeur, chemin: normDossier((opts && opts.chemin) || ''), cb, titre: (opts && opts.titre) || 'CHOISIR UN DOSSIER DU DOSSIER PERMANENT', bouton: (opts && opts.bouton) || '✓ RANGER ICI' };
+  if(!tousDossiers('permanent', classeur).includes(_dpc.chemin)) _dpc.chemin = '';
+  let m = document.getElementById('dpc-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'dpc-modal'; m.className = 'modal-overlay'; m.style.zIndex = '1200'; document.body.appendChild(m); }
+  m.style.display = 'flex';
+  rendreChoixDossierDP();
+}
+function fermerChoixDossierDP() { const m = document.getElementById('dpc-modal'); if(m) m.style.display = 'none'; _dpc = null; }
+function rendreChoixDossierDP() {
+  const m = document.getElementById('dpc-modal'); if(!m || !_dpc) return;
+  const cls = rubriquesDP(), cur = cls.find(r => r.code === _dpc.classeur) || cls[0];
+  const tous = tousDossiers('permanent', cur.code), sous = sousDossiersDe(tous, _dpc.chemin);
+  const estImmos = cur.code === codeClasseurImmos();
+  const nbDocs = p => docsDuClasseur('permanent', cur.code, false).filter(x => { const d = normDossier(x.sousDossier); return d === p || d.startsWith(p + '/'); }).length;
+  const listeCls = cls.map((r, i) => `<div onclick="_dpc.classeur='${esc(r.code)}';_dpc.chemin='';rendreChoixDossierDP()" style="cursor:pointer;padding:6px 8px;border-radius:3px;margin-bottom:2px;border-left:4px solid ${couleurRubrique(r, i)};font-size:12px;${r.code === cur.code ? 'background:rgba(var(--accent-rgb),.16);color:var(--cyan);font-weight:700;' : ''}">📁 ${esc(r.label)}</div>`).join('');
+  const ariane = [`<a href="#" onclick="_dpc.chemin='';rendreChoixDossierDP();return false;" style="color:var(--text0);">${esc(cur.label)}</a>`]
+    .concat(_dpc.chemin ? _dpc.chemin.split('/').map((s, k, a) => `<a href="#" data-p="${esc(a.slice(0, k + 1).join('/'))}" onclick="_dpc.chemin=this.dataset.p;rendreChoixDossierDP();return false;" style="color:var(--text0);">${esc(s)}</a>`) : [])
+    .join(' <span style="color:var(--text2);">›</span> ');
+  const lignes = sous.map(p => {
+    const immo = estImmos && !p.includes('/') ? immoDuDossier(p) : null;
+    return `<div data-p="${esc(p)}" onclick="_dpc.chemin=this.dataset.p;rendreChoixDossierDP()" style="cursor:pointer;padding:7px 10px;border-bottom:1px solid var(--line);font-size:12px;display:flex;align-items:center;gap:8px;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <span>${immo ? '🏛' : '📁'}</span><strong style="flex:1;min-width:0;">${esc(nomDuDossier(p))}</strong><span style="font-size:10px;color:var(--text2);">${nbDocs(p)} doc.</span><span style="color:var(--text2);">›</span></div>`;
+  }).join('');
+  m.innerHTML = `<div class="modal" style="width:760px;max-width:96vw;">
+      <div class="modal-title">🗂 ${esc(_dpc.titre)}</div>
+      <div style="display:flex;gap:10px;height:340px;">
+        <div style="width:220px;flex:none;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg2);padding:4px;">${listeCls}</div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;border:1px solid var(--line2);border-radius:var(--radius);background:var(--bg2);">
+          <div style="padding:6px 10px;border-bottom:1px solid var(--line2);font-size:12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            ${_dpc.chemin ? `<button class="btn btn-sm btn-icon" data-p="${esc(parentDossier(_dpc.chemin))}" onclick="_dpc.chemin=this.dataset.p;rendreChoixDossierDP()" title="Dossier parent" style="padding:0 7px;">‹</button>` : ''}${ariane}
+            <button class="btn btn-sm" style="margin-left:auto;" onclick="dpcNouveauDossier()">+ NOUVEAU DOSSIER ICI</button></div>
+          <div style="flex:1;overflow-y:auto;">${lignes || `<div style="padding:24px;text-align:center;color:var(--text2);font-size:11px;font-style:italic;">Aucun sous-dossier${estImmos && !_dpc.chemin ? ' — créez le dossier de l\'immobilisation (bouton ci-dessus), ou rangez à la racine' : ''}.</div>`}</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+        <span style="font-size:11px;color:var(--text1);">Destination : <strong style="color:var(--cyan);">${esc(cur.label)}${_dpc.chemin ? ' › ' + esc(_dpc.chemin.replace(/\//g, ' › ')) : ''}</strong></span>
+        <button class="btn btn-primary" style="margin-left:auto;" onclick="validerChoixDossierDP()">${esc(_dpc.bouton)}</button>
+        <button class="btn" onclick="fermerChoixDossierDP()">ANNULER</button>
+      </div></div>`;
+}
+async function dpcNouveauDossier() {
+  if(!_dpc) return;
+  const nom = explNomValide(prompt('Nom du nouveau dossier :')); if(!nom) return;
+  const chemin = (_dpc.chemin ? _dpc.chemin + '/' : '') + nom;
+  if(tousDossiers('permanent', _dpc.classeur).some(p => p.toLowerCase() === chemin.toLowerCase())) { toast('Ce dossier existe déjà', 'error'); return; }
+  try { await enregistrerDossiersCfg('permanent', _dpc.classeur, dossiersConfig('permanent', _dpc.classeur).concat([chemin])); _dpc.chemin = chemin; rendreChoixDossierDP(); }
+  catch(e) { toast('Dossier non créé : ' + (e.message || e), 'error'); }
+}
+function validerChoixDossierDP() {
+  if(!_dpc) return;
+  const sel = { classeur: _dpc.classeur, chemin: _dpc.chemin }, cb = _dpc.cb;
+  _dernierClasseurDP = sel.classeur;
+  fermerChoixDossierDP();
+  if(cb) cb(sel);
+}
+
+// ══ RANGEMENT D'UNE PIÈCE AU DP ══
+// Pièces comptables de l'exercice affiché (ouvert, hors test) jointes à une écriture qui touche un compte « DP »,
+// sauf si l'on a choisi de les garder en pièces comptables (p.dpRefuse).
+function piecesARangerAuDP() {
+  if(!PIECES || !DB || !DB.ecritures || EXERCISE_STATUS === 'closed' || isTestExercise(CURRENT_YEAR) || !window._fbStorageActif) return [];
+  const ex = String(CURRENT_YEAR); preparerJustifs();
+  return PIECES.filter(p => p.espace === 'compta' && String(p.exercice) === ex && !p.test && !pieceGeneree(p) && !p.dpRefuse && pieceModifiable(p))
+    .map(p => {
+      const ios = (p.liens || []).filter(l => l.ex === ex).map(l => l.io);
+      const comptes = ios.length ? comptesDPDesEcritures(ios) : [];
+      const js = [...new Map(ios.map(io => justifDe(io)).filter(Boolean).map(j => [j.num, j])).values()];
+      return { p, comptes, js };
+    }).filter(x => x.comptes.length);
+}
+function classeurSuggereDP(comptes) {
+  if((comptes || []).some(c => /^2[013]/.test(c)) && codeClasseurImmos()) return codeClasseurImmos();
+  return _dernierClasseurDP || '';
+}
+let _dprFile = [];
+function proposerRangementDP(ids) {
+  if(!ids || !ids.length) return;
+  const set = new Set(ids);
+  const liste = piecesARangerAuDP().filter(x => set.has(x.p.id));
+  if(!liste.length) return;
+  _dprFile = _dprFile.filter(x => !set.has(x.p.id)).concat(liste);
+  afficherPropositionDP();
+}
+function afficherPropositionDP() {
+  let m = document.getElementById('dpr-modal');
+  const x = _dprFile[0];
+  if(!x) { if(m) m.style.display = 'none'; return; }
+  if(!m) { m = document.createElement('div'); m.id = 'dpr-modal'; m.className = 'modal-overlay'; m.style.zIndex = '1150'; document.body.appendChild(m); }
+  const reste = _dprFile.length - 1;
+  m.innerHTML = `<div class="modal" style="width:580px;max-width:95vw;">
+      <div class="modal-title">🗂 RANGER AU DOSSIER PERMANENT ?</div>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">${iconePiece(x.p)} <strong>${esc(x.p.titre || x.p.nomFichier)}</strong> justifie
+        ${x.js.map(j => `l'écriture <span style="font-family:var(--mono);color:var(--cyan);">#${j.num}</span> ${esc(j.libelle)} <span style="color:var(--text2);">(${fmt(j.montant)} €)</span>`).join(', ')},
+        qui touche ${x.comptes.length > 1 ? 'les comptes' : 'le compte'} ${x.comptes.map(c => `<strong style="font-family:var(--mono);">${esc(c)}</strong> ${esc(getLib(c))}`).join(', ')}.</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:14px;padding:8px 10px;background:var(--bg2);border-radius:var(--radius);">Les justificatifs de ce compte se rangent au dossier permanent. La pièce y reste jointe à son écriture ; elle quitte les pièces comptables de ${esc(CURRENT_YEAR)} (l'un ou l'autre, jamais les deux).</div>
+      <div class="flex gap8" style="flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="choisirDossierPourPropositionDP()">🗂 CHOISIR LE DOSSIER…</button>
+        <button class="btn" onclick="garderEnPieceComptable()" title="La pièce reste dans les pièces comptables ; Atrium ne le proposera plus pour elle">GARDER EN PIÈCE COMPTABLE</button>
+        <button class="btn ml-auto" onclick="_dprFile=[];afficherPropositionDP()" title="La proposition reste dans « À traiter »">PLUS TARD${reste ? ` (${reste + 1})` : ''}</button>
+      </div></div>`;
+  m.style.display = 'flex';
+}
+function choisirDossierPourPropositionDP() {
+  const x = _dprFile[0]; if(!x) return;
+  choisirDossierDP({ classeur: classeurSuggereDP(x.comptes), titre: `RANGER « ${x.p.titre || x.p.nomFichier} »` }, async sel => {
+    if(await rangerPieceAuDP(x.p, sel)) { _dprFile.shift(); apresChangementJustifs(); updateNavCounts(); }
+    afficherPropositionDP();
+  });
+}
+async function garderEnPieceComptable() {
+  const x = _dprFile.shift(); if(!x) return;
+  if(await majPiece(x.p, { dpRefuse: true })) toast('La pièce reste dans les pièces comptables', 'success');
+  apresChangementJustifs(); updateNavCounts();
+  afficherPropositionDP();
+}
+async function rangerPieceAuDP(p, sel) {
+  if(!p || p.espace !== 'compta' || !pieceModifiable(p)) { toast('Cette pièce ne peut plus être déplacée', 'error'); return false; }
+  const nouveau = Object.assign({}, p, { espace: 'permanent', rubrique: sel.classeur, classeurs: [sel.classeur], sousDossier: normDossier(sel.chemin),
+    typeDP: p.typeDP || '', groupe: p.id, version: 1, enVigueur: true, origineExercice: p.exercice,
+    numDoc: '' }); // le n° de pièce d'un exercice (FA/034) ne sert pas de référence au DP : les séries repartent à 1 chaque année
+  ['exercice', 'typePiece', 'test', 'dpRefuse'].forEach(k => delete nouveau[k]);
+  try { await window._fbPieceSave(nouveau); }
+  catch(e) { toast("Échec de l'enregistrement dans Firebase : " + (e.code || e.message || e), 'error', 6000); return false; }
+  Object.keys(p).forEach(k => delete p[k]); Object.assign(p, nouveau);
+  const r = rubriquesDP().find(x => x.code === sel.classeur);
+  toast(`« ${p.titre || p.nomFichier} » rangé au DP › ${r ? r.label : ''}${sel.chemin ? ' › ' + sel.chemin.replace(/\//g, ' › ') : ''} (toujours jointe à son écriture)`, 'success', 6000);
+  return true;
+}
+
+// ══ IMMOBILISATIONS : NOM, DOSSIER DU DP ══
+function codeClasseurImmos() { const c = DOCS_CONFIG && DOCS_CONFIG.classeurImmos; return c && rubriquesDP().some(r => r.code === c) ? c : ''; }
+async function assurerClasseurImmos() {
+  if(!_docsConfigLu) await chargerDocsConfig();
+  if(!_docsConfigLu) throw new Error('réglages des documents non lus');
+  if(codeClasseurImmos()) return codeClasseurImmos();
+  const existant = rubriquesDP().find(r => normLib(r.label) === 'immobilisations'); // classeur créé à la main : on le reprend
+  if(existant) { await enregistrerDocsConfig({ classeurImmos: existant.code }); return existant.code; }
+  let code = 'immobilisations'; while(rubriquesDP().some(r => r.code === code)) code = 'immobilisations_' + Math.random().toString(36).slice(2, 6);
+  const r = rubriquesDP().map(x => Object.assign({}, x));
+  r.push({ code, label: 'Immobilisations', couleur: '#a78bfa' });
+  await enregistrerDocsConfig({ rubriques: r, classeurImmos: code });
+  return code;
+}
+function nomsImmos() { return (DOCS_CONFIG && DOCS_CONFIG.immos && typeof DOCS_CONFIG.immos === 'object') ? DOCS_CONFIG.immos : {}; }
+function nomImmo(x) { const id = typeof x === 'string' ? x : (x && x.id); return id ? (nomsImmos()[id] || '') : ''; }
+function immoDuDossier(nom) { const n = String(nom || '').toLowerCase(); return Object.keys(nomsImmos()).find(id => String(nomsImmos()[id]).toLowerCase() === n) || null; }
+function libImmoParId(id) { const i = (DB && Array.isArray(DB.immobilisations) ? DB.immobilisations : []).find(x => x.id === id); return i ? i.libelle : ''; }
+// Message d'erreur, ou '' si le nom est valable pour l'immobilisation idSelf
+function controleNomImmo(nom, idSelf) {
+  nom = String(nom || '').trim();
+  if(!nom) return "Le nom de l'immobilisation est obligatoire.";
+  if(nom.includes('/')) return 'Le nom ne peut pas contenir « / ».';
+  if(nom.length > 80) return 'Nom trop long (80 caractères au plus).';
+  const autre = immoDuDossier(nom);
+  if(autre && autre !== idSelf) return `Ce nom est déjà celui d'une autre immobilisation${libImmoParId(autre) ? ' (' + libImmoParId(autre) + ')' : ''}.`;
+  return '';
+}
+let _syncImmoSuspendue = false;
+// Donne (ou change) le nom d'une immobilisation et met son dossier du DP à jour
+async function definirNomImmo(id, nom) {
+  nom = String(nom || '').trim();
+  const err = controleNomImmo(nom, id); if(err) throw new Error(err);
+  const code = await assurerClasseurImmos();
+  const ancien = nomImmo(id);
+  if(ancien === nom) { if(!tousDossiers('permanent', code).includes(nom)) await enregistrerDossiersCfg('permanent', code, dossiersConfig('permanent', code).concat([nom])); return; }
+  const tous = tousDossiers('permanent', code);
+  const existe = tous.find(p => p.toLowerCase() === nom.toLowerCase());
+  if(ancien && tous.includes(ancien)) {
+    if(existe && existe !== ancien) throw new Error(`un dossier « ${existe} » existe déjà dans le classeur Immobilisations`);
+    _syncImmoSuspendue = true;
+    try { if(!(await explRenommerChemin({ espace: 'permanent', id: code, cle: 'permanent|' + code }, ancien, nom, 'de l\'immobilisation renommé'))) throw new Error('renommage du dossier refusé'); }
+    finally { _syncImmoSuspendue = false; }
+  } else if(existe) {
+    nom = existe; // un dossier de ce nom existe déjà (créé à la main) : il devient celui de l'immobilisation
+  } else {
+    await enregistrerDossiersCfg('permanent', code, dossiersConfig('permanent', code).concat([nom]));
+  }
+  await enregistrerDocsConfig({ immos: Object.assign({}, nomsImmos(), { [id]: nom }) });
+}
+// Dossier de premier niveau du classeur Immobilisations relié à une immobilisation → id de l'immo
+function dossierImmoProtege(espace, classeur, chemin) {
+  if(espace !== 'permanent' || !classeur || classeur !== codeClasseurImmos()) return null;
+  chemin = normDossier(chemin); if(!chemin || chemin.includes('/')) return null;
+  return immoDuDossier(chemin);
+}
+function msgDossierImmo(id, action) {
+  return `« ${nomImmo(id)} » est le dossier de l'immobilisation ${libImmoParId(id) ? '« ' + libImmoParId(id) + ' » ' : ''}: il ne peut pas être ${action}. Vous pouvez le renommer (l'immobilisation suit).`;
+}
+// Renommage fait dans la GED → l'immobilisation suit
+async function synchroImmoApresRenommage(c, ancien, nouveau) {
+  if(_syncImmoSuspendue || !c || c.espace !== 'permanent' || c.id !== codeClasseurImmos()) return;
+  ancien = normDossier(ancien); nouveau = normDossier(nouveau);
+  if(!ancien || ancien.includes('/') || nouveau.includes('/')) return;
+  const id = immoDuDossier(ancien); if(!id || nomImmo(id) === nouveau) return;
+  const autre = immoDuDossier(nouveau);
+  if(autre && autre !== id) { toast(`« ${nouveau} » est déjà le nom d'une autre immobilisation : renommez ce dossier autrement, sinon l'immobilisation « ${ancien} » perd le sien`, 'error', 10000); return; }
+  try {
+    await enregistrerDocsConfig({ immos: Object.assign({}, nomsImmos(), { [id]: nouveau }) });
+    toast(`Immobilisation renommée « ${nouveau} » (son dossier a été renommé dans la GED)`, 'success', 5000);
+    if(document.getElementById('tab-immos')?.classList.contains('active')) renderImmos();
+  } catch(e) { toast("Le nom de l'immobilisation n'a pas suivi : " + (e.message || e), 'error', 8000); }
+}
+
+// ── Fenêtre de l'immobilisation : nom (bloc du formulaire) ──
+function majAideNomImmo() {
+  const i = document.getElementById('immo-nom'), aide = document.getElementById('immo-nom-aide'); if(!i || !aide) return;
+  const id = document.getElementById('immo-edit-id').value || null, v = i.value.trim().toLowerCase();
+  const noms = Object.entries(nomsImmos()).filter(([k]) => k !== id).map(([, n]) => n).sort((a, b) => _collDossiers.compare(a, b));
+  const proches = v ? noms.filter(n => n.toLowerCase().includes(v)) : noms;
+  const err = i.value.trim() ? controleNomImmo(i.value, id) : '';
+  aide.innerHTML = (err ? `<div style="color:var(--red);">${esc(err)}</div>` : '')
+    + (noms.length ? `<div style="color:var(--text2);">Noms déjà utilisés${v && proches.length !== noms.length ? ' (proches)' : ''} : ${proches.length ? proches.slice(0, 12).map(n => `<span style="font-family:var(--mono);color:var(--text1);">${esc(n)}</span>`).join(' · ') + (proches.length > 12 ? ' …' : '') : '<em>aucun nom proche</em>'}</div>` : '<div style="color:var(--text2);">Aucune immobilisation nommée pour l\'instant.</div>');
+}
+function proposerNomDepuisLibelle() {
+  const i = document.getElementById('immo-nom'), lib = document.getElementById('immo-libelle');
+  if(!i || !lib || i.value.trim() || i.dataset.touche) return;
+  i.value = nomLibreImmo(nomDossierSur(lib.value), document.getElementById('immo-edit-id').value || null);
+  majAideNomImmo();
+}
+function nomLibreImmo(base, idSelf) {
+  base = String(base || '').trim().slice(0, 70); if(!base) return '';
+  let n = base, k = 2;
+  while(controleNomImmo(n, idSelf)) { n = `${base} (${k++})`; if(k > 99) break; }
+  return n;
+}
+
+// ── Immobilisations sans nom (créées avant la V138) ──
+function immosSansNom() { return _docsConfigLu ? ensureImmoArray().filter(i => !nomImmo(i)) : []; }
+function htmlBandeauImmosSansNom() {
+  const l = immosSansNom(); if(!l.length) return '';
+  return `<div class="alert alert-warn" style="margin-bottom:14px;justify-content:space-between;">
+      <span>⚠ ${l.length} immobilisation${l.length > 1 ? 's' : ''} sans nom. Le nom est obligatoire : c'est aussi celui de son dossier dans le classeur « Immobilisations » du dossier permanent.</span>
+      <button class="btn btn-sm btn-primary" onclick="ouvrirNommageImmos()">NOMMER</button></div>`;
+}
+function ouvrirNommageImmos() {
+  const l = immosSansNom(); if(!l.length) return;
+  let m = document.getElementById('immo-nommage-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'immo-nommage-modal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+  const pris = new Set(Object.values(nomsImmos()).map(n => n.toLowerCase()));
+  const propositions = l.map(i => { let base = nomDossierSur(i.libelle).slice(0, 70) || 'Immobilisation', n = base, k = 2; while(pris.has(n.toLowerCase())) n = `${base} (${k++})`; pris.add(n.toLowerCase()); return n; });
+  m.innerHTML = `<div class="modal" style="width:680px;max-width:95vw;">
+      <div class="modal-title">🏛 NOMMER LES IMMOBILISATIONS</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.5;margin-bottom:10px;">Chaque nom est unique, sans « / », et sert de nom au dossier de l'immobilisation dans le classeur « Immobilisations » du dossier permanent (créé s'il n'existe pas). Un dossier qui porte déjà ce nom devient celui de l'immobilisation. Les noms valent pour tous les exercices.</div>
+      <div style="max-height:50vh;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">
+        ${l.map((i, k) => `<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid var(--line);">
+          <div style="flex:1;min-width:0;font-size:11px;"><span style="font-family:var(--mono);color:var(--cyan);">${esc(i.compteImmo || '')}</span> ${esc(i.libelle || '')}<div style="font-size:9.5px;color:var(--text2);">acquise le ${fmtDateGL(i.dateAchat)} · ${fmt(i.valeurBrute)} €</div></div>
+          <input type="text" data-immo="${esc(i.id)}" value="${esc(propositions[k])}" maxlength="80" style="width:260px;height:28px;"></div>`).join('')}
+      </div>
+      <div id="immo-nommage-err" style="font-size:11px;color:var(--red);min-height:14px;margin:8px 0;"></div>
+      <div class="flex gap8"><button class="btn btn-primary" id="immo-nommage-ok" onclick="enregistrerNommageImmos()">✓ ENREGISTRER LES NOMS</button><button class="btn ml-auto" onclick="document.getElementById('immo-nommage-modal').style.display='none'">PLUS TARD</button></div>
+    </div>`;
+  m.style.display = 'flex';
+}
+async function enregistrerNommageImmos() {
+  const m = document.getElementById('immo-nommage-modal'), err = document.getElementById('immo-nommage-err'), btn = document.getElementById('immo-nommage-ok');
+  const champs = [...m.querySelectorAll('input[data-immo]')].map(i => ({ id: i.dataset.immo, nom: i.value.trim(), i }));
+  const vus = new Map();
+  for(const c of champs) {
+    const e = controleNomImmo(c.nom, c.id) || (vus.has(c.nom.toLowerCase()) ? 'Ce nom est donné à deux immobilisations.' : '');
+    if(e) { err.textContent = `${libImmoParId(c.id) || 'Immobilisation'} : ${e}`; c.i.focus(); return; }
+    vus.set(c.nom.toLowerCase(), c.id);
+  }
+  btn.disabled = true; err.textContent = '';
+  let ok = 0;
+  for(const c of champs) {
+    try { await definirNomImmo(c.id, c.nom); ok++; }
+    catch(e) { err.textContent = `${libImmoParId(c.id) || 'Immobilisation'} : ${e.message || e}`; c.i.focus(); btn.disabled = false; renderImmos(); return; }
+  }
+  btn.disabled = false; m.style.display = 'none';
+  toast(`${ok} immobilisation${ok > 1 ? 's' : ''} nommée${ok > 1 ? 's' : ''} — dossiers prêts dans la GED › Immobilisations`, 'success', 5000);
+  renderImmos();
+}
+
+// ── 📎 Documents de l'immobilisation (contenu de son dossier du DP) ──
+let _immoDocsId = null;
+function ouvrirDocsImmo(id) {
+  _immoDocsId = id;
+  let m = document.getElementById('immo-docs-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'immo-docs-modal'; m.className = 'modal-overlay'; document.body.appendChild(m); }
+  m.style.display = 'flex';
+  rendreDocsImmo();
+  if(PIECES === null || !_docsConfigLu) Promise.all([_docsConfigLu ? null : chargerDocsConfig(), PIECES === null ? chargerPieces() : null]).then(() => rendreDocsImmo()).catch(() => {});
+}
+function fermerDocsImmo() { const m = document.getElementById('immo-docs-modal'); if(m) m.style.display = 'none'; _immoDocsId = null; }
+function rendreDocsImmo() {
+  const m = document.getElementById('immo-docs-modal'); if(!m || !_immoDocsId) return;
+  const immo = ensureImmoArray().find(i => i.id === _immoDocsId);
+  const nom = nomImmo(_immoDocsId), code = codeClasseurImmos();
+  const titre = `🏛 ${esc(nom || (immo && immo.libelle) || 'Immobilisation')}`;
+  let corps;
+  if(!window._fbStorageActif) corps = `<div style="padding:16px;color:var(--text2);">Stockage des documents non configuré.</div>`;
+  else if(PIECES === null || !_docsConfigLu) corps = `<div style="padding:16px;color:var(--text2);">Lecture de la GED…</div>`;
+  else if(!nom) corps = `<div style="padding:16px;color:var(--amber);">Cette immobilisation n'a pas encore de nom : donnez-lui un nom (bandeau « NOMMER » ou ✎) pour créer son dossier.</div>`;
+  else {
+    const docs = groupesDP().map(g => g.courante).filter(p => classeursDe(p).includes(code) && (() => { const d = normDossier(p.sousDossier); return d === nom || d.startsWith(nom + '/'); })())
+      .sort((a, b) => String(a.dateDoc || '').localeCompare(String(b.dateDoc || '')));
+    const parDossier = new Map();
+    docs.forEach(p => { const sd = normDossier(p.sousDossier).slice(nom.length + 1); if(!parDossier.has(sd)) parDossier.set(sd, []); parDossier.get(sd).push(p); });
+    const ligne = p => {
+      const liens = (p.liens || []);
+      const ecr = liens.length ? `<span style="font-size:10px;color:var(--text2);white-space:nowrap;" title="Écritures justifiées">📎 ${[...new Set(liens.map(l => l.ex))].map(ex => `${liens.filter(l => l.ex === ex).length} écr. ${esc(ex)}`).join(', ')}</span>` : '';
+      return `<div onclick="voirPiece('${p.id}')" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font-size:11px;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}${(p.version || 1) > 1 ? ` <span class="npill" style="font-size:9px;">v${p.version}</span>` : ''}</span>
+        ${ecr}<span style="font-size:10px;color:var(--text2);white-space:nowrap;">${p.dateDoc ? fmtDateFr(p.dateDoc) : ''}</span></div>`;
+    };
+    corps = docs.length
+      ? [...parDossier.keys()].sort((a, b) => _collDossiers.compare(a, b)).map(sd => (sd ? `<div style="padding:6px 10px;font-size:10px;font-weight:700;color:var(--text1);background:var(--bg2);border-bottom:1px solid var(--line);">📁 ${esc(sd.replace(/\//g, ' › '))}</div>` : '') + parDossier.get(sd).map(ligne).join('')).join('')
+      : `<div style="padding:24px;text-align:center;color:var(--text2);font-size:11px;font-style:italic;">Aucun document dans le dossier de l'immobilisation.<br>Déposez-y les justificatifs du coût d'acquisition (acte, factures, frais…).</div>`;
+    corps = `<div style="font-size:10px;color:var(--text2);margin-bottom:6px;">GED › Dossier permanent › ${esc((rubriquesDP().find(r => r.code === code) || {}).label || 'Immobilisations')} › ${esc(nom)} — ${docs.length} document${docs.length > 1 ? 's' : ''}</div>
+      <div style="max-height:52vh;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);">${corps}</div>`;
+  }
+  const actif = !!(window._fbStorageActif && nom && code && PIECES !== null);
+  m.innerHTML = `<div class="modal" style="width:680px;max-width:95vw;">
+      <div class="modal-title">${titre}</div>
+      ${immo ? `<div style="font-size:11px;color:var(--text1);margin-bottom:10px;"><span style="font-family:var(--mono);color:var(--cyan);">${esc(immo.compteImmo || '')}</span> ${esc(immo.libelle || '')} · acquise le ${fmtDateGL(immo.dateAchat)} · valeur brute <strong>${fmt(immo.valeurBrute)} €</strong></div>` : ''}
+      ${corps}
+      <div class="flex gap8" style="margin-top:12px;">
+        ${actif ? `<button class="btn btn-primary btn-sm" onclick="deposerDansDossierImmo()">⬆ DÉPOSER</button><button class="btn btn-sm" onclick="ouvrirDossierImmoGED()">📂 OUVRIR DANS LA GED</button>` : ''}
+        <button class="btn ml-auto" onclick="fermerDocsImmo()">FERMER</button>
+      </div></div>`;
+}
+function deposerDansDossierImmo() {
+  const nom = nomImmo(_immoDocsId), code = codeClasseurImmos(); if(!nom || !code) return;
+  ouvrirDepot('permanent', code, null, null, { apres: () => rendreDocsImmo() });
+  const i = document.getElementById('dep-inter'); if(i) i.value = nom;
+}
+function ouvrirDossierImmoGED() {
+  const nom = nomImmo(_immoDocsId), code = codeClasseurImmos(); if(!nom || !code) return;
+  fermerDocsImmo();
+  showTab('documents');
+  setTimeout(() => {
+    _docsVue = 'permanent'; _docsClasseur.permanent = code; _explCourant['permanent|' + code] = nom; renderDocumentsVue();
+  }, 50);
 }
 
 </script>
