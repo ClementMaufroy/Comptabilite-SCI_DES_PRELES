@@ -20957,8 +20957,29 @@ function majTotalDecompte() {
   z.innerHTML = `Total <strong style="font-family:var(--mono);">${fmt(total)} €</strong> · valeur brute <strong style="font-family:var(--mono);">${fmt(vb)} €</strong> · `
     + (Math.abs(ecart) <= 0.005 ? '<span style="color:var(--green);font-weight:600;">✓ égal</span>' : `<span style="color:var(--amber);font-weight:600;">écart ${fmt(ecart)} €</span>`);
 }
+// V141 : type, référence et date des fichiers joints (lus dans la fiche avant chaque rendu et à l'enregistrement)
+function decLireChampsFichiers() {
+  if(!_dec) return;
+  _dec.lignes.forEach((x, i) => {
+    if(!x.fichier) return;
+    const t = document.getElementById('dec-type-' + i), r = document.getElementById('dec-ref-' + i), d = document.getElementById('dec-date-' + i);
+    if(t && t.value !== '__nouveau') x.typeDP = t.value; if(r) x.refDP = r.value; if(d) x.dateDoc = d.value;
+  });
+}
+function decRefComplete(x) { // même règle que le dépôt dans la GED : type + « / » + suite
+  const t = String(x.typeDP || ''), sfx = String(x.refDP || '').trim();
+  if(!t || !sfx) return sfx;
+  const u = sfx.toUpperCase(), T = t.toUpperCase();
+  return (u === T || u.startsWith(T + '/') || u.startsWith(T + '_')) ? sfx : t + '/' + sfx;
+}
+function decMajPrefixe(i) {
+  const t = document.getElementById('dec-type-' + i), z = document.getElementById('dec-ref-pfx-' + i); if(!t || !z) return;
+  const v = t.value && t.value !== '__nouveau' ? t.value : '';
+  z.textContent = v ? v + '/' : ''; z.style.display = v ? '' : 'none';
+}
 function renderDecompteFiche() {
   const z = document.getElementById('immo-decompte'); if(!z || !_dec) return;
+  decLireChampsFichiers(); // V141
   const id = document.getElementById('immo-edit-id').value || null;
   const docs = id ? docsDuDossierImmo(id) : [];
   const pris = new Set(_dec.lignes.map(x => x.piece).filter(Boolean));
@@ -20977,16 +20998,33 @@ function renderDecompteFiche() {
         <td style="padding:2px 4px;"><input type="text" data-dec-lib value="${esc(x.libelle)}" placeholder="Ex : Prix d'achat, frais de notaire…" oninput="decMaj(${i},'libelle',this.value)" style="height:28px;"></td>
         <td style="padding:2px 4px;"><input type="number" step="0.01" value="${esc(x.montant)}" oninput="decMaj(${i},'montant',this.value)" style="height:28px;font-family:var(--mono);text-align:right;"></td>
         <td style="padding:2px 4px;max-width:240px;">${cellPiece(x, i)}</td>
-        <td style="padding:2px 4px;text-align:center;"><button type="button" class="btn btn-sm btn-icon btn-danger" onclick="decRetirer(${i})" title="Supprimer la ligne" style="padding:0 6px;font-size:10px;">✕</button></td></tr>`).join('')}</tbody></table>
+        <td style="padding:2px 4px;text-align:center;"><button type="button" class="btn btn-sm btn-icon btn-danger" onclick="decRetirer(${i})" title="Supprimer la ligne" style="padding:0 6px;font-size:10px;">✕</button></td></tr>${x.fichier ? `
+        <tr><td colspan="4" style="padding:2px 4px 8px 18px;">
+          <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;padding:6px 8px;background:var(--bg2);border-left:3px solid var(--cyan);border-radius:var(--radius);">
+            <span style="font-size:10px;color:var(--text2);align-self:center;">⬆ Fiche GED du fichier :</span>
+            <div class="form-field" style="width:150px;"><label style="font-size:9px;">Date *</label><input type="date" id="dec-date-${i}" value="${esc(x.dateDoc || document.getElementById('immo-date-achat').value || dateLocale(new Date()))}" style="height:28px;"></div>
+            <div class="form-field" style="flex:1;min-width:180px;"><label style="font-size:9px;">Type</label><select id="dec-type-${i}" style="height:28px;font-family:var(--mono);font-size:11px;"></select></div>
+            <div class="form-field" style="flex:1;min-width:160px;"><label style="font-size:9px;" title="Le type se place au début de la référence, la suite après un « / »">Référence</label>
+              <div style="display:flex;align-items:center;"><span id="dec-ref-pfx-${i}" style="display:none;font-family:var(--mono);font-size:11px;padding:0 6px;height:28px;line-height:28px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dec-ref-${i}" value="${esc(x.refDP || '')}" placeholder="ex. 2024-001" style="height:28px;font-family:var(--mono);flex:1;min-width:0;"></div></div>
+          </div></td></tr>` : ''}`).join('')}</tbody></table>
     <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;">
       <button type="button" class="btn btn-sm" onclick="decAjouter()">+ LIGNE</button>
       <span id="immo-decompte-total" style="font-size:11px;margin-left:auto;"></span></div>
-    <div style="font-size:9.5px;color:var(--text2);margin-top:4px;">Une pièce par ligne : un document du dossier de l'immobilisation dans la GED, ou un fichier joint ici (déposé dans ce dossier à l'enregistrement). Le total doit égaler la valeur brute ; sinon l'écart apparaît dans « À traiter » et bloque la clôture.</div>`;
+    <div style="font-size:9.5px;color:var(--text2);margin-top:4px;">Une pièce par ligne : un document du dossier de l'immobilisation dans la GED, ou un fichier joint ici (déposé dans ce dossier à l'enregistrement, avec le libellé de la ligne comme titre, et la date, le type et la référence indiqués sous la ligne). Le total doit égaler la valeur brute ; sinon l'écart apparaît dans « À traiter » et bloque la clôture.</div>`;
   majTotalDecompte();
+  _dec.lignes.forEach((x, i) => { // V141 : listes des types du DP (avec « + Nouveau type… »)
+    const sel = document.getElementById('dec-type-' + i); if(!sel) return;
+    remplirTypesDP(sel, x.typeDP || '');
+    const base = sel.onchange; sel.onchange = () => { if(base) base(); decMajPrefixe(i); };
+    new MutationObserver(() => decMajPrefixe(i)).observe(sel, { childList: true }); // type créé : la liste est reconstruite
+    decMajPrefixe(i);
+  });
 }
 // Contrôle avant enregistrement (message d'erreur, ou '')
 function controleDecompteFiche() {
   if(!_dec) return '';
+  decLireChampsFichiers(); // V141
+  for(const x of _dec.lignes) if(x.fichier && !x.dateDoc) return `Décompte : date du document manquante pour « ${x.libelle || x.fichier.name} ».`;
   for(const x of _dec.lignes) {
     const vide = !String(x.libelle || '').trim() && (x.montant === '' || x.montant === null) && !x.piece && !x.fichier;
     if(vide) continue;
@@ -21008,8 +21046,8 @@ async function enregistrerDecompteFiche(idImmo, dateAchat) {
       const id = crypto.randomUUID();
       const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
       await window._fbFichierEnvoyer(chemin, prep.blob, prep.type);
-      const meta = { id, espace: 'permanent', rubrique: code, classeurs: [code], typeDP: '', numDoc: '', sousDossier: nom, groupe: id, version: 1, enVigueur: true,
-        titre: String(x.libelle || '').trim() || titreDepuisNom(x.fichier.name), dateDoc: dateAchat || dateLocale(new Date()),
+      const meta = { id, espace: 'permanent', rubrique: code, classeurs: [code], typeDP: x.typeDP || '', numDoc: decRefComplete(x), sousDossier: nom, groupe: id, version: 1, enVigueur: true, // V141 : type et référence
+        titre: String(x.libelle || '').trim() || titreDepuisNom(x.fichier.name), dateDoc: x.dateDoc || dateAchat || dateLocale(new Date()),
         nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin, depose: new Date().toISOString() };
       try { await window._fbPieceSave(meta); } catch(e) { try { await window._fbFichierSupprimer(chemin); } catch(e2) {} throw e; }
       indexerPiece(meta); x.piece = id; x.fichier = null;
