@@ -575,8 +575,8 @@ body:has(.modal-overlay[style*="flex"]) .hdr-status .dot { animation: none; } /*
 .alert-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
 
 /* ── TOAST ── */
-#upload-overlay { z-index: 9000; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); background: rgba(0,0,0,0.55); cursor: progress; } /* V150 */
-html[data-theme="light"] #upload-overlay { background: rgba(45,40,30,0.30); }
+#upload-overlay { z-index: 9000; background: rgba(0,0,0,0.82); cursor: progress; } /* V150 ; V151 : fond sombre, sans flou (cf. V121) */
+html[data-theme="light"] #upload-overlay { background: rgba(45,40,30,0.55); }
 #upload-overlay .up-boite { width: 440px; max-width: 92vw; background: var(--bg1, #15171c); border: 1px solid var(--line2); border-radius: 10px; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
 #upload-overlay .up-titre { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--cyan); margin-bottom: 10px; }
 #upload-overlay .up-compte { font-size: 11px; color: var(--text2); min-height: 14px; }
@@ -17939,13 +17939,47 @@ async function blobTamponne(p, blob, texteForce) {
 // Formes : note, texte, cadre, surligne, fleche, crayon.
 const ANN_COULEURS = ['#d62828', '#1d4ed8', '#15803d', '#ea580c', '#facc15', '#111111'];
 const ANN_OUTILS = [
-  ['select', '👆', 'Sélectionner, déplacer (glisser), modifier le texte (double-clic), supprimer (touche Suppr)'],
-  ['note', '📝 Note', 'Note sur fond jaune : cliquez à l\'endroit voulu'], ['texte', 'T Texte', 'Texte libre : cliquez à l\'endroit voulu'],
+  ['select', '👆', 'Sélectionner, déplacer (glisser), modifier un texte (double-clic ou ✎ MODIFIER LE TEXTE), supprimer (touche Suppr)'],
+  ['note', '📝 Note', 'Note sur fond jaune : cliquez à l\'endroit voulu — cliquez sur une note ou un texte existant pour le modifier'], ['texte', 'T Texte', 'Texte libre : cliquez à l\'endroit voulu — cliquez sur une note ou un texte existant pour le modifier'],
   ['cadre', '▭ Encadrer', 'Encadrer une zone : cliquez-glissez'], ['surligne', '▮ Surligner', 'Surligner une zone : cliquez-glissez'],
   ['fleche', '➚ Flèche', 'Flèche : cliquez-glissez du départ vers la pointe'], ['crayon', '✎ Crayon', 'Dessin à main levée']
 ];
 let _ann = null;
-function annotationsDe(p) { return Array.isArray(p && p.annotations) ? p.annotations : []; }
+// V153 : Firestore refuse les tableaux de tableaux (« invalid argument ») : les points des flèches et du crayon sont
+// stockés en objets { x, y } et remis en paires [x, y] à la lecture (les annotations déjà enregistrées restent lisibles).
+function annotationsDe(p) {
+  const l = Array.isArray(p && p.annotations) ? p.annotations : [];
+  return l.map(a => a && Array.isArray(a.pts) && a.pts.length && !Array.isArray(a.pts[0]) ? Object.assign({}, a, { pts: a.pts.map(q => [+q.x || 0, +q.y || 0]) }) : a);
+}
+function annVersStockage(a) {
+  const b = {};
+  Object.keys(a).forEach(k => { if(k !== '_d' && a[k] !== undefined) b[k] = a[k]; });
+  if(Array.isArray(b.pts)) b.pts = b.pts.map(q => ({ x: +(+q[0]).toFixed(4), y: +(+q[1]).toFixed(4) }));
+  return b;
+}
+// V153 : annotation de texte (note ou texte libre) sous un point de la page, la plus récente d'abord
+function annTexteAuPoint(pg, fx, fy) {
+  if(!_ann || !_ann.pages[pg]) return null;
+  const { w, h } = _ann.pages[pg], x = fx * w, y = fy * h;
+  for(let i = _ann.liste.length - 1; i >= 0; i--) {
+    const a = _ann.liste[i]; if(a.pg !== pg || (a.t !== 'note' && a.t !== 'texte')) continue;
+    const bx = annBoite(annPrimitives(a, w, h, annMesureEcran));
+    if(bx && x >= bx.x && x <= bx.x + bx.w && y >= bx.y && y <= bx.y + bx.h) return i;
+  }
+  return null;
+}
+function annEditerTexte(i) {
+  if(!_ann || _ann.lecture) return;
+  const a = _ann.liste[i]; if(!a || (a.t !== 'note' && a.t !== 'texte')) return;
+  _ann.sel = _ann.outil === 'select' ? i : null;
+  annDemanderTexte(a.txt, txt => {
+    if(txt === null || txt === a.txt) return;
+    annMemo();
+    if(!txt) { _ann.liste.splice(i, 1); _ann.sel = null; } else a.txt = txt;
+    annBarre(); annDessinerPage(a.pg);
+  });
+}
+function annEditerSel() { if(_ann && _ann.sel !== null) annEditerTexte(_ann.sel); }
 function sigAnnotations(a) { const s = JSON.stringify(a || []); let h = 0; for(let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return s.length + ':' + h; }
 // Primitives de dessin d'une annotation (unités = points de la page affichée) — communes à l'écran et au PDF
 function annPrimitives(a, W, H, mesure) {
@@ -18082,6 +18116,7 @@ function annBarre() {
   b.innerHTML = ANN_OUTILS.map(([k, lib, tit]) => `<button class="btn btn-sm ${_ann.outil === k ? 'btn-primary' : ''}" title="${esc(tit)}" onclick="annOutil('${k}')" style="padding:2px 8px;">${lib}</button>`).join('')
     + `<span style="width:12px;"></span>` + ANN_COULEURS.map(c => `<span onclick="annCouleur('${c}')" title="Couleur" style="display:inline-block;width:18px;height:18px;border-radius:50%;background:${c};cursor:pointer;border:2px solid ${_ann.couleur === c ? 'var(--text0)' : 'transparent'};box-shadow:0 0 0 1px var(--line2);"></span>`).join('')
     + `<span style="width:12px;"></span><button class="btn btn-sm" onclick="annAnnuler()" title="Annuler la dernière modification (Ctrl+Z)" ${_ann.histo.length ? '' : 'disabled'}>↶ ANNULER</button>`
+    + (() => { const a = _ann.sel !== null ? _ann.liste[_ann.sel] : null, ok = !!(a && (a.t === 'note' || a.t === 'texte')); return `<button class="btn btn-sm" onclick="annEditerSel()" title="Modifier le texte de la note sélectionnée" ${ok ? '' : 'disabled'}>✎ MODIFIER LE TEXTE</button>`; })() // V153
     + `<button class="btn btn-sm btn-danger" onclick="annSupprimerSel()" title="Supprimer l'annotation sélectionnée (Suppr)" ${_ann.sel !== null ? '' : 'disabled'}>🗑 SUPPRIMER</button>`
     + `<span style="font-size:10px;color:var(--text2);margin-left:auto;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right;">${esc((ANN_OUTILS.find(o => o[0] === _ann.outil) || [])[2] || '')}</span>`;
 }
@@ -18134,6 +18169,7 @@ function annBrancher(svg) {
       if(_ann.sel !== null) { _ann.glisse = { depart: [fx, fy], copie: JSON.stringify(_ann.liste[_ann.sel]), bouge: false }; svg.setPointerCapture(e.pointerId); }
       return;
     }
+    if(o === 'note' || o === 'texte') { const exist = annTexteAuPoint(pg, fx, fy); if(exist !== null) { e.preventDefault(); annEditerTexte(exist); return; } } // V153 : clic sur un texte existant = le modifier
     if(o === 'note' || o === 'texte') { e.preventDefault(); annDemanderTexte('', txt => { if(!txt) return; annMemo(); _ann.liste.push({ id: 'a' + Date.now().toString(36), t: o, pg, x: fx, y: fy, txt, c: _ann.couleur }); annDessinerPage(pg); annBarre(); }); return; }
     const a = { id: 'a' + Date.now().toString(36), t: o, pg, c: o === 'surligne' && _ann.couleur === ANN_COULEURS[0] ? '#facc15' : _ann.couleur };
     if(o === 'cadre' || o === 'surligne') Object.assign(a, { x: fx, y: fy, w: 0, h: 0, _d: [fx, fy] });
@@ -18174,9 +18210,9 @@ function annBrancher(svg) {
   svg.addEventListener('pointerup', fin); svg.addEventListener('pointercancel', fin);
   svg.addEventListener('dblclick', e => {
     if(!_ann || _ann.lecture || _ann.outil !== 'select') return;
-    const i = e.target && e.target.dataset ? e.target.dataset.i : undefined; if(i === undefined) return;
-    const a = _ann.liste[+i]; if(!a || (a.t !== 'note' && a.t !== 'texte')) return;
-    annDemanderTexte(a.txt, txt => { if(txt === null || txt === a.txt) return; annMemo(); if(!txt) { _ann.liste.splice(+i, 1); _ann.sel = null; } else a.txt = txt; annBarre(); annDessinerPage(a.pg); });
+    // V153 : la cible du double-clic n'est pas fiable (page redessinée au 1er clic, capture du pointeur) : on cherche le texte sous le pointeur
+    const [fx, fy] = annPoint(svg, e), i = annTexteAuPoint(+svg.dataset.pg, fx, fy);
+    if(i !== null) annEditerTexte(i);
   });
 }
 function annDemanderTexte(initial, cb) {
@@ -18202,7 +18238,7 @@ document.addEventListener('keydown', e => {
 async function enregistrerAnnotations() {
   if(!_ann || _ann.lecture) return;
   const p = trouverPiece(_ann.id); if(!p) return;
-  const liste = _ann.liste.map(a => { const b = Object.assign({}, a); delete b._d; return b; });
+  const liste = _ann.liste.map(annVersStockage); // V153 : pas de tableaux imbriqués pour Firestore
   if(!(await majPiece(p, { annotations: liste }, `${liste.length} annotation${liste.length > 1 ? 's' : ''} enregistrée${liste.length > 1 ? 's' : ''}`))) return;
   _ann.modif = false;
   const id = _ann.id, io = _ann.io;
@@ -21081,6 +21117,7 @@ function decAjouter() { _dec.lignes.push({ id: crypto.randomUUID(), libelle: '',
 function decRetirer(i) { _dec.lignes.splice(i, 1); renderDecompteFiche(); }
 function decChoisirPiece(i, v) {
   if(v === '__fichier') { const inp = document.getElementById('dec-fichier'); inp.dataset.ligne = i; inp.click(); renderDecompteFiche(); return; }
+  if(v === '__ged') { renderDecompteFiche(); ouvrirChoixPieceDecompte(i); return; } // V152
   _dec.lignes[i].piece = v; _dec.lignes[i].fichier = null; renderDecompteFiche();
 }
 function decFichierChoisi(inp) {
@@ -21124,15 +21161,15 @@ function renderDecompteFiche() {
   decLireChampsFichiers(); // V141
   const id = document.getElementById('immo-edit-id').value || null;
   const docs = id ? docsDuDossierImmo(id) : [];
-  const pris = new Set(_dec.lignes.map(x => x.piece).filter(Boolean));
   const stockage = !!window._fbStorageActif;
   const cellPiece = (x, i) => {
     if(x.fichier) return `<span class="chip" style="display:inline-flex;align-items:center;gap:4px;max-width:100%;" title="Sera déposé dans le dossier de l'immobilisation à l'enregistrement">⬆ <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.fichier.name)}</span><span style="cursor:pointer;" onclick="decDetacher(${i})">✕</span></span>`;
     if(x.piece) { const p = pieceDuGroupe(x.piece);
-      return p ? `<span style="display:inline-flex;align-items:center;gap:6px;max-width:100%;"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a><span style="cursor:pointer;color:var(--text2);" title="Retirer la pièce de la ligne (elle reste dans la GED)" onclick="decDetacher(${i})">✕</span></span>`
+      const ailleurs = p && !docs.some(d => (d.groupe || d.id) === (p.groupe || p.id)); // V152 : pièce rangée hors du dossier de l'immo
+      return p ? `<span style="display:inline-flex;align-items:center;gap:6px;max-width:100%;"><a href="#" onclick="voirPiece('${p.id}');return false;" style="color:var(--cyan);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc((p.titre || p.nomFichier) + (ailleurs ? ' — rangée dans : ' + cheminPieceDP(p) : ''))}">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</a><span style="cursor:pointer;color:var(--text2);" title="Retirer la pièce de la ligne (elle reste dans la GED)" onclick="decDetacher(${i})">✕</span></span>${ailleurs ? `<div style="font-size:9.5px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(cheminPieceDP(p))}">↗ ${esc(cheminPieceDP(p))}</div>` : ''}`
         : `<span style="color:var(--red);">pièce introuvable</span> <span style="cursor:pointer;color:var(--text2);" onclick="decDetacher(${i})">✕</span>`; }
-    const opts = docs.filter(p => !pris.has(p.groupe || p.id));
-    return `<select onchange="decChoisirPiece(${i},this.value)" style="height:28px;font-size:11px;"><option value="">— pièce —</option>${opts.map(p => `<option value="${esc(p.groupe || p.id)}">${esc(p.titre || p.nomFichier)}</option>`).join('')}${stockage ? '<option value="__fichier">⬆ Joindre un fichier…</option>' : ''}</select>`;
+    // V152 : une même pièce peut justifier plusieurs lignes, et une pièce rangée ailleurs dans le DP peut être choisie
+    return `<select onchange="decChoisirPiece(${i},this.value)" style="height:28px;font-size:11px;"><option value="">— pièce —</option>${docs.length ? `<optgroup label="Dossier de l'immobilisation">${docs.map(p => `<option value="${esc(p.groupe || p.id)}">${esc(p.titre || p.nomFichier)}</option>`).join('')}</optgroup>` : ''}<option value="__ged">🔍 Choisir ailleurs dans la GED…</option>${stockage ? '<option value="__fichier">⬆ Joindre un fichier…</option>' : ''}</select>`;
   };
   z.innerHTML = `<table style="width:100%;font-size:11px;border-collapse:collapse;">
       <thead><tr><th style="padding:4px 6px;">Élément du coût</th><th class="td-num" style="padding:4px 6px;width:110px;">Montant (€)</th><th style="padding:4px 6px;width:240px;">Pièce</th><th style="width:26px;"></th></tr></thead>
@@ -21152,7 +21189,7 @@ function renderDecompteFiche() {
     <div style="display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap;">
       <button type="button" class="btn btn-sm" onclick="decAjouter()">+ LIGNE</button>
       <span id="immo-decompte-total" style="font-size:11px;margin-left:auto;"></span></div>
-    <div style="font-size:9.5px;color:var(--text2);margin-top:4px;">Une pièce par ligne : un document du dossier de l'immobilisation dans la GED, ou un fichier joint ici (déposé dans ce dossier à l'enregistrement, avec le libellé de la ligne comme titre, et la date, le type et la référence indiqués sous la ligne). Le total doit égaler la valeur brute ; sinon l'écart apparaît dans « À traiter » et bloque la clôture.</div>`;
+    <div style="font-size:9.5px;color:var(--text2);margin-top:4px;">Une pièce par ligne : un document du dossier de l'immobilisation, un document rangé ailleurs dans le dossier permanent (ex. l'acte notarial commun au terrain et à la construction : il reste à sa place), ou un fichier joint ici (déposé dans ce dossier à l'enregistrement, avec le libellé de la ligne comme titre, et la date, le type et la référence indiqués sous la ligne). Le total doit égaler la valeur brute ; sinon l'écart apparaît dans « À traiter » et bloque la clôture.</div>`;
   majTotalDecompte();
   _dec.lignes.forEach((x, i) => { // V141 : listes des types du DP (avec « + Nouveau type… »)
     const sel = document.getElementById('dec-type-' + i); if(!sel) return;
@@ -21401,7 +21438,7 @@ function bloqueDotationsSiEcartBG() {
 // ══════════════════════════════════════════════
 // Affiché pendant tout import de pièces lancé par l'utilisateur : dépôt dans la GED (y compris depuis une écriture),
 // justificatifs joints en saisie, fichiers du décompte d'une fiche immo. La synchronisation automatique des PDF
-// générés par les modules ne l'affiche pas. Le flou n'existe que pendant l'envoi (retiré des fenêtres en V121).
+// générés par les modules ne l'affiche pas. V151 : fond sombre opaque, pas de flou (retiré des fenêtres en V121).
 let _envoi = null; // { n, i, nom, taille, debut, prof }
 function _envoiEl() {
   let o = document.getElementById('upload-overlay');
@@ -21462,6 +21499,56 @@ function envoiFin() {
   _envoi = null;
   window.removeEventListener('beforeunload', _envoiQuitter);
   const o = document.getElementById('upload-overlay'); if(o) o.style.display = 'none';
+}
+
+// ══════════════════════════════════════════════
+// V152 — DÉCOMPTE : CHOISIR UNE PIÈCE N'IMPORTE OÙ DANS LE DOSSIER PERMANENT
+// ══════════════════════════════════════════════
+// Cas d'une pièce commune à plusieurs immobilisations (acte notarial : terrain + construction). La pièce n'est ni copiée
+// ni déplacée : la ligne du décompte la référence (par son groupe, une nouvelle version reste reliée).
+let _decChoix = null; // { ligne, q }
+function cheminPieceDP(p) {
+  const c = classeursDe(p)[0], r = rubriquesDP().find(x => x.code === c);
+  return ['Classeurs', r ? r.label : (c || '?')].concat(normDossier(p.sousDossier) ? normDossier(p.sousDossier).split('/') : []).join(' › ');
+}
+function ouvrirChoixPieceDecompte(i) {
+  _decChoix = { ligne: i, q: '' };
+  let m = document.getElementById('dec-choix-modal');
+  if(!m) { m = document.createElement('div'); m.id = 'dec-choix-modal'; m.className = 'modal-overlay'; m.style.zIndex = 1085; document.body.appendChild(m); }
+  m.innerHTML = `<div class="modal" style="width:720px;max-width:96vw;">
+      <div class="modal-title">🔍 CHOISIR UNE PIÈCE DU DOSSIER PERMANENT</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">La pièce reste rangée où elle est : la ligne du décompte y fait seulement référence.</div>
+      <input type="text" id="dec-choix-q" placeholder="🔍 Rechercher (titre, référence, fichier, classeur, dossier)" oninput="_decChoix.q=this.value;rendreChoixPieceDecompte()" style="height:32px;margin-bottom:8px;">
+      <div id="dec-choix-liste" style="max-height:52vh;overflow-y:auto;border:1px solid var(--line2);border-radius:var(--radius);"></div>
+      <div class="flex gap8" style="margin-top:10px;"><button class="btn ml-auto" onclick="fermerChoixPieceDecompte()">ANNULER</button></div>
+    </div>`;
+  m.style.display = 'flex';
+  rendreChoixPieceDecompte();
+  setTimeout(() => { const q = document.getElementById('dec-choix-q'); if(q) q.focus(); }, 30);
+}
+function fermerChoixPieceDecompte() { const m = document.getElementById('dec-choix-modal'); if(m) m.style.display = 'none'; _decChoix = null; }
+function rendreChoixPieceDecompte() {
+  const z = document.getElementById('dec-choix-liste'); if(!z || !_decChoix) return;
+  const q = String(_decChoix.q || '').trim().toLowerCase();
+  let l = groupesDP().map(g => g.courante).filter(p => !p.corbeille).map(p => ({ p, chemin: cheminPieceDP(p) }));
+  if(q) l = l.filter(({ p, chemin }) => [p.titre, p.numDoc, p.nomFichier, p.typeDP, chemin].join(' ').toLowerCase().includes(q));
+  l.sort((a, b) => a.chemin.localeCompare(b.chemin, 'fr') || String(b.p.dateDoc || '').localeCompare(String(a.p.dateDoc || '')));
+  z.innerHTML = l.length ? l.slice(0, 200).map(({ p, chemin }) => `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--line);font-size:11px;">
+      <span style="flex:1;min-width:0;"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(p.titre || p.nomFichier)}">${iconePiece(p)} ${esc(p.titre || p.nomFichier)}</span>
+        <span style="display:block;color:var(--text2);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(chemin)}">${esc(chemin)}${p.numDoc ? ' · ' + esc(p.numDoc) : ''}${p.dateDoc ? ' · ' + fmtDateFr(p.dateDoc) : ''}</span></span>
+      <button class="btn btn-sm btn-icon" onclick="voirPiece('${p.id}')" title="Voir" style="padding:1px 6px;font-size:10px;">👁</button>
+      <button class="btn btn-sm btn-primary" onclick="choisirPieceDecompte('${esc(p.groupe || p.id)}')" style="padding:1px 8px;font-size:9px;">CHOISIR</button></div>`).join('')
+    + (l.length > 200 ? `<div style="padding:8px 10px;font-size:10px;color:var(--text2);">… ${l.length - 200} autres : précisez la recherche.</div>` : '')
+    : `<div style="padding:14px;font-size:11px;color:var(--text2);font-style:italic;text-align:center;">${q ? 'Aucune pièce pour cette recherche.' : 'Le dossier permanent ne contient aucune pièce.'}</div>`;
+}
+function choisirPieceDecompte(g) {
+  if(!_decChoix || !_dec || !_dec.lignes[_decChoix.ligne]) { fermerChoixPieceDecompte(); return; }
+  const x = _dec.lignes[_decChoix.ligne];
+  x.piece = g; x.fichier = null;
+  const p = pieceDuGroupe(g);
+  if(p && !String(x.libelle || '').trim()) x.libelle = p.titre || titreDepuisNom(p.nomFichier || '');
+  fermerChoixPieceDecompte();
+  renderDecompteFiche();
 }
 </script>
 </body>
