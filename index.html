@@ -3745,8 +3745,8 @@ function _bandeauSauvegarde(html, boutons) {
 }
 function _retirerBandeauSauvegarde() { const el = document.getElementById('save-alert'); if(el) el.remove(); }
 
-function _signalerEchec(year, reason, json) {
-  _saveFailure = { year: String(year), json, reason };
+function _signalerEchec(year, reason, json, gen) {
+  _saveFailure = { year: String(year), json, reason, gen: gen === undefined ? _genExercice : gen }; // V145
   setSaveStatus('error');
   _bandeauSauvegarde(`Échec de l'enregistrement de l'exercice ${year} dans Firebase${reason ? ' (' + String(reason).replace(/</g,'&lt;') + ')' : ''}.<br>Vos dernières modifications ne sont <strong>PAS</strong> enregistrées. Ne fermez pas l'onglet.`,
     [{ label: '↻ RÉESSAYER', action: 'retrySave()' }]);
@@ -3762,23 +3762,45 @@ function _signalerConflit(year, info) {
 }
 async function retrySave() {
   if(!_saveFailure || _saveFailure.conflict) return;
-  if(!_pendingSave && _saveFailure.json) _pendingSave = { json: _saveFailure.json, year: _saveFailure.year };
+  if(!_pendingSave && _saveFailure.json) {
+    if(_saveFailure.gen !== _genExercice) { _bandeauSauvegarde("Ces modifications avaient été préparées sur un état de l'exercice qui n'est plus celui affiché : elles ne sont pas envoyées, pour ne rien écraser. Rechargez la page.", [{ label: '↻ RECHARGER', action: 'location.reload()' }]); return; } // V145
+    _pendingSave = { json: _saveFailure.json, year: _saveFailure.year, gen: _saveFailure.gen };
+  }
   _bandeauSauvegarde('Nouvelle tentative d\'enregistrement…', []);
   const ok = await flushPendingSave();
   if(ok) { _retirerBandeauSauvegarde(); toast('Modifications enregistrées', 'success'); }
 }
 
 // Écrit un instantané JSON dans Firebase, conditionné à la version connue. Renvoie true/false.
-async function _ecrireExercice(json, year) {
+async function _ecrireExercice(json, year, gen) {
   const y = String(year);
   if(window._fbBloque) return false;
-  if(!(window._fbReady && window._fbWrite)) { _signalerEchec(y, 'Firebase non chargé', json); return false; }
+  // V145 — garde-fous contre l'écrasement :
+  // 1. un instantané préparé sur une autre génération de l'exercice (avant son chargement, avant un changement reçu…) n'est jamais envoyé
+  if(gen !== undefined && gen !== _genExercice) { console.warn('V145 : enregistrement périmé abandonné (exercice rechargé depuis)'); return false; }
+  // 2. jamais d'exercice vide (aucune écriture ET aucun plan comptable) par-dessus un exercice existant
+  let _d = null; try { _d = JSON.parse(json); } catch(e) {}
+  const _vide = !_d || (!(_d.ecritures || []).length && !(_d.tbData || []).length);
+  if(_vide && LOADED_REV[y] !== 'new') {
+    _saveFailure = { year: y, conflict: true };
+    setSaveStatus('error');
+    _bandeauSauvegarde(`Enregistrement BLOQUÉ : Atrium allait enregistrer un exercice ${y} vide par-dessus les données existantes. Rien n'a été écrit. Rechargez la page.`, [{ label: '↻ RECHARGER', action: 'location.reload()' }]);
+    return false;
+  }
+  // 3. toutes les écritures supprimées d'un coup : confirmation explicite
+  if(_d && !(_d.ecritures || []).length && (_nbEcrChargees[y] || 0) >= 10 && !confirm(`L'exercice ${y} va être enregistré SANS AUCUNE ÉCRITURE (il en comptait ${_nbEcrChargees[y]} au chargement).\n\nConfirmez-vous ?`)) {
+    _saveFailure = { year: y, conflict: true }; setSaveStatus('error');
+    _bandeauSauvegarde(`Enregistrement annulé : l'exercice ${y} n'a pas été vidé. Rechargez la page.`, [{ label: '↻ RECHARGER', action: 'location.reload()' }]);
+    return false;
+  }
+  if(!(window._fbReady && window._fbWrite)) { _signalerEchec(y, 'Firebase non chargé', json, gen); return false; }
   const expected = LOADED_REV[y];
-  if(expected === undefined) { _signalerEchec(y, 'version de l\'exercice inconnue — rechargez la page', json); return false; }
+  if(expected === undefined) { _signalerEchec(y, 'version de l\'exercice inconnue — rechargez la page', json, gen); return false; }
   _saveInFlight = true;
   try {
     const newRev = await window._fbWrite(json, y, expected);
     if(newRev !== null && newRev !== undefined) LOADED_REV[y] = newRev;
+    if(_d) _nbEcrChargees[y] = (_d.ecritures || []).length; // V145
     if(_saveFailure && _saveFailure.year === y && !_saveFailure.conflict) { _saveFailure = null; _retirerBandeauSauvegarde(); }
     setSaveStatus(_pendingSave ? 'saving' : 'ok');
     // V111 : copies PDF dans la GED seulement après un enregistrement RÉUSSI (jamais sur des données refusées ou périmées)
@@ -3787,7 +3809,7 @@ async function _ecrireExercice(json, year) {
   } catch(e) {
     console.error('Firebase save error', e);
     if(e && e.code === 'rev-conflict') _signalerConflit(y, { creation: expected === 'new' });
-    else _signalerEchec(y, e && (e.code || e.message), json);
+    else _signalerEchec(y, e && (e.code || e.message), json, gen);
     return false;
   } finally {
     _saveInFlight = false;
@@ -3835,9 +3857,10 @@ function saveDB() {
   let json, histJson; try { histJson = JSON.stringify(DB); json = jsonAEnregistrer(false); } catch(e) { console.error(e); return; }
   histRecord(histJson);
   if(json === null) { _signalerEchec(CURRENT_YEAR, 'exercice clôturé : contenu figé introuvable, rechargez la page', null); return; }
+  if(LOADED_REV[String(CURRENT_YEAR)] === undefined) { console.warn('V145 : enregistrement ignoré — exercice pas encore chargé depuis Firebase'); return; }
   clearTimeout(_saveTimeout);
   // Instantané figé MAINTENANT : un changement d'exercice ultérieur ne peut pas modifier ce qui part
-  _pendingSave = { json, year: CURRENT_YEAR };
+  _pendingSave = { json, year: CURRENT_YEAR, gen: _genExercice }; // V145
   setSaveStatus('saving');
   _saveTimeout = setTimeout(() => { flushPendingSave(); }, 800);
 }
@@ -3847,7 +3870,7 @@ function flushPendingSave() {
   clearTimeout(_saveTimeout);
   _saveChain = _saveChain.then(async () => {
     const p = _pendingSave;
-    if(p) { _pendingSave = null; await _ecrireExercice(p.json, p.year); }
+    if(p) { _pendingSave = null; await _ecrireExercice(p.json, p.year, p.gen); }
     return !_saveFailure && !_pendingSave;
   }).catch(e => { console.error(e); return false; });
   return _saveChain;
@@ -3859,8 +3882,9 @@ async function saveDBNow(force) {
   if(json === null) return false;
   // V72 : une sauvegarde forcée (clôture, changement d'exercice…) remet l'historique à zéro
   if(force) histClear(); else histRecord(histJson);
+  if(LOADED_REV[String(CURRENT_YEAR)] === undefined) { console.warn('V145 : enregistrement ignoré — exercice pas encore chargé depuis Firebase'); return false; }
   clearTimeout(_saveTimeout);
-  _pendingSave = { json, year: CURRENT_YEAR };
+  _pendingSave = { json, year: CURRENT_YEAR, gen: _genExercice }; // V145
   setSaveStatus('saving');
   return await flushPendingSave();
 }
@@ -3890,12 +3914,18 @@ async function chargerExercice(year) {
   return await window._fbLoadRev(year);
 }
 // Installe comme exercice affiché le résultat de chargerExercice (null = exercice à créer).
+// V145 : « génération » de l'exercice en mémoire — change à chaque chargement / remplacement de DB.
+// Un enregistrement préparé sur une autre génération (ex. avant le chargement de l'exercice) n'est JAMAIS envoyé.
+var _genExercice = 0;
+var _nbEcrChargees = {};
 function installerExercice(year, r) {
+  _genExercice++;
   CURRENT_YEAR = year;
   DB = normaliserDB(r ? r.data : nouveauDBVide());
   // Firestore fait foi pour _isTest : champ absent = exercice normal
   DB._isTest = r ? (r.data._isTest !== undefined ? !!r.data._isTest : false) : !!DB._isTest;
   LOADED_REV[String(year)] = r ? r.rev : 'new';
+  _nbEcrChargees[String(year)] = r && r.data && Array.isArray(r.data.ecritures) ? r.data.ecritures.length : 0; // V145
   if(DB._status !== 'closed') (DB.ecritures||[]).forEach(e => { if(e.numDoc === 'BAO' && !e.id) { e.id = crypto.randomUUID(); e._io = 0; e._module = 'bao'; } });
   if(DB._status !== 'closed') migrerV82();
   if(r && r.data._status === 'closed') _baseCloture[String(year)] = JSON.stringify(r.data); else delete _baseCloture[String(year)];
@@ -4247,8 +4277,10 @@ function _recevoirChangementDistant({ data, rev }) {
     _signalerConflit(y); return;
   }
   const avant = JSON.parse(JSON.stringify(DB));
+  _genExercice++; // V145
   Object.keys(DB).forEach(k => delete DB[k]);
   Object.assign(DB, normaliserDB(data));
+  _nbEcrChargees[y] = (DB.ecritures || []).length; // V145
   if(DB._isTest === undefined) DB._isTest = false;
   LOADED_REV[y] = rev;
   if(DB._status === 'closed') _baseCloture[y] = JSON.stringify(data); else delete _baseCloture[y];
@@ -17057,7 +17089,8 @@ function planifierSyncGED() {
     if(_pendingSave || _saveInFlight) { planifierSyncGED(); return; } // V111 : on attend que tout soit enregistré
     if(_saveFailure) return; // V111 : jamais sur des données que Firebase a refusées
     let data; try { data = JSON.parse(JSON.stringify(DB)); } catch(e) { return; }
-    synchroniserGED([{ exercice: ex, data }], { corbeilleAuto: true }).then(r => {
+    const corbeilleOk = typeof LOADED_REV[ex] === 'number' && (data.ecritures || []).length > 0; // V145 : jamais sur un exercice vide ou non chargé
+    synchroniserGED([{ exercice: ex, data }], { corbeilleAuto: corbeilleOk }).then(r => {
       if(r && r.echecs) toast(`${r.echecs} document(s) n'ont pas pu être copiés en PDF dans la GED (nouvel essai au prochain enregistrement)`, 'warn', 6000);
       if(r && r.corbeille) toast(`🗑 ${r.corbeille} document(s) de module mis à la corbeille de la GED (supprimé ou annulé dans son module) — restaurable(s) depuis GED › Corbeille`, 'warn', 9000);
       if(r && String(CURRENT_YEAR) === ex && EXERCISE_STATUS !== 'closed') allegerAnciensDocuments();
