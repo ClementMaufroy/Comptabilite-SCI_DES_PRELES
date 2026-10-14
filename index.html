@@ -178,7 +178,8 @@ document.addEventListener('DOMContentLoaded', () => { if(ATRIUM_INSTALL_INCOMPLE
       return r;
     });
     // V155 : la liste des exercices ne bloque plus l'enregistrement (elle restait parfois sans réponse : pastille figée)
-    setDoc(metaRef(), { years: arrayUnion(String(year)) }, { merge: true }).catch(e => console.warn('Liste des exercices non mise à jour', e));
+    const liste = setDoc(metaRef(), { years: arrayUnion(String(year)) }, { merge: true }).catch(e => console.warn('Liste des exercices non mise à jour', e));
+    if(expectedRev === 'new') await liste; // V156 : à la création d'un exercice, on attend qu'il figure dans la liste (délai de 30 s compris)
     return newRev;
   };
 
