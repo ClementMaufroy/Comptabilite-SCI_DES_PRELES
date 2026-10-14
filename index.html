@@ -3603,7 +3603,7 @@ async function confirmBackupRestore() {
     toast(`Exercice ${targetYear} clôturé — restauration refusée`, 'error'); closeBackupRestoreModal(); return;
   }
   // Écrasement volontaire, conditionné à la version lue juste avant (ou création si l'exercice n'existe plus)
-  try { await window._fbWrite(JSON.stringify(data), targetYear, cible ? cible.rev : 'new'); }
+  try { const nr = await window._fbWrite(JSON.stringify(data), targetYear, cible ? cible.rev : 'new'); if(typeof nr === 'number' && String(targetYear) === String(CURRENT_YEAR)) { LOADED_REV[String(targetYear)] = nr; _genExercice++; } } // V146 : sa propre restauration n'est pas un « changement d'un autre poste »
   catch(e) { toast(e && e.code === 'rev-conflict' ? `L'exercice ${targetYear} a changé entre-temps : restauration annulée, recommencez` : `Échec de l'écriture dans Firebase : rien n'a été restauré`, 'error', 7000); return; }
   if(String(targetYear) === String(CURRENT_YEAR)) { _pendingSave = null; clearTimeout(_saveTimeout); window._fbBloque = true; } // plus aucune écriture avant le rechargement ci-dessous
   closeBackupRestoreModal();
