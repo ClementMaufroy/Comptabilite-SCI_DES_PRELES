@@ -575,6 +575,17 @@ body:has(.modal-overlay[style*="flex"]) .hdr-status .dot { animation: none; } /*
 .alert-danger { background: var(--red-dim); color: var(--red); border-color: var(--red); }
 
 /* ── TOAST ── */
+#upload-overlay { z-index: 9000; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); background: rgba(0,0,0,0.55); cursor: progress; } /* V150 */
+html[data-theme="light"] #upload-overlay { background: rgba(45,40,30,0.30); }
+#upload-overlay .up-boite { width: 440px; max-width: 92vw; background: var(--bg1, #15171c); border: 1px solid var(--line2); border-radius: 10px; padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
+#upload-overlay .up-titre { font-size: 12px; font-weight: 700; letter-spacing: .08em; color: var(--cyan); margin-bottom: 10px; }
+#upload-overlay .up-compte { font-size: 11px; color: var(--text2); min-height: 14px; }
+#upload-overlay .up-nom { font-size: 12.5px; color: var(--text1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0 10px; min-height: 16px; }
+#upload-overlay .up-piste { height: 8px; border-radius: 4px; background: var(--line2); overflow: hidden; }
+#upload-overlay .up-barre { height: 100%; width: 0; background: var(--cyan); border-radius: 4px; transition: width .25s ease; }
+#upload-overlay .up-ligne { display: flex; justify-content: space-between; font-size: 11px; font-family: var(--mono); color: var(--text1); margin-top: 6px; }
+#upload-overlay .up-ligne span:last-child { color: var(--text2); }
+#upload-overlay .up-note { font-size: 10.5px; color: var(--text2); margin-top: 12px; line-height: 1.4; }
 #toast { position: fixed; bottom: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .t-msg { font-family: var(--mono); font-size: 11px; padding: 9px 14px; border-radius: var(--radius); border: 1px solid; pointer-events: all; animation: tfade 0.2s ease; max-width: 300px; letter-spacing: 0.03em; }
 .t-default { background: var(--bg3); color: var(--text0); border-color: var(--line2); }
@@ -15840,7 +15851,7 @@ function renderImmos() {
   const empty = document.getElementById('immos-empty');
   if(!groupsWrap) return;
 
-  if(!list.length) {
+  if(!list.length && !anomaliesImmosBG().length) { // V149 : un compte 20x/21x sans fiche reste affiché
     groupsWrap.innerHTML = '';
     if(empty) empty.style.display = 'block';
     updateNavCounts();
@@ -15860,7 +15871,9 @@ function renderImmos() {
   });
   const sortedRoots = Object.keys(groups).sort();
 
-  groupsWrap.innerHTML = htmlBandeauImmosSansNom() + htmlBandeauReprises() + sortedRoots.map(root => { // V138, V143
+  // V149 : comptes 20x/21x de la balance sans fiche → leur propre sous-tableau (vide) pour porter le contrôle
+  controleImmosBG().forEach(x => { const r = x.compte.slice(0, 3); if(!groups[r]) { groups[r] = []; sortedRoots.push(r); } }); sortedRoots.sort();
+  groupsWrap.innerHTML = htmlBandeauImmosBG() + htmlBandeauImmosSansNom() + htmlBandeauReprises() + sortedRoots.map(root => { // V138, V143, V149
     const items = groups[root].slice().sort((a,b) => String(a.compteImmo||'').localeCompare(String(b.compteImmo||'')));
     const rowsHtml = items.map(immo => {
       const schedule = computeAmortSchedule(immo);
@@ -15921,9 +15934,10 @@ function renderImmos() {
             <th style="width:142px"></th>
           </tr>
         </thead>
-        <tbody>${rowsHtml}</tbody>
+        <tbody>${rowsHtml || `<tr><td colspan="10" style="text-align:center;color:var(--text2);font-style:italic;">Aucune fiche d'immobilisation sur ce compte</td></tr>`}</tbody>
       </table>
-    </div>`;
+      ${htmlControleBGGroupe(root)}
+    </div>`; // V149 : rapprochement avec la balance, compte par compte
   }).join('');
 
   updateNavCounts();
@@ -16061,6 +16075,7 @@ function isDotationAlreadyPosted(immo) {
 
 function openDotationModal() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — comptabilisation impossible','error'); return; }
+  if(bloqueDotationsSiEcartBG()) return; // V149
   const list = ensureImmoArray().filter(i => !i.nonAmortissable);
   const year = anneeCompta();
 
@@ -16115,6 +16130,7 @@ function closeDotationModal() {
 
 function confirmDotationEcritures() {
   if(EXERCISE_STATUS === 'closed') { toast('Exercice clôturé — comptabilisation impossible','error'); return; }
+  if(bloqueDotationsSiEcartBG()) return; // V149
   const checks = document.querySelectorAll('.dotation-check:checked');
   if(!checks.length) { toast('Aucune dotation sélectionnée','error'); return; }
 
@@ -16694,18 +16710,23 @@ async function enregistrerDepot() {
   const prog = el('dep-progress'); prog.style.display = 'block';
   const barre = el('dep-progress-barre');
   let nbOk = 0; const echecs = [], idsCrees = []; // V113
+  envoiDebut(d.fichiers.length); // V150
+  try {
   for(let i = 0; i < d.fichiers.length; i++) {
     const f = d.fichiers[i];
     const etat = el('dep-etat-' + i);
     try {
       if(etat) etat.textContent = '…';
+      envoiFichier(i, f.name, f.size); // V150
       const prep = await preparerFichier(f);
+      envoiFichier(i, f.name, prep.blob.size);
       if(prep.blob.size > DOC_TAILLE_MAX) throw Object.assign(new Error('Fichier de plus de 20 Mo'), { code: 'atrium/trop-gros' });
       const id = crypto.randomUUID();
       const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
       await window._fbFichierEnvoyer(chemin, prep.blob, prep.type, r => {
         if(etat) etat.textContent = Math.round(r * 100) + ' %';
         barre.style.width = Math.round(((i + r) / d.fichiers.length) * 100) + '%';
+        envoiProgression(r); // V150
       });
       const meta = Object.assign({}, base, {
         id, titre: d.fichiers.length === 1 ? titreSaisi : titreDepuisNom(f.name), dateDoc: date,
@@ -16729,6 +16750,7 @@ async function enregistrerDepot() {
       if(etat) { etat.textContent = '✗'; etat.style.color = 'var(--red)'; }
     }
   }
+  } finally { envoiFin(); } // V150
   barre.style.width = '100%';
   d.enCours = false;
   updateNavCounts();
@@ -17691,13 +17713,17 @@ async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
   const ex = String(CURRENT_YEAR);
   const code = String(numDoc || '').split(/[\/_]/)[0];
   let ok = 0; const idsCrees = []; // V138
-  for(const f of fichiers) {
+  envoiDebut(fichiers.length); // V150
+  try {
+  for(const [k, f] of fichiers.entries()) {
     try {
+      envoiFichier(k, f.name, f.size); // V150
       const prep = await preparerFichier(f);
       if(prep.blob.size > DOC_TAILLE_MAX) throw new Error('plus de 20 Mo');
+      envoiFichier(k, f.name, prep.blob.size);
       const id = crypto.randomUUID();
       const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
-      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type);
+      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type, envoiProgression);
       const meta = { id, espace: 'compta', exercice: ex, test: isTestExercise(ex), typePiece: typeSiConnu(code), numDoc: numDoc || '',
         titre: fichiers.length === 1 && libelle ? libelle : titreDepuisNom(f.name), dateDoc: date || dateLocale(new Date()),
         nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin, depose: new Date().toISOString(), liens: [{ ex, io: cleIo(io), nd: numDoc || '' }] };
@@ -17705,6 +17731,7 @@ async function deposerPJSaisie(io, journal, date, numDoc, libelle) {
       indexerPiece(meta); ok++; idsCrees.push(meta.id);
     } catch(e) { console.error(e); toast(`Justificatif « ${f.name} » non enregistré : ${messageErreurStorage(e)} — joignez-le depuis le 📎 du Grand Livre`, 'error', 8000); }
   }
+  } finally { envoiFin(); } // V150
   if(ok) toast(`${ok} justificatif${ok > 1 ? 's' : ''} joint${ok > 1 ? 's' : ''} à l'écriture`, 'success');
   _ioEnDepot.delete(cleIo(io));
   apresChangementJustifs();
@@ -21153,14 +21180,19 @@ async function enregistrerDecompteFiche(idImmo, dateAchat) {
   if(!_dec) return true;
   const nom = nomImmo(idImmo), code = codeClasseurImmos();
   const lignes = _dec.lignes.filter(x => String(x.libelle || '').trim() || x.piece || x.fichier || (x.montant !== '' && x.montant !== null));
-  for(const x of lignes.filter(x => x.fichier)) {
+  const aEnvoyer = lignes.filter(x => x.fichier);
+  if(aEnvoyer.length) envoiDebut(aEnvoyer.length); // V150
+  try {
+  for(const [k, x] of aEnvoyer.entries()) {
     if(!window._fbStorageActif || !nom || !code) { toast('Fichier non déposé : GED indisponible', 'error', 6000); return false; }
     try {
+      envoiFichier(k, x.fichier.name, x.fichier.size); // V150
       const prep = await preparerFichier(x.fichier);
       if(prep.blob.size > DOC_TAILLE_MAX) throw new Error('plus de 20 Mo');
+      envoiFichier(k, x.fichier.name, prep.blob.size);
       const id = crypto.randomUUID();
       const chemin = `documents/${window.ATRIUM_INSTALL.collection}/${id}/${nomFichierSur(prep.nom)}`;
-      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type);
+      await window._fbFichierEnvoyer(chemin, prep.blob, prep.type, envoiProgression);
       const meta = { id, espace: 'permanent', rubrique: code, classeurs: [code], typeDP: x.typeDP || '', numDoc: decRefComplete(x), sousDossier: nom, groupe: id, version: 1, enVigueur: true, // V141 : type et référence
         titre: String(x.libelle || '').trim() || titreDepuisNom(x.fichier.name), dateDoc: x.dateDoc || dateAchat || dateLocale(new Date()),
         nomFichier: prep.nom, mime: prep.type, taille: prep.blob.size, chemin, depose: new Date().toISOString() };
@@ -21168,6 +21200,7 @@ async function enregistrerDecompteFiche(idImmo, dateAchat) {
       indexerPiece(meta); x.piece = id; x.fichier = null;
     } catch(e) { console.error(e); toast(`« ${x.fichier.name} » non déposé : ${messageErreurStorage ? messageErreurStorage(e) : (e.message || e)}`, 'error', 8000); return false; }
   }
+  } finally { if(aEnvoyer.length) envoiFin(); } // V150
   const propre = lignes.map(x => ({ id: x.id || crypto.randomUUID(), libelle: String(x.libelle || '').trim(), montant: arr2(x.montant), piece: x.piece || '' }));
   await enregistrerDocsConfig({ immosCout: Object.assign({}, decomptesImmos(), { [idImmo]: propre }) });
   return true;
@@ -21321,6 +21354,115 @@ function majZoneRepriseFiche() {
 
 function computeAmortSchedule(immo) { return appliquerReprise(immo, computeAmortScheduleTheorique(immo)); } // V143
 
+
+// ══════════════════════════════════════════════
+// V149 — RAPPROCHEMENT MODULE IMMOBILISATIONS ↔ BALANCE GÉNÉRALE
+// ══════════════════════════════════════════════
+// Pour chaque compte d'immobilisation : total des valeurs brutes des fiches = solde du compte dans la balance
+// (écritures de l'exercice affiché, à-nouveaux compris), au centime près. Sont contrôlés : les comptes portés par
+// une fiche, et tout compte 20x / 21x de la balance qui a un solde sans aucune fiche. Écart → alerte dans le module
+// et comptabilisation des dotations de l'exercice impossible.
+function soldeCompteBG(c) {
+  c = String(c);
+  return Math.round((DB.ecritures || []).filter(e => String(e.compte) === c).reduce((t, e) => t + (parseFloat(e.debit) || 0) - (parseFloat(e.credit) || 0), 0) * 100) / 100;
+}
+function controleImmosBG() {
+  const parCompte = new Map();
+  ensureImmoArray().forEach(i => { const c = String(i.compteImmo || ''); if(!c) return; parCompte.set(c, Math.round(((parCompte.get(c) || 0) + (parseFloat(i.valeurBrute) || 0)) * 100) / 100); });
+  [...new Set((DB.ecritures || []).map(e => String(e.compte || '')).filter(c => /^2[01]/.test(c)))].forEach(c => { if(!parCompte.has(c) && Math.abs(soldeCompteBG(c)) > 0.005) parCompte.set(c, 0); });
+  return [...parCompte.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([compte, immos]) => {
+    const bg = soldeCompteBG(compte), ecart = Math.round((immos - bg) * 100) / 100;
+    return { compte, immos, bg, ecart, ok: Math.abs(ecart) < 0.005 };
+  });
+}
+function anomaliesImmosBG() { return controleImmosBG().filter(x => !x.ok); }
+function htmlControleBGGroupe(root) {
+  const l = controleImmosBG().filter(x => x.compte.slice(0, 3) === root); if(!l.length) return '';
+  return `<div style="display:flex;flex-direction:column;gap:2px;margin-top:4px;font-size:10.5px;">${l.map(x => x.ok
+    ? `<div style="color:var(--text2);text-align:right;">Compte <span style="font-family:var(--mono);">${x.compte}</span> : valeurs brutes ${fmt(x.immos)} € = balance ${fmt(x.bg)} € <span style="color:var(--green);font-weight:700;">✓</span></div>`
+    : `<div style="text-align:right;color:var(--red);font-weight:600;">⚠ Compte <span style="font-family:var(--mono);">${x.compte}</span> : valeurs brutes des fiches ${fmt(x.immos)} € ≠ solde en balance ${fmt(x.bg)} € — écart ${fmt(x.ecart)} €</div>`).join('')}</div>`;
+}
+function htmlBandeauImmosBG() {
+  const a = anomaliesImmosBG(); if(!a.length) return '';
+  return `<div class="alert alert-danger" style="margin-bottom:14px;display:block;line-height:1.6;">
+      <strong>⚠ Le module ne cadre pas avec la balance générale</strong> (${a.length} compte${a.length > 1 ? 's' : ''}) : la comptabilisation des dotations ${anneeCompta()} est bloquée tant que l'écart n'est pas corrigé (fiche d'immobilisation ou écriture).
+      ${a.map(x => `<div style="font-size:11px;">• <span style="font-family:var(--mono);">${x.compte}</span> ${esc(getLib(x.compte))} : fiches ${fmt(x.immos)} € — balance ${fmt(x.bg)} € — écart ${fmt(x.ecart)} €${x.immos === 0 ? ' (aucune fiche sur ce compte)' : ''}</div>`).join('')}
+    </div>`;
+}
+function bloqueDotationsSiEcartBG() {
+  const a = anomaliesImmosBG(); if(!a.length) return false;
+  toast(`Dotations bloquées : le module Immobilisations ne cadre pas avec la balance (${a.map(x => x.compte + ' écart ' + fmt(x.ecart) + ' €').join(' ; ')})`, 'error', 9000);
+  return true;
+}
+
+
+// ══════════════════════════════════════════════
+// V150 — ÉCRAN D'ENVOI DES PIÈCES (barre de progression, outil flouté)
+// ══════════════════════════════════════════════
+// Affiché pendant tout import de pièces lancé par l'utilisateur : dépôt dans la GED (y compris depuis une écriture),
+// justificatifs joints en saisie, fichiers du décompte d'une fiche immo. La synchronisation automatique des PDF
+// générés par les modules ne l'affiche pas. Le flou n'existe que pendant l'envoi (retiré des fenêtres en V121).
+let _envoi = null; // { n, i, nom, taille, debut, prof }
+function _envoiEl() {
+  let o = document.getElementById('upload-overlay');
+  if(o) return o;
+  o = document.createElement('div'); o.id = 'upload-overlay'; o.className = 'modal-overlay';
+  o.innerHTML = `<div class="up-boite">
+      <div class="up-titre">⇪ ENVOI DES DOCUMENTS</div>
+      <div class="up-compte" id="up-compte"></div>
+      <div class="up-nom" id="up-nom"></div>
+      <div class="up-piste"><div class="up-barre" id="up-barre"></div></div>
+      <div class="up-ligne"><span id="up-pct">0 %</span><span id="up-detail"></span></div>
+      <div class="up-note" id="up-note">Ne fermez pas l'onglet pendant l'envoi.</div>
+    </div>`;
+  document.body.appendChild(o);
+  return o;
+}
+function _envoiTaille(o) { return o >= 1048576 ? (o / 1048576).toFixed(1).replace('.', ',') + ' Mo' : Math.max(1, Math.round(o / 1024)) + ' Ko'; }
+function _envoiQuitter(e) { e.preventDefault(); e.returnValue = ''; return ''; }
+function envoiDebut(n) {
+  if(_envoi) { _envoi.prof++; return; }
+  _envoi = { n: Math.max(1, n || 1), i: 0, nom: '', taille: 0, debut: Date.now(), prof: 1, r: 0 };
+  const o = _envoiEl(); o.style.display = 'flex';
+  window.addEventListener('beforeunload', _envoiQuitter);
+  _envoiMaj();
+}
+function envoiFichier(i, nom, taille) {
+  if(!_envoi) return;
+  Object.assign(_envoi, { i, nom: nom || '', taille: taille || 0, r: 0, phase: 'prep', debutFichier: Date.now() });
+  _envoiMaj();
+}
+function envoiProgression(r) {
+  if(!_envoi) return;
+  _envoi.r = Math.max(0, Math.min(1, r || 0)); _envoi.phase = 'envoi';
+  _envoiMaj();
+}
+function _envoiMaj() {
+  const s = _envoi; if(!s) return;
+  const g = Math.min(1, (s.i + s.r) / s.n), pct = Math.round(g * 100);
+  const $ = id => document.getElementById(id);
+  $('up-compte').textContent = s.n > 1 ? `Fichier ${Math.min(s.i + 1, s.n)} sur ${s.n}` : '';
+  $('up-nom').textContent = s.nom; $('up-nom').title = s.nom;
+  $('up-barre').style.width = pct + '%';
+  $('up-pct').textContent = pct + ' %';
+  let det = '';
+  if(s.phase === 'prep') det = 'préparation…';
+  else if(s.taille) {
+    const envoye = s.taille * s.r, sec = (Date.now() - (s.debutFichier || s.debut)) / 1000;
+    det = `${_envoiTaille(envoye)} / ${_envoiTaille(s.taille)}`;
+    if(sec > 2 && envoye > 0 && s.r < 1) { const reste = Math.round((s.taille - envoye) / (envoye / sec)); det += ` · ~${reste < 60 ? reste + ' s' : Math.ceil(reste / 60) + ' min'} restantes`; }
+  }
+  $('up-detail').textContent = det;
+  const lent = Date.now() - s.debut > 20000;
+  $('up-note').textContent = lent ? "Envoi en cours — un gros fichier ou une connexion lente peut prendre plusieurs minutes. Ne fermez pas l'onglet." : "Ne fermez pas l'onglet pendant l'envoi.";
+}
+function envoiFin() {
+  if(!_envoi) return;
+  if(--_envoi.prof > 0) return;
+  _envoi = null;
+  window.removeEventListener('beforeunload', _envoiQuitter);
+  const o = document.getElementById('upload-overlay'); if(o) o.style.display = 'none';
+}
 </script>
 </body>
 </html>
