@@ -1190,7 +1190,7 @@ applyTheme();
           </div>
           <div class="form-field">
             <label>Type document</label>
-            <input type="text" id="s-typedoc" oninput="simpleAc('s-typedoc', TYPEDOC_LIST)" onfocus="simpleAc('s-typedoc', TYPEDOC_LIST)" onkeydown="simpleAcKey(event,'s-typedoc',TYPEDOC_LIST)" onblur="simpleAcClose('s-typedoc')" autocomplete="off">
+            <input type="text" id="s-typedoc" oninput="simpleAc('s-typedoc', TYPEDOC_LIST); majIndicNumPiece()" onfocus="simpleAc('s-typedoc', TYPEDOC_LIST)" onkeydown="simpleAcKey(event,'s-typedoc',TYPEDOC_LIST)" onblur="simpleAcClose('s-typedoc')" autocomplete="off">
           </div>
           <div class="form-field">
             <label>Réf. document</label>
@@ -1198,6 +1198,7 @@ applyTheme();
             <input type="hidden" id="s-numdoc-sep" value="/">
           </div>
         </div>
+        <div id="s-numpiece-info" style="display:none;font-size:11px;color:var(--text1);margin-top:6px;"></div><!-- V157 : dernier n° de la série dans le GL -->
         <div class="form-row c2 mt8">
           <div class="form-field">
             <label>N° Global (auto)</label>
@@ -4623,6 +4624,49 @@ function updateNextNum() {
   const j = document.getElementById('s-journal').value.trim().toUpperCase();
   document.getElementById('s-num').value = '#'+DB.nextGlobalNum;
   document.getElementById('s-num-journal').value = (j && DB.journalNums[j]) ? j+'-'+DB.journalNums[j] : '';
+  try { majIndicNumPiece(); } catch(e) {} // V157
+}
+// V157 : pour le type de pièce saisi, plus grand n° purement numérique de la série dans le Grand Livre de l'exercice
+// (ex. FA/034 → « 034 »), quel que soit l'ordre des écritures. L'écriture en cours de modification est ignorée.
+function dernierNumSerieGL(type) {
+  type = String(type || '').trim().toUpperCase();
+  if(!type) return null;
+  const echap = type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + echap + '\\s*(?:[\\/_-]\\s*)?(\\d+)$', 'i');
+  const exclus = new Set(editingLineIds || []);
+  let max = -1, largeur = 0, nb = 0;
+  (DB.ecritures || []).forEach(e => {
+    if(exclus.has(e.id)) return;
+    const m = String(e.numDoc || '').trim().match(re);
+    if(!m) return;
+    const n = parseInt(m[1], 10);
+    nb++;
+    if(n > max) max = n;
+    if(m[1].length > largeur) largeur = m[1].length;
+  });
+  return max < 0 ? { nb: 0 } : { nb, max, largeur };
+}
+function majIndicNumPiece() {
+  const zone = document.getElementById('s-numpiece-info'); if(!zone) return;
+  const inp = document.getElementById('s-typedoc');
+  const type = codeTypeConnu(inp ? inp.value : '');
+  if(!type || EXERCISE_STATUS === 'closed') { zone.style.display = 'none'; zone.innerHTML = ''; return; }
+  const r = dernierNumSerieGL(type);
+  if(!r || !r.nb) { // aucune écriture de cette série en numérotation numérique
+    if(type === 'FA' || type === 'TCAISSE') {
+      zone.innerHTML = `Aucune pièce ${esc(type)}/… numérotée dans le Grand Livre de l'exercice ${esc(CURRENT_YEAR)} — premier n° : <a href="#" class="nd-lien" style="color:var(--cyan);" onclick="utiliserNumPiece('001');return false;" title="Reporter ce n° dans Réf. document">${esc(type)}/001</a>`;
+      zone.style.display = 'block';
+    } else { zone.style.display = 'none'; zone.innerHTML = ''; }
+    return;
+  }
+  const larg = Math.max(3, r.largeur);
+  const dernier = String(r.max).padStart(larg, '0'), suivant = String(r.max + 1).padStart(larg, '0');
+  zone.innerHTML = `Dernier n° ${esc(type)} dans le Grand Livre : <span style="font-family:var(--mono);color:var(--text0);">${esc(type)}/${dernier}</span> — prochain : <a href="#" class="nd-lien" style="color:var(--cyan);font-family:var(--mono);" onclick="utiliserNumPiece('${suivant}');return false;" title="Reporter ce n° dans Réf. document">${esc(type)}/${suivant}</a>`;
+  zone.style.display = 'block';
+}
+function utiliserNumPiece(ref) {
+  const r = document.getElementById('s-refdoc'); if(!r) return;
+  r.value = ref; r.focus();
 }
 function addLine(focusId, force) {
   if(EXERCISE_STATUS === 'closed' && !force) return null;
@@ -4917,6 +4961,7 @@ function editEcriture(id) {
   if(sepEl) sepEl.value = separateur;
   document.getElementById('s-typedoc').value = typedoc;
   document.getElementById('s-refdoc').value = refdoc;
+  try { majIndicNumPiece(); } catch(e) {} // V157
   document.getElementById('s-num').value = '#'+e.num;
   document.getElementById('s-num-journal').value = e.numJ ? e.journal+'-'+e.numJ : '';
 
@@ -6823,7 +6868,7 @@ function simpleAc(fieldId, list) {
 }
 function simpleAcPick(fieldId, code) {
   const inp = document.getElementById(fieldId);
-  if(inp) { inp.value = code; if(fieldId==='s-journal') updateNextNum(); }
+  if(inp) { inp.value = code; if(fieldId==='s-journal') updateNextNum(); if(fieldId==='s-typedoc') majIndicNumPiece(); } // V157
   simpleAcClose(fieldId);
 }
 function simpleAcKey(e, fieldId, list) {
