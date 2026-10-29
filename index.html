@@ -2303,7 +2303,7 @@ applyTheme();
           <label>Format n° de pièce</label>
           <select id="type-format-piece" onchange="updateTypePreview()">
             <option value="prefixe">Préfixe seul (ex. QUIT)</option>
-            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT/09/26)</option>
+            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT/09/26) — mois d'affectation pour un +, mois de l'opération pour un −</option>
           </select>
         </div>
       </div>
@@ -3744,7 +3744,29 @@ let _unsubscribeListen = null;
 // ══════════════════════════════════════════════
 // V112 : l'ancien post-it « Pièces à formaliser » (DB.piecesAFormaliser) est retiré ; ces deux fonctions ne font plus rien
 // (elles restent appelées par les modules, sans effet).
-function notifierPieceGeneree() {}
+// V159 : après une écriture générée par un module (gestion locative, échéanciers, emprunts, km…), la fenêtre
+// « 📎 Joindre ? » propose les pièces de la GED de même n° — comme après une saisie manuelle. Une seule fenêtre
+// pour une comptabilisation groupée ; elle attend que les autres fenêtres (ex. proposition de quittance) soient fermées.
+let _pieceGenAttente = new Set(), _pieceGenTimer = null;
+function notifierPieceGeneree(module, numDoc, libelle, date) {
+  if(!numDoc || !date) return;
+  _pieceGenAttente.add(normRef(numDoc) + '|' + date);
+  if(!_pieceGenTimer) _pieceGenTimer = setTimeout(() => proposerSuggestionsModules(0), 700);
+}
+async function proposerSuggestionsModules(essai) {
+  if(document.querySelector('.modal-overlay[style*="flex"]') && essai < 200) { _pieceGenTimer = setTimeout(() => proposerSuggestionsModules(essai + 1), 600); return; }
+  _pieceGenTimer = null;
+  const cles = _pieceGenAttente; _pieceGenAttente = new Set();
+  try {
+    if(EXERCISE_STATUS === 'closed' || !cles.size) return;
+    if(PIECES === null && window._fbStorageActif) await chargerPieces();
+    const liste = suggestionsParNumero().filter(x => cles.has(normRef(x.j.numDoc) + '|' + x.j.date));
+    if(!liste.length) return;
+    const nb = nbEcrituresDe(liste.map(x => x.j));
+    proposerSuggestions(liste, nb > 1 ? `${nb} écritures qui viennent d'être comptabilisées portent le n° d'une pièce de la GED : la joindre ?`
+      : `Une pièce de la GED porte le n° ${liste[0].j.numDoc} : la joindre à l'écriture #${liste[0].j.num} qui vient d'être comptabilisée ?`);
+  } catch(e) { console.warn('Suggestions après comptabilisation', e); }
+}
 let _postItOpen = false; // le panneau est fermé au démarrage
 // Clic à l'extérieur du panneau ou du bouton → ferme
 document.addEventListener('click', (e) => {
@@ -9879,6 +9901,13 @@ function moisImpliques(loc) {
 // Génère le n° de pièce d'un mouvement selon le format du type.
 // - 'prefixe'          -> "RB"
 // - 'prefixe_mois'     -> "RB/09/26"  (MM/AA du mois d'affectation) — V117 : « / » comme la saisie et la GED
+// V159 : mois du n° de pièce d'un mouvement. « + » (loyer, provision…) : mois d'affectation (l'appel du mois) ;
+// « − » (encaissement, APL…) : mois de la date d'opération (le relevé bancaire où figure le paiement),
+// même si le paiement est affecté à un mois antérieur.
+function moisPieceMouvement(sens, moisAffectation, dateOperation) {
+  if(sens === '-' && /^\d{4}-\d{2}/.test(dateOperation || '')) return dateOperation.slice(0, 7);
+  return moisAffectation;
+}
 function genererNumeroPiece(type, moisAffectation) {
   if(!type) return '';
   const prefix = type.prefixePiece || '';
@@ -10423,7 +10452,7 @@ function updateMouvementPreview() {
     ? (libInput.value || '(vide)')
     : (composerLibelleMultiMois(t, '', moisList) || '(vide)');
   document.getElementById('mvt-preview-libelle').textContent = previewLib;
-  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, moisPrincipal) || '(vide)';
+  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, moisPieceMouvement(t.sens, moisPrincipal, document.getElementById('mvt-date-operation').value)) || '(vide)'; // V159
 }
 
 // Rafraîchit la zone d'affectation (les 3 mois candidats avec leurs soldes + cases/montants)
@@ -10798,12 +10827,15 @@ function postMouvementEcritures(mvt, t, loc) {
   const moisAffectes = (mvt.affectations||[]).map(a=>a.mois);
   const moisPrincipal = moisAffectes[0] || (mvt.dateOperation||'').slice(0,7);
   const libelleFinal = composerLibelleMultiMois(t, mvt.libelle, moisAffectes);
-  const numDoc = genererNumeroPiece(t, moisPrincipal);
+  const numDoc = genererNumeroPiece(t, moisPieceMouvement(t.sens, moisPrincipal, mvt.dateOperation)); // V159
 
-  // Cherche un groupe existant (même journal + date + numDoc) — c'est le mécanisme de regroupement
+  // Regroupement (même journal + date + numDoc) — V159 : seulement les mouvements « + » du MÊME locataire
+  // (loyer + provision d'un même appel). Un paiement (« − ») = une écriture, et jamais deux locataires dans une écriture.
   let ioGroup = null;
-  if(numDoc) {
-    const matched = DB.ecritures.find(e => e.journal === t.journal && e.date === mvt.dateOperation && e.numDoc === numDoc);
+  if(numDoc && t.sens === '+') {
+    const idsLoc = new Set(((loc && loc.mouvements) || []).filter(m => m.id !== mvt.id && m.sens === '+').map(m => m.id));
+    const matched = DB.ecritures.find(e => e.journal === t.journal && e.date === mvt.dateOperation && e.numDoc === numDoc
+      && (e._mvtLocataireIds || (e._mvtLocataireId ? [e._mvtLocataireId] : [])).some(id => idsLoc.has(id)));
     if(matched) ioGroup = matched._io;
   }
   if(!ioGroup) ioGroup = Date.now() + Math.floor(Math.random()*1000);
