@@ -3034,10 +3034,10 @@ applyTheme();
     <input type="file" id="dep-input" multiple accept=".pdf,image/*,.doc,.docx,.xls,.xlsx,.odt,.ods,.txt,.csv,.eml,.msg" style="display:none;" onchange="depotAjouterFichiers(this.files);this.value='';">
     <div id="dep-fichiers" style="max-height:120px;overflow-y:auto;margin-bottom:10px;"></div>
     <div id="dep-dossier-c" style="display:none;font-size:11px;color:var(--text1);margin-bottom:8px;"></div>
-    <div class="form-field mb8" id="dep-titre-zone"><label>Titre *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
+    <div class="form-field mb8" id="dep-titre-zone"><label id="dep-titre-lib">Nom de la pièce *</label><input type="text" id="dep-titre" placeholder="ex. Facture plombier — 16 rue de la Concorde"></div>
     <div id="dep-multi-note" style="display:none;font-size:10px;color:var(--text2);margin-bottom:8px;">Import multiple : chaque document garde son nom de fichier, sans date, type ni référence (à compléter ensuite avec ✎ si besoin).</div>
     <div style="display:flex;gap:10px;align-items:flex-end;" class="mb8">
-      <div class="form-field dep-unit" style="width:140px;flex:none;"><label>Date *</label><input type="date" id="dep-date"></div>
+      <div class="form-field dep-unit" style="width:140px;flex:none;"><label id="dep-date-lib">Date de la pièce *</label><input type="date" id="dep-date"></div>
       <div id="dep-bloc-compta" style="flex:1;min-width:0;"><div style="display:flex;gap:10px;align-items:flex-end;">
         <div class="form-field dep-unit" style="flex:1;min-width:0;"><label>Type</label><select id="dep-type" style="font-family:var(--mono);"></select></div>
         <div class="form-field dep-unit" style="flex:1.3;min-width:0;"><label title="Le type se place au début du n° de pièce, la suite après un « / »">N° de pièce</label><div style="display:flex;align-items:center;gap:0;"><span id="dep-numdoc-prefixe" style="display:none;font-family:var(--mono);font-size:12px;padding:0 6px;height:34px;line-height:34px;background:var(--bg3);border:1px solid var(--line2);border-right:none;border-radius:var(--radius) 0 0 var(--radius);white-space:nowrap;"></span><input type="text" id="dep-numdoc" placeholder="ex. 09/26" style="font-family:var(--mono);flex:1;min-width:0;"></div></div>
@@ -16806,7 +16806,7 @@ function ouvrirDepot(espace, rubrique, fichiers, versionDe, options) {
   _depot.dossierCompta = (!source && espace === 'compta' && _docsVue === 'compta' && _docsClasseur.compta && !String(_docsClasseur.compta).startsWith('__')) ? { id: _docsClasseur.compta, chemin: explCourant('compta', _docsClasseur.compta) } : null;
   { const nd = el('dep-dossier-c'); if(nd) { nd.style.display = _depot.dossierCompta && _depot.dossierCompta.chemin ? '' : 'none'; nd.textContent = _depot.dossierCompta && _depot.dossierCompta.chemin ? '📁 Dossier : ' + _depot.dossierCompta.chemin.replace(/\//g, ' › ') + ' (pièces du type de ce classeur)' : ''; } } majListeIntercalaires('dep-inter-list', (el('dep-cls-sel') || {}).value || ''); // V127
   document.querySelectorAll('.nv-type-dp').forEach(x => x.remove());
-  el('dep-date').value = dateLocale(new Date());
+  el('dep-date').value = (options && options.lien) ? '' : dateLocale(new Date()); // V163 : vide quand on joint à une écriture
   el('dep-titre').value = source ? (source.titre || '') : '';
   el('dep-err').textContent = '';
   el('dep-progress').style.display = 'none';
@@ -16847,6 +16847,9 @@ function depotMajEspace() {
     toast('Aucun exercice ouvert : seul le dossier permanent est disponible', 'warn');
   }
   document.getElementById('dep-bloc-compta').style.display = _depot.espace === 'compta' ? '' : 'none';
+  { const pc = _depot.espace === 'compta'; // V163
+    const lt = document.getElementById('dep-titre-lib'); if(lt) lt.textContent = pc ? 'Nom de la pièce *' : 'Nom du document *';
+    const ld = document.getElementById('dep-date-lib'); if(ld) ld.textContent = pc ? 'Date de la pièce *' : 'Date du document *'; }
   document.getElementById('dep-bloc-permanent').style.display = _depot.espace === 'permanent' ? '' : 'none';
   document.getElementById('dep-rubrique').disabled = !!_depot.versionDe; // (V107 : remplacé par les classeurs)
 }
@@ -16864,7 +16867,7 @@ function depotAjouterFichiers(liste) {
   }
   if(_depot.versionDe && ok.length > 1) toast('Une nouvelle version = un seul fichier : seul le premier est retenu', 'warn');
   const titre = document.getElementById('dep-titre');
-  if(_depot.fichiers.length === 1 && !titre.value) titre.value = titreDepuisNom(_depot.fichiers[0].name);
+  if(_depot.fichiers.length === 1 && !titre.value && !(_depot.options && _depot.options.lien)) titre.value = titreDepuisNom(_depot.fichiers[0].name); // V163 : pas de nom proposé quand on joint à une écriture
   depotRenderFichiers();
 }
 function depotRetirerFichier(i) { if(!_depot || _depot.enCours) return; _depot.fichiers.splice(i, 1); depotRenderFichiers(); }
@@ -16892,9 +16895,10 @@ async function enregistrerDepot() {
   if(!d.fichiers.length) { err.textContent = 'Choisissez au moins un fichier.'; return; }
   const multi = !!d.multi && d.fichiers.length > 1; // V131
   const date = multi ? '' : el('dep-date').value;
-  if(!multi && !date) { err.textContent = 'La date du document est obligatoire.'; return; }
+  const pcs = d.espace === 'compta'; // V163
+  if(!multi && !date) { err.textContent = pcs ? 'La date de la pièce est obligatoire.' : 'La date du document est obligatoire.'; return; }
   const titreSaisi = el('dep-titre').value.trim();
-  if(d.fichiers.length === 1 && !titreSaisi) { err.textContent = 'Le titre est obligatoire.'; return; }
+  if(d.fichiers.length === 1 && !titreSaisi) { err.textContent = pcs ? 'Le nom de la pièce est obligatoire.' : 'Le nom du document est obligatoire.'; return; }
   const source = d.versionDe ? (PIECES || []).find(p => p.id === d.versionDe) : null;
   let base;
   if(d.espace === 'compta') {
@@ -17735,7 +17739,7 @@ function deposerPourEcriture(io) {
   const ios = iosCibles(io);
   const code = String(j.numDoc || '').split(/[\/_]/)[0];
   ouvrirDepot('compta', null, null, null, {
-    lien: { ex: String(CURRENT_YEAR), ios }, numDoc: j.numDoc, date: j.date, typePiece: typeSiConnu(code), titre: j.libelle,
+    lien: { ex: String(CURRENT_YEAR), ios }, numDoc: j.numDoc, typePiece: typeSiConnu(code), // V163 : nom et date de la pièce laissés vides (ce ne sont pas ceux de l'écriture)
     libelleEcritures: ios.length > 1 ? `(${ios.length})` : '#' + j.num, apres: apresChangementJustifs
   });
 }
