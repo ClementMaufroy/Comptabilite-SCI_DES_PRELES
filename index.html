@@ -2303,7 +2303,7 @@ applyTheme();
           <label>Format n° de pièce</label>
           <select id="type-format-piece" onchange="updateTypePreview()">
             <option value="prefixe">Préfixe seul (ex. QUIT)</option>
-            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT/09/26) — mois d'affectation pour un +, mois de l'opération pour un −</option>
+            <option value="prefixe_mois">Préfixe + MM/AA (ex. QUIT/09/26) — mois d'affectation ; relevé bancaire (RBANQUE) d'un paiement : mois de l'opération</option>
           </select>
         </div>
       </div>
@@ -9901,11 +9901,19 @@ function moisImpliques(loc) {
 // Génère le n° de pièce d'un mouvement selon le format du type.
 // - 'prefixe'          -> "RB"
 // - 'prefixe_mois'     -> "RB/09/26"  (MM/AA du mois d'affectation) — V117 : « / » comme la saisie et la GED
-// V159 : mois du n° de pièce d'un mouvement. « + » (loyer, provision…) : mois d'affectation (l'appel du mois) ;
-// « − » (encaissement, APL…) : mois de la date d'opération (le relevé bancaire où figure le paiement),
-// même si le paiement est affecté à un mois antérieur.
-function moisPieceMouvement(sens, moisAffectation, dateOperation) {
-  if(sens === '-' && /^\d{4}-\d{2}/.test(dateOperation || '')) return dateOperation.slice(0, 7);
+// V159 → V160 : mois du n° de pièce d'un mouvement.
+// Par défaut, le mois d'affectation : l'appel du mois (QUIT), le bordereau CAF du mois payé (CAF)…
+// Seule exception : un paiement « − » justifié par un relevé bancaire prend le mois de la date d'opération
+// (le relevé où figure le virement), même s'il est affecté à un mois antérieur.
+function estReleveBancaire(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if(!c) return false;
+  if(c === 'RBANQUE') return true;
+  const t = (typeof getTypedocList === 'function' ? getTypedocList() : []).find(x => String(x.code).toUpperCase() === c);
+  return !!(t && /relev[ée]s?\s+(de\s+)?(banque|bancaires?)/i.test(t.label || ''));
+}
+function moisPieceMouvement(type, moisAffectation, dateOperation) {
+  if(type && type.sens === '-' && estReleveBancaire(type.prefixePiece) && /^\d{4}-\d{2}/.test(dateOperation || '')) return dateOperation.slice(0, 7);
   return moisAffectation;
 }
 function genererNumeroPiece(type, moisAffectation) {
@@ -10452,7 +10460,7 @@ function updateMouvementPreview() {
     ? (libInput.value || '(vide)')
     : (composerLibelleMultiMois(t, '', moisList) || '(vide)');
   document.getElementById('mvt-preview-libelle').textContent = previewLib;
-  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, moisPieceMouvement(t.sens, moisPrincipal, document.getElementById('mvt-date-operation').value)) || '(vide)'; // V159
+  document.getElementById('mvt-preview-numpiece').textContent = genererNumeroPiece(t, moisPieceMouvement(t, moisPrincipal, document.getElementById('mvt-date-operation').value)) || '(vide)'; // V159 → V160
 }
 
 // Rafraîchit la zone d'affectation (les 3 mois candidats avec leurs soldes + cases/montants)
@@ -10827,7 +10835,7 @@ function postMouvementEcritures(mvt, t, loc) {
   const moisAffectes = (mvt.affectations||[]).map(a=>a.mois);
   const moisPrincipal = moisAffectes[0] || (mvt.dateOperation||'').slice(0,7);
   const libelleFinal = composerLibelleMultiMois(t, mvt.libelle, moisAffectes);
-  const numDoc = genererNumeroPiece(t, moisPieceMouvement(t.sens, moisPrincipal, mvt.dateOperation)); // V159
+  const numDoc = genererNumeroPiece(t, moisPieceMouvement(t, moisPrincipal, mvt.dateOperation)); // V159 → V160
 
   // Regroupement (même journal + date + numDoc) — V159 : seulement les mouvements « + » du MÊME locataire
   // (loyer + provision d'un même appel). Un paiement (« − ») = une écriture, et jamais deux locataires dans une écriture.
