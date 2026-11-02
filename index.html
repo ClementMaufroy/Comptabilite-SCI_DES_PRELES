@@ -10464,6 +10464,20 @@ function updateMouvementPreview() {
 }
 
 // Rafraîchit la zone d'affectation (les 3 mois candidats avec leurs soldes + cases/montants)
+// V161 : mois proposés à l'affectation. Toujours les 3 mois jusqu'au mois de référence ; pour un paiement (« − »),
+// aussi les mois SUIVANTS de l'exercice pour lesquels une dette (« + ») est déjà créée — un trop-perçu peut ainsi
+// être affecté au loyer du mois suivant au lieu de rester en crédit en attente. En modification, les mois déjà
+// affectés au mouvement sont toujours proposés (jamais perdus).
+function moisCandidatsAffectation(loc, moisRef, sens, editId) {
+  const set = new Set(troisMoisCandidats(moisRef));
+  if(sens === '-') (loc.mouvements || []).forEach(m => {
+    if(m.sens !== '+' || m.id === editId) return;
+    (m.affectations || []).forEach(a => { if(a.mois > moisRef && moisDansExerciceCourant(a.mois)) set.add(a.mois); });
+  });
+  const mvt = editId ? (loc.mouvements || []).find(m => m.id === editId) : null;
+  ((mvt && mvt.affectations) || []).forEach(a => { if(a.mois) set.add(a.mois); });
+  return [...set].sort();
+}
 function refreshMouvementAffectationRows() {
   const locId = document.getElementById('mvt-modal-loc-id').value;
   const loc = ensureLocatairesArray().find(l => l.id === locId);
@@ -10472,13 +10486,13 @@ function refreshMouvementAffectationRows() {
   const sens = document.getElementById('mvt-sens').value;
   const container = document.getElementById('mvt-affectations-rows');
   if(!moisRef) { container.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:11px;font-style:italic;">Choisissez d\'abord le mois d\'opération.</div>'; return; }
-  const mois3 = troisMoisCandidats(moisRef);
+  const mois3 = moisCandidatsAffectation(loc, moisRef, sens, document.getElementById('mvt-edit-id').value); // V161
   // Pour un "+" : un seul mois d'affectation (radio + montant auto). Pour un "-" : multi-sélection avec montant par mois.
   if(sens === '+') {
     container.innerHTML = mois3.map((m, i) => {
       const s = computeSoldeMoisExcluant(loc, m, document.getElementById('mvt-edit-id').value);
       const soldeTxt = s > 0.005 ? `Solde : <span style="color:var(--amber);font-weight:600;">+${fmt(s)}€</span>` : (s < -0.005 ? `Solde : <span style="color:var(--green);font-weight:600;">${fmt(s)}€</span>` : `<span style="color:var(--text2);">Solde : 0</span>`);
-      const checked = (i === mois3.length - 1) ? 'checked' : '';
+      const checked = (m === moisRef) ? 'checked' : ''; // V161 : le mois de référence (la liste peut contenir d'autres mois)
       return `<label style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);cursor:pointer;">
         <input type="radio" name="mvt-aff-mois" value="${m}" ${checked} onchange="updateLibelleAutomatique();updateMouvementPreview()" style="width:14px;height:14px;">
         <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
@@ -10492,7 +10506,7 @@ function refreshMouvementAffectationRows() {
       const soldeTxt = s > 0.005 ? `Solde dû : <span style="color:var(--amber);font-weight:600;">${fmt(s)}€</span>` : (s < -0.005 ? `Crédit : <span style="color:var(--green);font-weight:600;">${fmt(-s)}€</span>` : `<span style="color:var(--text2);">Soldé (0)</span>`);
       return `<div class="mvt-aff-row" data-mois="${m}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);">
         <input type="checkbox" class="mvt-aff-check" data-mois="${m}" onchange="onAffectationChanged('${m}')" style="width:14px;height:14px;">
-        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
+        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}${m > moisRef ? ' <span style="font-size:10px;color:var(--text2);">(mois suivant)</span>' : ''}</span>
         <span style="font-size:10px;min-width:130px;text-align:right;">${soldeTxt}</span>
         <input type="number" step="0.01" class="mvt-aff-montant" data-mois="${m}" placeholder="0.00" disabled style="width:100px;font-family:var(--mono);text-align:right;" oninput="updateMouvementTotal()">
       </div>`;
@@ -10783,7 +10797,11 @@ function saveMouvement() {
     if(!mvt) return;
     if(mvt.ecritureId && EXERCISE_STATUS === 'closed') { toast('Écriture dans exercice clôturé — modification refusée', 'error'); return; }
     // Supprime les anciennes écritures de ce mouvement (regénération)
+    const ancienIo = mvt.ecritureId;
     supprimerEcrituresDuMouvement(mvt);
+    // V161 : si l'ancienne écriture n'appartenait qu'à ce mouvement, la nouvelle reprend son identifiant
+    // (les justificatifs joints dans la GED restent attachés)
+    if(ancienIo !== undefined && ancienIo !== null && ancienIo !== '' && !DB.ecritures.some(e => cleIo(e._io) === cleIo(ancienIo))) mvt._ioRepris = ancienIo;
   } else {
     mvt = { id: crypto.randomUUID() };
     loc.mouvements.push(mvt);
@@ -10846,6 +10864,8 @@ function postMouvementEcritures(mvt, t, loc) {
       && (e._mvtLocataireIds || (e._mvtLocataireId ? [e._mvtLocataireId] : [])).some(id => idsLoc.has(id)));
     if(matched) ioGroup = matched._io;
   }
+  if(!ioGroup && mvt._ioRepris !== undefined) ioGroup = mvt._ioRepris; // V161
+  delete mvt._ioRepris;
   if(!ioGroup) ioGroup = Date.now() + Math.floor(Math.random()*1000);
 
   // Fonction d'ajout d'une ligne au groupe, avec fusion si le compte y est déjà présent (sens équivalent)
