@@ -9840,6 +9840,55 @@ function computeCreditEnAttente(loc) {
   return Math.round(total*100)/100;
 }
 
+// ══ V162 — TROP-PERÇUS : IMPUTATION D'OFFICE AU MOIS SUIVANT ══
+// L'excédent d'un paiement (crédit en attente) est imputé d'office, et en priorité, au premier mois SUIVANT
+// qui a une dette (« + » : loyer, provision…) encore due, sans dépasser ce solde ; le reste éventuel passe au mois
+// d'après. Le loyer n'est pas modifié : c'est une affectation du paiement d'origine marquée « impute » (mois d'origine).
+// Aucune écriture : l'excédent est déjà en banque et au 411 depuis l'encaissement.
+// Recalcul complet et déterministe : on libère les imputations vers l'exercice ouvert puis on réimpute
+// (après une saisie, une modification, une suppression…).
+// « de novembre 2026 » / « d'octobre 2026 »
+function deMoisLabel(m) { const l = moisLabelFromYYYYMM(m); return (/^[aeiouyàâéèêîôû]/i.test(l) ? "d'" : 'de ') + l; }
+function moisSourcePaiement(mvt) {
+  const ms = (mvt.affectations || []).filter(a => !a.impute && a.mois).map(a => a.mois).sort();
+  return ms.length ? ms[ms.length - 1] : String(mvt.dateOperation || '').slice(0, 7);
+}
+function imputerCreditsEnAttente(loc) {
+  if(!loc || EXERCISE_STATUS === 'closed') return false;
+  ensureLocV2(loc);
+  const r2 = x => Math.round(x * 100) / 100;
+  const mvts = loc.mouvements || [];
+  const avant = JSON.stringify(mvts.map(m => [m.affectations, m.creditEnAttente]));
+  const paiements = mvts.filter(m => m.sens === '-');
+  paiements.forEach(m => {
+    let libere = 0;
+    m.affectations = (m.affectations || []).filter(a => { if(a.impute && moisDansExerciceCourant(a.mois)) { libere += parseFloat(a.montant) || 0; return false; } return true; });
+    if(libere > 0.005) m.creditEnAttente = r2((parseFloat(m.creditEnAttente) || 0) + libere);
+  });
+  const moisDettes = [...new Set(mvts.filter(m => m.sens === '+').flatMap(m => (m.affectations || []).map(a => a.mois)).filter(Boolean))].sort();
+  paiements.filter(m => (parseFloat(m.creditEnAttente) || 0) > 0.005)
+    .sort((a, b) => String(a.dateOperation || '').localeCompare(String(b.dateOperation || '')))
+    .forEach(m => {
+      const src = moisSourcePaiement(m);
+      for(const mo of moisDettes) {
+        if((parseFloat(m.creditEnAttente) || 0) <= 0.005) break;
+        if(mo <= src || !moisDansExerciceCourant(mo)) continue;
+        const du = computeSoldeMoisExcluant(loc, mo, null);
+        if(du <= 0.005) continue;
+        const x = r2(Math.min(du, parseFloat(m.creditEnAttente) || 0));
+        m.affectations.push({ mois: mo, montant: x, impute: src });
+        m.creditEnAttente = r2((parseFloat(m.creditEnAttente) || 0) - x);
+      }
+    });
+  return JSON.stringify(mvts.map(m => [m.affectations, m.creditEnAttente])) !== avant;
+}
+function imputerTousLesCredits() {
+  if(EXERCISE_STATUS === 'closed') return false;
+  let change = false;
+  (DB.locataires || []).forEach(loc => { try { if(imputerCreditsEnAttente(loc)) change = true; } catch(e) { console.error('Imputation des trop-perçus', e); } });
+  return change;
+}
+
 // Solde GLOBAL v2 : somme algébrique de tous les soldes initiaux + tous les mouvements,
 // diminuée des crédits en attente (qui sont "à disposition" du locataire, pas des dettes).
 // > 0 = le locataire doit ; < 0 = solde créditeur.
@@ -9982,6 +10031,7 @@ function closeLocataireDetail() {
 // Rendu de la vue détail (appelé par renderLocataires quand _locDetailId est défini)
 var _locDetailScrollBottom = false, _locDetailScrollPos = null;
 function renderLocataireDetail() {
+  try { if(imputerTousLesCredits()) saveDB(); } catch(e) { console.error(e); } // V162
   const loc = ensureLocatairesArray().find(l => l.id === _locDetailId);
   const wrap = document.getElementById('locataires-list-wrap');
   const empty = document.getElementById('locataires-empty');
@@ -10066,7 +10116,9 @@ function renderLocataireDetail() {
   (loc.mouvements||[]).forEach(mvt => {
     const affs = (mvt.affectations||[]).filter(a => a.mois);
     if(!affs.length) { nonAffectes.push(mvt); return; }
-    affs.forEach((a, idx) => ajouterLigne(a.mois, { mvt, montant: parseFloat(a.montant)||0, partiel: affs.length > 1, dernier: idx === affs.length - 1 }));
+    const affsN = affs.filter(a => !a.impute); // V162 : imputations d'office affichées à part
+    affsN.forEach((a, idx) => ajouterLigne(a.mois, { mvt, montant: parseFloat(a.montant)||0, partiel: affsN.length > 1, dernier: idx === affsN.length - 1 }));
+    affs.filter(a => a.impute).forEach(a => ajouterLigne(a.mois, { mvt, montant: parseFloat(a.montant)||0, impute: a.impute }));
   });
   const moisMvts = Object.keys(lignesParMois).sort();
   const thS = 'position:sticky;top:0;z-index:2;padding:5px 8px;font-size:9px;letter-spacing:.6px;text-transform:uppercase;color:var(--text2);background:var(--bg2);border-bottom:1px solid var(--line);box-shadow:0 1px 0 var(--line);';
@@ -10088,7 +10140,9 @@ function renderLocataireDetail() {
     const plus = mvt.sens === '+';
     const color = plus ? 'var(--amber)' : 'var(--green)';
     const notes = [];
+    if(l.impute) notes.push(`<span style="color:var(--cyan);">trop-perçu ${deMoisLabel(l.impute)} imputé d'office</span>`); // V162
     if(l.partiel) notes.push(`<span style="color:var(--text3);">part de ${fmt(mvt.montant)} € répartis</span>`);
+    if(l.dernier) { const imp = (mvt.affectations||[]).filter(a => a.impute); if(imp.length) notes.push(`<span style="color:var(--cyan);">dont ${fmt(imp.reduce((s,a)=>s+(parseFloat(a.montant)||0),0))} € de trop-perçu imputé sur ${imp.map(a => moisLabelFromYYYYMM(a.mois)).join(', ')}</span>`); }
     if(l.dernier && mvt.creditEnAttente > 0.005) notes.push(`<span style="color:var(--cyan);">+ ${fmt(mvt.creditEnAttente)} € en attente</span>`);
     if(!mvt.ecritureId) notes.push(`<span style="color:var(--amber);">◯ non comptabilisé</span>`);
     return `<tr style="line-height:1.25;">${moisCell}
@@ -10468,14 +10522,11 @@ function updateMouvementPreview() {
 // aussi les mois SUIVANTS de l'exercice pour lesquels une dette (« + ») est déjà créée — un trop-perçu peut ainsi
 // être affecté au loyer du mois suivant au lieu de rester en crédit en attente. En modification, les mois déjà
 // affectés au mouvement sont toujours proposés (jamais perdus).
+// V162 : plus de choix manuel des mois suivants — l'excédent d'un paiement est imputé d'office (imputerCreditsEnAttente).
 function moisCandidatsAffectation(loc, moisRef, sens, editId) {
   const set = new Set(troisMoisCandidats(moisRef));
-  if(sens === '-') (loc.mouvements || []).forEach(m => {
-    if(m.sens !== '+' || m.id === editId) return;
-    (m.affectations || []).forEach(a => { if(a.mois > moisRef && moisDansExerciceCourant(a.mois)) set.add(a.mois); });
-  });
   const mvt = editId ? (loc.mouvements || []).find(m => m.id === editId) : null;
-  ((mvt && mvt.affectations) || []).forEach(a => { if(a.mois) set.add(a.mois); });
+  ((mvt && mvt.affectations) || []).forEach(a => { if(a.mois && !a.impute) set.add(a.mois); });
   return [...set].sort();
 }
 function refreshMouvementAffectationRows() {
@@ -10506,7 +10557,7 @@ function refreshMouvementAffectationRows() {
       const soldeTxt = s > 0.005 ? `Solde dû : <span style="color:var(--amber);font-weight:600;">${fmt(s)}€</span>` : (s < -0.005 ? `Crédit : <span style="color:var(--green);font-weight:600;">${fmt(-s)}€</span>` : `<span style="color:var(--text2);">Soldé (0)</span>`);
       return `<div class="mvt-aff-row" data-mois="${m}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid var(--line1);">
         <input type="checkbox" class="mvt-aff-check" data-mois="${m}" onchange="onAffectationChanged('${m}')" style="width:14px;height:14px;">
-        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}${m > moisRef ? ' <span style="font-size:10px;color:var(--text2);">(mois suivant)</span>' : ''}</span>
+        <span style="flex:1;font-size:12px;">${moisLabelFromYYYYMM(m)}</span>
         <span style="font-size:10px;min-width:130px;text-align:right;">${soldeTxt}</span>
         <input type="number" step="0.01" class="mvt-aff-montant" data-mois="${m}" placeholder="0.00" disabled style="width:100px;font-family:var(--mono);text-align:right;" oninput="updateMouvementTotal()">
       </div>`;
@@ -10598,7 +10649,7 @@ function updateMouvementTotal() {
   } else {
     let html = `<span style="color:var(--text2);">Montant du paiement : <strong style="color:var(--green);">${fmt(total)}€</strong> — Total affecté : <strong>${fmt(totalAff)}€</strong></span>`;
     if(excedent > 0.005) {
-      html += `<br><span style="color:var(--cyan);">→ Excédent de <strong>${fmt(excedent)}€</strong> qui sera stocké comme <strong>crédit en attente</strong>.</span>`;
+      html += `<br><span style="color:var(--cyan);">→ Excédent de <strong>${fmt(excedent)}€</strong> qui sera imputé d'office au premier loyer suivant encore dû (sinon conservé en <strong>crédit en attente</strong>).</span>`;
     } else if(excedent < -0.005) {
       html += `<br><span style="color:var(--red);">⚠ Vous avez affecté <strong>${fmt(-excedent)}€ de plus</strong> que le montant du paiement. Corrigez.</span>`;
     }
@@ -10649,7 +10700,7 @@ function openMouvementModal(locId, editId) {
     document.getElementById('mvt-sens').value = mvt.sens;
     libInput.value = mvt.libelle||'';
     libInput.dataset.userEdited = '1'; // en édition, on ne réécrase pas ce que l'utilisateur avait mis
-    document.getElementById('mvt-mois-ref').value = mvt.affectations?.[0]?.mois || (mvt.dateOperation ? mvt.dateOperation.slice(0,7) : '');
+    document.getElementById('mvt-mois-ref').value = (mvt.affectations||[]).find(a => !a.impute)?.mois || (mvt.dateOperation ? mvt.dateOperation.slice(0,7) : ''); // V162
     document.getElementById('mvt-date-operation').value = mvt.dateOperation||'';
     document.getElementById('mvt-montant').value = mvt.montant||'';
     refreshMouvementAffectationRows();
@@ -10660,7 +10711,7 @@ function openMouvementModal(locId, editId) {
         const radios = document.querySelectorAll('input[name="mvt-aff-mois"]');
         radios.forEach(r => { r.checked = (r.value === chosen); });
       } else {
-        (mvt.affectations||[]).forEach(a => {
+        (mvt.affectations||[]).filter(a => !a.impute).forEach(a => { // V162 : imputations d'office exclues
           const cb = document.querySelector(`.mvt-aff-check[data-mois="${a.mois}"]`);
           const inp = document.querySelector(`.mvt-aff-montant[data-mois="${a.mois}"]`);
           if(cb) { cb.checked = true; }
@@ -10814,6 +10865,7 @@ function saveMouvement() {
 
   // Génération des lignes comptables du mouvement + regroupement par (date+numDoc+journal)
   postMouvementEcritures(mvt, t, loc);
+  imputerCreditsEnAttente(loc); // V162 : trop-perçu imputé d'office au mois suivant
 
   renum();
   saveDB();
@@ -10850,7 +10902,7 @@ function aDejaUneQuittanceLegacy(loc, mois) {
 // Les lignes de compte identique (débit ou crédit) sont fusionnées (somme des montants).
 function postMouvementEcritures(mvt, t, loc) {
   // Construction du libellé et du numDoc, avec suffixe multi-mois si le paiement est ventilé sur plusieurs mois
-  const moisAffectes = (mvt.affectations||[]).map(a=>a.mois);
+  const moisAffectes = (mvt.affectations||[]).filter(a => !a.impute).map(a=>a.mois); // V162
   const moisPrincipal = moisAffectes[0] || (mvt.dateOperation||'').slice(0,7);
   const libelleFinal = composerLibelleMultiMois(t, mvt.libelle, moisAffectes);
   const numDoc = genererNumeroPiece(t, moisPieceMouvement(t, moisPrincipal, mvt.dateOperation)); // V159 → V160
@@ -11044,6 +11096,7 @@ function confirmDeleteMouvement() {
       if(alsoQuittances && moisAffectes.length) {
         loc.historique = (loc.historique||[]).filter(h => !(h.type === 'quittance' && h._v2 && moisAffectes.includes(h.mois)));
       }
+      imputerCreditsEnAttente(loc); // V162 : les trop-perçus imputés sur un loyer supprimé sont réimputés
       renum();
       saveDB();
       updateNavCounts();
@@ -11115,6 +11168,7 @@ function confirmerQuittanceAuto() {
 function genererQuittanceV2(loc, mois) {
   ensureLocV2(loc);
   if(bloqueSiCloture()) return;
+  if(imputerCreditsEnAttente(loc)) saveDB(); // V162
   if(!controlerDoublonDocument(loc, 'quittance', mois, () => genererQuittanceV2(loc, mois))) return; // V83 : une seule quittance par mois
   // Collecte des lignes du mois : + (loyer / provision / régul...) et - (paiements)
   const plusDuMois = [];
@@ -11125,7 +11179,7 @@ function genererQuittanceV2(loc, mois) {
         const t = (loc.types||[]).find(x => x.id === mvt.typeId);
         const label = t ? t.nom : '(type supprimé)';
         if(mvt.sens === '+') plusDuMois.push({ label, montant: a.montant, date: mvt.dateOperation });
-        else moinsDuMois.push({ label, montant: a.montant, date: mvt.dateOperation });
+        else moinsDuMois.push({ label, montant: a.montant, date: mvt.dateOperation, impute: a.impute || '' }); // V162
       }
     });
   });
@@ -11139,10 +11193,15 @@ function genererQuittanceV2(loc, mois) {
 
   const lignes = plusDuMois.map(p => docLigne(p.label, p.montant, false));
 
-  const paiementDetail = moinsDuMois.length === 1
+  // V162 : un trop-perçu d'un mois antérieur imputé sur ce mois est précisé
+  const lignePaiement = m => m.impute
+    ? `${fmt(m.montant)}€ de trop-perçu ${deMoisLabel(m.impute)} (${esc(m.label)} du ${m.date ? fmtDateFr(m.date) : ''}), imputé sur ce mois`
+    : `${fmt(m.montant)}€ le ${m.date ? fmtDateFr(m.date) : ''} (${esc(m.label)})`;
+  const totalTropQ = Math.round(moinsDuMois.filter(m => m.impute).reduce((s,m) => s + m.montant, 0) * 100) / 100;
+  const paiementDetail = (moinsDuMois.length === 1 && !moinsDuMois[0].impute)
     ? `<p>Nous confirmons avoir reçu le paiement de <strong>${fmt(moinsDuMois[0].montant)}€</strong> le ${moinsDuMois[0].date ? fmtDateFr(moinsDuMois[0].date) : ''}.</p>`
-    : `<p>Nous confirmons avoir reçu les paiements suivants pour un total de <strong>${fmt(totalRecu)}€</strong> :</p>
-       <ul>${moinsDuMois.map(m => `<li>${fmt(m.montant)}€ le ${m.date ? fmtDateFr(m.date) : ''} (${esc(m.label)})</li>`).join('')}</ul>`;
+    : `<p>Nous confirmons avoir reçu les paiements suivants pour un total de <strong>${fmt(totalRecu)}€</strong>${totalTropQ > 0.005 ? `, dont <strong>${fmt(totalTropQ)}€</strong> de trop-perçu imputé` : ''} :</p>
+       <ul>${moinsDuMois.map(m => `<li>${lignePaiement(m)}</li>`).join('')}</ul>`;
 
   const infoHtml = `<p>Bonjour,</p>
     <p>Veuillez trouver votre quittance pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
@@ -11269,6 +11328,7 @@ function openTypesModalFromLocModal() {
 function renderLocataires() {
   // Si un locataire est ouvert en détail, on affiche cette vue à la place de la liste
   if(_locDetailId) { renderLocataireDetail(); return; }
+  try { if(imputerTousLesCredits()) saveDB(); } catch(e) { console.error(e); } // V162
 
   const list = ensureLocatairesArray();
   const wrap = document.getElementById('locataires-list-wrap');
@@ -11754,6 +11814,7 @@ function generateAppelLoyerV2() {
   if(!controlerDoublonDocument(loc, 'appel', mois, () => generateAppelLoyerV2())) return; // V83 : un seul appel par mois
   const apl = parseFloat(document.getElementById('appel-apl').value) || 0;
   const commentaire = document.getElementById('appel-commentaire').value.trim();
+  if(imputerCreditsEnAttente(loc)) saveDB(); // V162
 
   const moisPrec = moisPrecedent(mois);
   const RED = '#c0392b';
@@ -11765,6 +11826,7 @@ function generateAppelLoyerV2() {
     let loyerLignes = []; // [{label, montant}]
     let paiementsLoc = []; // [{montant, date}]
     let paiementsApl = []; // [{montant, date}]
+    let tropPercus = []; // V162 : trop-perçus d'un mois antérieur imputés d'office sur ce mois [{montant, de, date}]
     let soldeInit = 0;
     (loc.soldesInitiaux||[]).forEach(si => { if(si.mois === m) soldeInit += (parseFloat(si.montant)||0); });
     (loc.mouvements||[]).forEach(mvt => {
@@ -11773,16 +11835,23 @@ function generateAppelLoyerV2() {
         if(a.mois !== m) return;
         if(mvt.sens === '+') {
           loyerLignes.push({ label: t ? t.nom : '(type supprimé)', montant: a.montant });
+        } else if(a.impute) {
+          tropPercus.push({ montant: a.montant, de: a.impute, date: mvt.dateOperation });
         } else {
-          if(isAplType(t)) paiementsApl.push({ montant: a.montant, date: mvt.dateOperation });
-          else paiementsLoc.push({ montant: a.montant, date: mvt.dateOperation });
+          // V162 : sur le mois d'origine, le paiement apparaît pour le montant réellement reçu (excédent compris)
+          const excedent = moisSourcePaiement(mvt) === m
+            ? (mvt.affectations||[]).filter(x => x.impute).reduce((s,x) => s + (parseFloat(x.montant)||0), 0) + (parseFloat(mvt.creditEnAttente)||0) : 0;
+          const montant = Math.round((a.montant + excedent) * 100) / 100;
+          if(isAplType(t)) paiementsApl.push({ montant, date: mvt.dateOperation });
+          else paiementsLoc.push({ montant, date: mvt.dateOperation });
         }
       });
     });
     const totalLoyer = Math.round((soldeInit + loyerLignes.reduce((s,x)=>s+x.montant,0)) * 100) / 100;
-    const totalPaye = Math.round((paiementsLoc.reduce((s,x)=>s+x.montant,0) + paiementsApl.reduce((s,x)=>s+x.montant,0)) * 100) / 100;
+    const totalTrop = Math.round(tropPercus.reduce((s,x)=>s+x.montant,0) * 100) / 100;
+    const totalPaye = Math.round((paiementsLoc.reduce((s,x)=>s+x.montant,0) + paiementsApl.reduce((s,x)=>s+x.montant,0) + totalTrop) * 100) / 100;
     const solde = Math.round((totalLoyer - totalPaye) * 100) / 100;
-    return { loyerLignes, paiementsLoc, paiementsApl, soldeInit, totalLoyer, totalPaye, solde };
+    return { loyerLignes, paiementsLoc, paiementsApl, tropPercus, totalTrop, soldeInit, totalLoyer, totalPaye, solde };
   }
 
   // ── Mois en cours (M) ──
@@ -11797,7 +11866,7 @@ function generateAppelLoyerV2() {
   const prevAplMontant = Math.round(dPrec.paiementsApl.reduce((s,x)=>s+x.montant,0)*100)/100;
   const prevDatePaiement = dPrec.paiementsLoc[0]?.date || '';
   const prevAplDate = dPrec.paiementsApl[0]?.date || '';
-  const soldePrec = Math.round((prevEcheance - prevPaye - prevAplMontant)*100)/100;
+  const soldePrec = dPrec.solde; // V162 : trop-perçus compris (négatif = en faveur du locataire)
 
   // ── Mois antérieurs à M-1 ──
   // Règle : si aucun impayé avant M-1, on ne présente que M-1 et M.
@@ -11824,16 +11893,17 @@ function generateAppelLoyerV2() {
   // ── TABLEAU 1 : APPEL DE LOYER — couleur principale (SOCIETE.couleur) ──
   const lignes1 = [];
   dM.loyerLignes.forEach(l => { lignes1.push(docLigne(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false)); });
+  dM.tropPercus.forEach(p => lignes1.push(docLigne(`Trop-perçu ${deMoisLabel(p.de)}`, -p.montant, false))); // V162
   if(apl > 0) lignes1.push(docLigne(`APL à recevoir le ${dateApl}`, -apl, false));
   // Impayés du mois précédent (solde M-1 > 0)
-  if(soldePrec > 0.005) lignes1.push(docLigne(`Impayé de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, false, RED));
+  if(soldePrec > 0.005) lignes1.push(docLigne(`Impayé ${deMoisLabel(moisPrec)}`, soldePrec, false, RED));
   // Impayés antérieurs (mois < M-1)
   moisAnterieurs.forEach(m => {
     const d = decomposerMois(m);
-    if(d.solde > 0.005) lignes1.push(docLigne(`Impayé de ${moisLabelFromYYYYMM(m)}`, d.solde, false, RED));
+    if(d.solde > 0.005) lignes1.push(docLigne(`Impayé ${deMoisLabel(m)}`, d.solde, false, RED));
   });
   const totalImpayesAnterieurs = moisAnterieurs.reduce((s, m) => { const d=decomposerMois(m); return d.solde>0.005?s+d.solde:s; }, 0);
-  const montantAppelTotal = Math.round((partACharge + Math.max(soldePrec,0) + totalImpayesAnterieurs) * 100) / 100;
+  const montantAppelTotal = Math.round((partACharge - dM.totalTrop + Math.max(soldePrec,0) + totalImpayesAnterieurs) * 100) / 100; // V162 : trop-perçu imputé déduit
 
   // ── TABLEAU 2 : VOTRE SITUATION AU JJ/MM/AAAA — couleur claire (SOCIETE.couleurClaire) ──
   const lignes2 = [];
@@ -11845,22 +11915,25 @@ function generateAppelLoyerV2() {
     d.loyerLignes.forEach(l => { lignes2.push(docLigne(l.label + ' ' + moisLabelFromYYYYMM(m), l.montant, false)); });
     d.paiementsLoc.forEach(p => { lignes2.push(docLigne(`Votre paiement du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false)); });
     d.paiementsApl.forEach(p => { lignes2.push(docLigne(`Paiement APL du ${p.date?fmtDateFr(p.date):''}`, -p.montant, false)); });
-    lignes2.push(docLigne(`Solde sur loyer de ${moisLabelFromYYYYMM(m)}`, d.solde, true, d.solde>0.005?RED:null));
+    d.tropPercus.forEach(p => { lignes2.push(docLigne(`Trop-perçu ${deMoisLabel(p.de)} imputé`, -p.montant, false)); }); // V162
+    lignes2.push(docLigne(`Solde sur loyer ${deMoisLabel(m)}${d.solde < -0.005 ? ' (en votre faveur)' : ''}`, d.solde, true, d.solde>0.005?RED:null));
     lignes2.push(DOC_ESPACE);
   });
 
   // Mois précédent (M-1)
-  if(prevEcheance > 0.005 || prevPaye > 0.005 || prevAplMontant > 0.005) {
+  if(prevEcheance > 0.005 || prevPaye > 0.005 || prevAplMontant > 0.005 || dPrec.totalTrop > 0.005) {
     dPrec.loyerLignes.forEach(l => { lignes2.push(docLigne(l.label + ' ' + moisLabelFromYYYYMM(moisPrec), l.montant, false)); });
     if(dPrec.soldeInit > 0.005) lignes2.push(docLigne(`Solde initial ${moisLabelFromYYYYMM(moisPrec)}`, dPrec.soldeInit, false));
     if(prevPaye > 0.005) lignes2.push(prevDatePaiement ? docLigne(`Votre paiement du ${fmtDateFr(prevDatePaiement)}`, -prevPaye, false) : docLigne('Votre paiement', -prevPaye, false));
     if(prevAplMontant > 0.005) lignes2.push(docLigne(`Paiement APL du ${prevAplDate?fmtDateFr(prevAplDate):''}`, -prevAplMontant, false));
-    lignes2.push(docLigne(`Solde sur loyer de ${moisLabelFromYYYYMM(moisPrec)}`, soldePrec, true, soldePrec>0.005?RED:null));
+    dPrec.tropPercus.forEach(p => { lignes2.push(docLigne(`Trop-perçu ${deMoisLabel(p.de)} imputé`, -p.montant, false)); }); // V162
+    lignes2.push(docLigne(`Solde sur loyer ${deMoisLabel(moisPrec)}${soldePrec < -0.005 ? ' (en votre faveur)' : ''}`, soldePrec, true, soldePrec>0.005?RED:null));
     lignes2.push(DOC_ESPACE);
   }
 
   // Mois en cours (M)
   dM.loyerLignes.forEach(l => { lignes2.push(docLigne(l.label + ' ' + moisLabelFromYYYYMM(mois), l.montant, false)); });
+  dM.tropPercus.forEach(p => { lignes2.push(docLigne(`Trop-perçu ${deMoisLabel(p.de)} imputé`, -p.montant, false)); }); // V162
   // L'APL à recevoir n'est PAS déduite ici : tant qu'elle n'est pas encaissée, 100 % du loyer reste dû.
   // Paiements déjà reçus pour M (rare mais possible)
   const totalPaieLoc = Math.round(dM.paiementsLoc.reduce((s,x)=>s+x.montant,0)*100)/100;
@@ -11877,11 +11950,11 @@ function generateAppelLoyerV2() {
   }
   // Solde du mois en cours : loyer + provisions - paiements réellement encaissés (APL à venir non déduite)
   const soldeCour = Math.round((totalLoyerProvision - dM.totalPaye) * 100) / 100;
-  lignes2.push(docLigne(`Solde sur loyer de ${moisLabelFromYYYYMM(mois)} (en notre faveur)`, soldeCour, true));
+  lignes2.push(docLigne(`Solde sur loyer ${deMoisLabel(mois)} (en notre faveur)`, soldeCour, true));
 
   const totalSolde = Math.round((totalImpayesAnterieurs + Math.max(soldePrec,0) + soldeCour) * 100) / 100;
 
-  const defaultInfo = `<p>Bonjour,<br>Veuillez trouver votre appel de loyer pour le mois de ${moisLabelFromYYYYMM(mois)}.</p>
+  const defaultInfo = `<p>Bonjour,<br>Veuillez trouver votre appel de loyer pour le mois ${deMoisLabel(mois)}.</p>
     <p style="font-weight:700;text-decoration:underline;">Le paiement total attendu pour ce début de mois de ${MOIS_LABELS[parseInt(mm)-1]} s'élève à ${fmt(montantAppelTotal)}€.</p>
     ${commentaire ? '<p>'+commentaire.replace(/\n/g,'<br>')+'</p>' : ''}
     <p>N'hésitez pas à nous envoyer un message pour toute question.<br>Bien cordialement</p>`;
